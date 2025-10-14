@@ -13,16 +13,13 @@ import json
 import logging
 import random
 
-# Remove problematic TensorFlow dependencies to avoid system crashes
-# import librosa
-# import crepe
-# import whisper  
-# from transformers import WhisperProcessor, WhisperForConditionalGeneration
-# import torch
+# Audio processing imports
+import librosa
 import pyphen
 from mido import Message, MidiFile, MidiTrack, MetaMessage
 from demucs.separate import main as demucs_separate
 import shutil
+from audio_analysis import detect_syllable_boundaries, detect_bpm, calculate_gap_from_first_pitch
 # import yt_dlp
 
 app = FastAPI(title="Ultrastar Song Generator API")
@@ -176,20 +173,21 @@ async def generate_final_files(
                 content = await corrected_vocal.read()
                 f.write(content)
             
-            # Process audio directly (simplified version without CREPE to avoid crashes)
-            # Skip pitch detection for now and focus on text generation
-            print(f"DEBUG: Processing lyrics for Ultrastar generation")
+            # STEP 1: Audio Analysis - detect BPM and onset/offset boundaries
+            print(f"DEBUG: Starting audio analysis with new pipeline")
             
-            # Step 3: Process lyrics with Whisper timing
-            print(f"DEBUG: Processing lyrics with Whisper for timing alignment")
-            segments = []  # Skip complex Whisper processing for now
+            # Detect BPM using librosa
+            bpm = detect_bpm(vocal_path)
+            print(f"DEBUG: Detected BPM: {bpm/2:.2f} -> Ultrastar BPM: {bpm:.2f}")
             
-            # Step 4: Generate Ultrastar file with syllable-by-syllable processing
-            dic = pyphen.Pyphen(lang='en')
+            # STEP 2: Lyrics Processing - split into syllables
+            print(f"DEBUG: Processing lyrics for syllable splitting")
+            dic = pyphen.Pyphen(lang=language)
             
             # Split lyrics into lines and syllables
             lyrics_lines = lyrics.strip().split('\n')
             all_syllables = []
+            flat_syllables = []  # For audio alignment
             
             for line in lyrics_lines:
                 if line.strip():
@@ -197,37 +195,88 @@ async def generate_final_files(
                     line_syllables = []
                     for word in words:
                         if '-' in word:
-                            # Manual syllable splitting
+                            # Manual syllable splitting (user provided)
                             syllables = word.split('-')
                         else:
-                            # Automatic syllable splitting
+                            # Automatic syllable splitting (fallback)
                             syllables = dic.inserted(word).split('-')
                         line_syllables.extend(syllables)
+                        flat_syllables.extend(syllables)
                     all_syllables.append(line_syllables)
             
-            # Generate Ultrastar content with timing
-            bpm = 136.0 * 2.0  # Double BPM for Ultrastar format
-            start_beat = 0
+            print(f"DEBUG: Found {len(flat_syllables)} syllables across {len(all_syllables)} lines")
+            
+            # STEP 3: Audio-based syllable timing detection
+            print(f"DEBUG: Detecting syllable boundaries with onset/offset detection")
+            try:
+                syllable_timings = detect_syllable_boundaries(vocal_path, flat_syllables)
+                
+                # Calculate dynamic GAP from first pitch
+                if syllable_timings:
+                    gap_ms = int(syllable_timings[0][0] * 1000)  # First syllable start time in ms
+                else:
+                    gap_ms = 0
+                
+                print(f"DEBUG: Found timing for {len(syllable_timings)} syllables, GAP: {gap_ms}ms")
+                
+            except Exception as e:
+                print(f"DEBUG: Audio analysis failed: {e}, using BPM fallback")
+                # Fallback to BPM-based timing
+                syllable_timings = []
+                for i, syllable in enumerate(flat_syllables):
+                    start_time = i * 0.5  # 500ms per syllable
+                    end_time = start_time + 0.4  # 400ms duration
+                    pitch = 60  # Middle C
+                    syllable_timings.append((start_time, end_time, pitch))
+                gap_ms = 0
+            
+            # STEP 4: Generate Ultrastar content with real timing
+            print(f"DEBUG: Generating Ultrastar content with audio-based timing")
             note_lines = []
+            syllable_index = 0
             
             for line_syllables in all_syllables:
                 for syllable in line_syllables:
-                    # Get pitch for this syllable (simplified)
-                    pitch = random.randint(45, 75)  # Random pitch for now
-                    duration = random.randint(5, 15)  # Random duration
-                    
-                    note_lines.append(f": {start_beat} {duration} {pitch} {syllable}")
-                    start_beat += duration
+                    if syllable_index < len(syllable_timings):
+                        start_time, end_time, midi_pitch = syllable_timings[syllable_index]
+                        
+                        # Convert time to beats: duration_beats = ((end_time - start_time) * bpm * 2) / 60
+                        start_beat = int((start_time * bpm) / 60)
+                        duration_beats = int(((end_time - start_time) * bpm) / 60)
+                        duration_beats = max(1, duration_beats)  # Minimum 1 beat
+                        
+                        note_lines.append(f": {start_beat} {duration_beats} {midi_pitch} {syllable}")
+                        syllable_index += 1
+                    else:
+                        # Fallback for remaining syllables
+                        start_beat = len(note_lines) * 10  # Simple spacing
+                        note_lines.append(f": {start_beat} 8 60 {syllable}")
                 
-                # Add break line after each line
-                break_duration = random.randint(10, 30)
-                break_end = start_beat + break_duration
-                note_lines.append(f"- {start_beat} {break_end}")
-                start_beat = break_end
+                # Add break line after each line with padding (2-8 beats)
+                if syllable_index < len(syllable_timings):
+                    last_syllable_end = syllable_timings[syllable_index-1][1] if syllable_index > 0 else 0
+                    break_start_beat = int((last_syllable_end * bpm) / 60) + 4  # 4 beat padding
+                    
+                    # Look ahead for next line start
+                    if syllable_index < len(syllable_timings):
+                        next_syllable_start = syllable_timings[syllable_index][0]
+                        break_end_beat = int((next_syllable_start * bpm) / 60) - 4  # 4 beat padding
+                        if break_end_beat > break_start_beat:
+                            note_lines.append(f"- {break_start_beat} {break_end_beat}")
+                        else:
+                            note_lines.append(f"- {break_start_beat}")
+                    else:
+                        note_lines.append(f"- {break_start_beat}")
+                else:
+                    # Simple fallback break
+                    break_start = len(note_lines) * 10 + 5
+                    note_lines.append(f"- {break_start}")
             
+            # STEP 5: Generate final Ultrastar content
             txt_content = f"""#ARTIST:{artist}
 #TITLE:{title}
 #BPM:{bpm:.2f}
+#GAP:{gap_ms}
 #LANGUAGE:English
 #MP3:song.mp3
 #GAP:0
