@@ -1,27 +1,62 @@
 # Ultrastar Song Generator
 
-An AI-powered tool to generate Ultrastar karaoke song files from audio sources (MP3 or YouTube URLs).
+A comprehensive tool to generate high-quality Ultrastar karaoke song files with professional-grade audio processing and timing accuracy.
 
 ## Features
 
-- Upload MP3 files or provide YouTube URLs
-- Automatic vocal separation using Demucs
-- Pitch and note detection with librosa PYIN
-- Lyrics extraction via Whisper
-- Beat and rhythm analysis with Librosa
-- Generate Ultrastar .txt files and MIDI files
-- Progress visualization and preview
-- Download generated files
-- **NEW**: Structured service architecture with change tracking
-- **NEW**: Baseline validation to prevent regressions
-- **NEW**: Health monitoring and status endpoints
+### Core Functionality
+- **Manual Audio Input**: Upload pre-processed vocal tracks for optimal quality
+- **Lyrics-Driven Processing**: User provides pre-syllabified lyrics for accuracy
+- **Advanced Audio Analysis**: PYIN pitch detection, BPM analysis, onset/offset detection
+- **Intelligent Timing**: Syllable boundary detection with multiple fallback strategies
+- **Multi-Format Output**: Ultrastar .txt, MIDI files, and detailed processing summaries
+
+### Advanced Pipeline
+- **Syllable Duration Calculation**: Audio-based timing with onset/offset detection
+- **Pitch Grouping**: Noise filtering and multi-pitch handling for stable notes
+- **Dynamic GAP Calculation**: Precise timing from first pitch detection
+- **Break Line Padding**: Prevents word concatenation in game display
+- **Rap Section Support**: Special handling for spoken word sections
+- **Comprehensive Logging**: Detailed processing information and fallback tracking
+
+### Technical Features
+- **Service Architecture**: Modular backend with specialized audio processing services
+- **Change Tracking**: Development safety with modification logging
+- **Baseline Validation**: Regression prevention during development
+- **Health Monitoring**: System status and configuration endpoints
 
 ## Tech Stack
 
-- **Frontend**: Svelte with Vite
-- **Backend**: Python FastAPI with structured services
-- **AI Models**: Local (Whisper, Demucs, librosa, Transformers)
-- **Architecture**: Service-based with configuration management and change tracking
+- **Frontend**: Svelte with Vite for responsive user interface
+- **Backend**: Python FastAPI with modular service architecture
+- **Audio Processing**: librosa (PYIN, BPM), onset detection, pitch analysis
+- **Output Generation**: Ultrastar format, MIDI synthesis, processing summaries
+- **Development**: Git workflow, comprehensive logging, pipeline documentation
+
+## Pipeline Approach
+
+### Modern Workflow (v3.0)
+This tool follows a **manual-input, high-quality output** approach:
+
+1. **User Preparation**: 
+   - Manually edit vocal audio to include only sung content
+   - Pre-syllabify lyrics using `-` separators (e.g., `beau-ti-ful`)
+   - Mark rap sections with special markers
+
+2. **Audio Analysis**:
+   - PYIN pitch detection with noise filtering
+   - Onset/offset detection for syllable boundaries
+   - BPM analysis and dynamic GAP calculation
+
+3. **Intelligent Timing**:
+   - Audio-based syllable duration calculation
+   - Multiple fallback strategies for unclear sections
+   - Break line timing with proper padding
+
+4. **Quality Output**:
+   - Accurate Ultrastar .txt files
+   - MIDI files for pitch reference
+   - Detailed processing summaries for manual refinement
 
 ## Architecture
 
@@ -37,12 +72,19 @@ The backend has been refactored from a monolithic structure into specialized ser
 - **Baseline Validation**: Ensures no regressions during development
 
 ### API Endpoints
-- `POST /process_audio2` - Main processing endpoint (maintains compatibility)
+- `POST /generate_final_files` - Main processing endpoint for Ultrastar generation
+- `POST /extract_vocals` - Vocal separation using Demucs (optional preprocessing)
+- `GET /test_files` - Load test files for development and validation
 - `GET /health` - Service health check
 - `GET /status` - System status with configuration and recent changes
-- `GET /files` - List available download files
-- `POST /validate` - Validate Ultrastar content
 - `GET /download/{filename}` - Download generated files
+
+### Pipeline Documentation
+See `docs/PIPELINE.md` for comprehensive processing pipeline specification including:
+- Detailed syllable timing algorithms
+- Audio analysis parameters
+- Edge case handling
+- Logging and debugging strategies
 
 ## Setup
 
