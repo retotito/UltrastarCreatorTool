@@ -41,6 +41,7 @@
   let isPlaying = false;
   let playbackBeat = 0;
   let animFrame;
+  let currentTimeSec = 0;  // Reactive time display
 
   // Parse Ultrastar content into notes array
   function parseUltrastar(content) {
@@ -331,11 +332,11 @@
       }
     }
 
-    // Playback cursor
-    if (isPlaying) {
+    // Playback cursor (show when playing OR when paused at non-zero position)
+    if (isPlaying || playbackBeat > 0) {
       const cx = beatToX(playbackBeat);
       const pianoBottom = h - timeAxisHeight;
-      ctx.strokeStyle = '#ff5252';
+      ctx.strokeStyle = isPlaying ? '#ff5252' : '#ff8a80';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(cx, 0);
@@ -436,13 +437,22 @@
 
   // ──── Playback ───────────────────────────────
   function togglePlayback() {
-    if (!audioEl) return;
+    if (!audioEl) {
+      console.log('[Play] No audioEl');
+      return;
+    }
 
     if (isPlaying) {
+      console.log(`[Play] Pausing at ${audioEl.currentTime.toFixed(2)}s, beat=${playbackBeat.toFixed(1)}`);
       audioEl.pause();
+      currentTimeSec = audioEl.currentTime;
       isPlaying = false;
       cancelAnimationFrame(animFrame);
+      draw(); // Redraw to show paused cursor
     } else {
+      // Resume from our tracked position
+      audioEl.currentTime = currentTimeSec;
+      console.log(`[Play] Starting from ${currentTimeSec.toFixed(2)}s, beat=${playbackBeat.toFixed(1)}`);
       audioEl.play();
       isPlaying = true;
       updatePlayback();
@@ -450,20 +460,63 @@
   }
 
   function stopPlayback() {
+    console.log('[Stop] Resetting to 0');
     if (audioEl) {
       audioEl.pause();
       audioEl.currentTime = 0;
     }
     isPlaying = false;
     playbackBeat = 0;
+    currentTimeSec = 0;
     cancelAnimationFrame(animFrame);
     draw();
+  }
+
+  function seekPlayback(deltaSec) {
+    if (!audioEl) {
+      console.log('[Seek] No audioEl');
+      return;
+    }
+    const maxTime = audioEl.duration || audioDuration || 300;
+    const oldTime = currentTimeSec;  // Use our tracked time, not audioEl.currentTime
+    const newTime = Math.max(0, Math.min(maxTime, oldTime + deltaSec));
+    console.log(`[Seek] delta=${deltaSec}s, old=${oldTime.toFixed(2)}s, new=${newTime.toFixed(2)}s, max=${maxTime.toFixed(2)}s`);
+    audioEl.currentTime = newTime;
+    currentTimeSec = newTime;
+    const gapSec = gapMs / 1000;
+    playbackBeat = Math.max(0, ((newTime - gapSec) * bpm) / 15);
+    // Update scroll position to follow
+    const cursorX = beatToX(playbackBeat);
+    const canvasWidth = canvasEl?.width || 800;
+    if (cursorX < 0 || cursorX > canvasWidth) {
+      scrollX = Math.max(0, (playbackBeat * zoom) - canvasWidth * 0.3);
+    }
+    draw();
+  }
+
+  function handleKeydown(e) {
+    // Spacebar: toggle play/pause
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePlayback();
+    }
+    // Left arrow: seek back 5s (Shift: 1s)
+    if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      seekPlayback(e.shiftKey ? -1 : -5);
+    }
+    // Right arrow: seek forward 5s (Shift: 1s)
+    if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      seekPlayback(e.shiftKey ? 1 : 5);
+    }
   }
 
   function updatePlayback() {
     if (!isPlaying) return;
 
     const currentTime = audioEl.currentTime;
+    currentTimeSec = currentTime;
     const gapSec = gapMs / 1000;
     playbackBeat = Math.max(0, ((currentTime - gapSec) * bpm) / 15);
 
@@ -546,10 +599,12 @@
       canvasEl.height = viewHeight;
       loadData();
     }
+    window.addEventListener('keydown', handleKeydown);
   });
 
   onDestroy(() => {
     cancelAnimationFrame(animFrame);
+    window.removeEventListener('keydown', handleKeydown);
   });
 
   // Reload when we enter this step
@@ -563,10 +618,13 @@
 
   <div class="toolbar">
     <div class="playback-controls">
-      <button class="tool-btn" on:click={togglePlayback}>
+      <button class="tool-btn" on:click={() => seekPlayback(-5)} title="Back 5s (←)">⏪</button>
+      <button class="tool-btn" on:click={togglePlayback} title="Space">
         {isPlaying ? '⏸ Pause' : '▶ Play'}
       </button>
+      <button class="tool-btn" on:click={() => seekPlayback(5)} title="Forward 5s (→)">⏩</button>
       <button class="tool-btn" on:click={stopPlayback}>⏹ Stop</button>
+      <span class="time-display">{formatTime(currentTimeSec)}</span>
     </div>
 
     <div class="zoom-controls">
@@ -671,6 +729,14 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
+  }
+
+  .time-display {
+    color: #aaa;
+    font-size: 0.8rem;
+    font-family: monospace;
+    min-width: 40px;
+    margin-left: 0.25rem;
   }
 
   .tool-btn {

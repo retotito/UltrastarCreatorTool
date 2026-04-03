@@ -773,8 +773,86 @@ def _map_mfa_words_to_syllables(
     if results:
         log_step("ALIGN", f"  Time range: {results[0]['start']:.2f}s - {results[-1]['end']:.2f}s")
     
+    # ── Post-process: remove phantom words that MFA couldn't place ──
+    results = _remove_phantom_words(results)
+    
     # ── Post-process: fix bloated syllables ──
     results = _fix_bloated_syllables(results)
+    
+    return results
+
+
+def _remove_phantom_words(results: List[dict]) -> List[dict]:
+    """Remove syllables that MFA couldn't place in the audio (phantom words).
+    
+    When the lyrics contain a word that isn't actually sung, MFA is forced to
+    fit it somewhere. It typically squeezes it into a tiny duration (< 0.08s).
+    These phantom syllables cause all subsequent notes to shift off by one
+    position in the comparison.
+    
+    Detection criteria (ALL must be true):
+    1. Duration < 0.08s (MFA couldn't give it real time)
+    2. Standalone single-syllable word (starts with space, next starts with space)
+    3. Common function word (article/preposition: the, a, an, of, in, on, to, etc.)
+    4. BOTH neighbors have substantial duration (> 0.3s each)
+       This is the key filter: a phantom word is isolated between normal-length
+       syllables. In fast passages, neighbors are also short, so real words
+       won't be caught.
+    """
+    if not results or len(results) < 5:
+        return results
+    
+    PHANTOM_THRESHOLD = 0.08
+    NEIGHBOR_MIN = 0.5  # Both neighbors must be > this to confirm phantom
+    # Common function words that singers sometimes skip
+    FUNCTION_WORDS = {"the", "a", "an", "of", "in", "on", "to", "at", "by", "is",
+                      "it", "or", "as", "if", "so", "up", "no", "do", "my", "we",
+                      "he", "me", "be"}
+    
+    phantoms = []
+    for i, r in enumerate(results):
+        dur = r["end"] - r["start"]
+        if dur >= PHANTOM_THRESHOLD:
+            continue
+        
+        text = r["syllable"].strip().lower().rstrip(",.'!?;:")
+        
+        # Must be a known function word
+        if text not in FUNCTION_WORDS:
+            continue
+        
+        # Must be a standalone word (starts with space, and next syllable starts a new word)
+        if not r["syllable"].startswith(" ") and i > 0:
+            continue
+        
+        is_standalone = False
+        if i + 1 < len(results):
+            next_text = results[i + 1]["syllable"]
+            if next_text.startswith(" ") or (len(next_text) > 0 and next_text[0].isupper()):
+                is_standalone = True
+        elif i == len(results) - 1:
+            is_standalone = True
+        
+        if not is_standalone:
+            continue
+        
+        # KEY CHECK: Both neighbors must have substantial duration.
+        # A phantom word is squeezed between two normal syllables.
+        # In fast passages, neighbors are also short — so real words pass through.
+        prev_dur = (results[i-1]["end"] - results[i-1]["start"]) if i > 0 else 1.0
+        next_dur = (results[i+1]["end"] - results[i+1]["start"]) if i + 1 < len(results) else 1.0
+        
+        if prev_dur < NEIGHBOR_MIN or next_dur < NEIGHBOR_MIN:
+            continue
+        
+        phantoms.append(i)
+        log_step("ALIGN", f"  Phantom word detected: '{text}' at {r['start']:.2f}s "
+                 f"(dur={dur:.3f}s, prev={prev_dur:.3f}s, next={next_dur:.3f}s)")
+    
+    if phantoms:
+        log_step("ALIGN", f"Removing {len(phantoms)} phantom word(s) not found in audio")
+        for idx in reversed(phantoms):
+            results.pop(idx)
     
     return results
 
@@ -783,18 +861,15 @@ def _fix_bloated_syllables(results: List[dict]) -> List[dict]:
     """Fix syllables with inflated durations from MFA.
     
     MFA sometimes assigns silence/held-note gaps to the preceding word,
-    making it much longer than it should be. This happens especially at
-    phrase boundaries where the singer holds a note before an instrumental
-    gap.
+    making it much longer than it should be. After trimming bloated syllables,
+    we also check for large gaps between the trimmed syllable and the next one,
+    and shift subsequent syllables earlier to close those gaps.
     
     Strategy:
     1. Compute median syllable duration
-    2. Find syllables that are > 4x the median AND > 1.5s absolute
-    3. For each bloated syllable, check if it's followed by compressed
-       syllables (< 0.1s). If so, the MFA likely extended this syllable
-       into what should be a silence gap.
-    4. Cap the bloated syllable and shift compressed followers earlier
-       into natural positions.
+    2. Find syllables > threshold duration, cap them
+    3. After capping, check gap to next syllable — if too large, shift
+       subsequent syllables earlier to close the gap
     """
     import numpy as np
     
@@ -814,16 +889,6 @@ def _fix_bloated_syllables(results: List[dict]) -> List[dict]:
         
         if dur <= bloat_threshold:
             continue
-        
-        # Check: is this followed by compressed syllables?
-        # Count how many following syllables have very short duration
-        compressed_count = 0
-        for j in range(i + 1, min(i + 10, len(results))):
-            jdur = results[j]["end"] - results[j]["start"]
-            if jdur < 0.12:
-                compressed_count += 1
-            else:
-                break
         
         # Also check if there's a gap after this syllable to the next line
         # (phrase boundary detection)
@@ -849,16 +914,35 @@ def _fix_bloated_syllables(results: List[dict]) -> List[dict]:
         old_end = results[i]["end"]
         results[i]["end"] = round(new_end, 4)
         
-        # The gap we freed up: old_end - new_end
-        # If there are compressed syllables following, they were crammed
-        # because MFA was forced to fit them after the bloated word.
-        # Don't shift them — they have their own MFA timing which is
-        # correct relative to the audio. The bloated syllable just had
-        # silence appended; the following syllables are at their correct
-        # audio positions.
+        # Check if there's a large gap to the next syllable
+        # If so, shift subsequent syllables earlier to close the gap
+        if i + 1 < len(results):
+            gap_to_next = results[i + 1]["start"] - new_end
+            # Allow a small natural gap (0.3s for breath), shift the rest
+            max_gap = 0.3
+            if gap_to_next > max_gap:
+                shift = gap_to_next - max_gap
+                # Find how many subsequent syllables to shift:
+                # Shift until we hit a natural gap (> 1s) in the original data,
+                # which indicates a real phrase break
+                shift_end = i + 1
+                for j in range(i + 1, len(results)):
+                    shift_end = j + 1
+                    # Stop shifting at phrase/line boundaries
+                    if j + 1 < len(results):
+                        original_gap = results[j + 1]["start"] - results[j]["end"]
+                        if original_gap > 1.0:
+                            break
+                
+                # Apply the shift
+                for j in range(i + 1, shift_end):
+                    results[j]["start"] = round(results[j]["start"] - shift, 4)
+                    results[j]["end"] = round(results[j]["end"] - shift, 4)
+                
+                log_step("ALIGN", f"  Shifted {shift_end - i - 1} syllables earlier by {shift:.2f}s after '{results[i]['syllable'].strip()}'")
         
         fixes_applied += 1
-        log_step("ALIGN", f"  Trimmed '{results[i]['syllable'].strip()}' from {dur:.2f}s to {max_dur:.1f}s (freed {dur - max_dur:.2f}s)")
+        log_step("ALIGN", f"  Trimmed '{results[i]['syllable'].strip()}' from {dur:.2f}s to {max_dur:.1f}s")
     
     if fixes_applied:
         log_step("ALIGN", f"Fixed {fixes_applied} bloated syllables (threshold: {bloat_threshold:.2f}s, median: {median_dur:.3f}s)")

@@ -26,6 +26,16 @@
 - [x] Ensure Documentation is Complete
 	<!-- README.md created and up to date. -->
 
+## TODO Later
+
+- [ ] **Lyrics comparison in Step 2**: Before generating, compare user-pasted lyrics against what MFA actually hears in the audio. Show warnings for mismatched/phantom words (extra articles, missing words, etc.) so the user can fix lyrics before alignment runs.
+- [ ] **Golden note editing**: Support `*` (golden notes) in the piano roll editor.
+- [ ] **Tied/continuation notes**: Support `~` (tied notes) in the piano roll editor.
+- [ ] **Audio waveform display**: Show waveform visualization on top or bottom of the piano roll.
+- [ ] **MIDI/pitch tone playback toggle**: On/off switch to play a synthesized tone following the pitch during playback.
+- [ ] **MIDI/pitch tone volume**: Volume slider for the synthesized pitch tone.
+- [ ] **Play selected note tone**: Add a button in the note info panel (top right) to play the pitch of the currently selected note.
+
 ## Execution Guidelines
 PROGRESS TRACKING:
 - If any tools are available to manage the above todo list, use it to track progress through this checklist.

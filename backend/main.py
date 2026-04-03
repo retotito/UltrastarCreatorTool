@@ -12,9 +12,9 @@ import shutil
 import tempfile
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Add parent dir to path for imports
@@ -167,8 +167,8 @@ async def upload_corrected_vocals(session_id: str, vocals: UploadFile = File(...
 
 
 @app.get("/api/preview-audio/{session_id}/{audio_type}")
-async def preview_audio(session_id: str, audio_type: str):
-    """Stream audio for preview. audio_type: 'original' or 'vocals'."""
+async def preview_audio(session_id: str, audio_type: str, request: Request):
+    """Stream audio for preview with range request support for seeking."""
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -200,8 +200,48 @@ async def preview_audio(session_id: str, audio_type: str):
         else:
             raise HTTPException(status_code=404, detail="Audio file not found")
     
-    log_step("PREVIEW", f"Serving {audio_type} audio: {path}")
-    return FileResponse(path)
+    file_size = os.path.getsize(path)
+    ext = os.path.splitext(path)[1].lower()
+    content_type = {
+        '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
+        '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+    }.get(ext, 'application/octet-stream')
+    
+    # Handle range requests for seeking support
+    range_header = request.headers.get('range')
+    if range_header:
+        # Parse "bytes=start-end"
+        range_str = range_header.replace('bytes=', '')
+        parts = range_str.split('-')
+        start = int(parts[0]) if parts[0] else 0
+        end = int(parts[1]) if parts[1] else file_size - 1
+        end = min(end, file_size - 1)
+        length = end - start + 1
+        
+        def iter_range():
+            with open(path, 'rb') as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(8192, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+        
+        return StreamingResponse(
+            iter_range(),
+            status_code=206,
+            headers={
+                'Content-Range': f'bytes {start}-{end}/{file_size}',
+                'Accept-Ranges': 'bytes',
+                'Content-Length': str(length),
+                'Content-Type': content_type,
+            }
+        )
+    
+    # No range — return full file with accept-ranges header
+    return FileResponse(path, headers={'Accept-Ranges': 'bytes'})
 
 
 # ────────────────────────────────────────────────────────────

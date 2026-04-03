@@ -46,10 +46,16 @@ def parse_ultrastar_file(content: str) -> dict:
                 headers[key] = value
             continue
 
-        # Note line: ": start duration pitch syllable" or "F: ..."
-        if line.startswith(":") or line.startswith("F:"):
-            is_rap = line.startswith("F:")
-            prefix = "F:" if is_rap else ":"
+        # Note line: ': start duration pitch syllable' or 'F: ...' or '* ...' (golden)
+        if line.startswith(':') or line.startswith('F:') or line.startswith('*'):
+            is_rap = line.startswith('F:')
+            is_golden = line.startswith('*')
+            if is_rap:
+                prefix = 'F:'
+            elif is_golden:
+                prefix = '*'
+            else:
+                prefix = ':'
             parts = line[len(prefix):].strip().split(None, 3)
 
             if len(parts) >= 4:
@@ -121,8 +127,13 @@ def extract_lyrics_from_ultrastar(content: str) -> str:
     all_elements = []
     for line in content.strip().split("\n"):
         line = line.strip()
-        if line.startswith(":") or line.startswith("F:"):
-            prefix = "F:" if line.startswith("F:") else ":"
+        if line.startswith(':') or line.startswith('F:') or line.startswith('*'):
+            if line.startswith('F:'):
+                prefix = 'F:'
+            elif line.startswith('*'):
+                prefix = '*'
+            else:
+                prefix = ':'
             rest = line[len(prefix):]
             # Split only the first 3 tokens (start, duration, pitch) then keep rest as syllable
             tokens = rest.strip().split(None, 3)
