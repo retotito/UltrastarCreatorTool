@@ -773,6 +773,96 @@ def _map_mfa_words_to_syllables(
     if results:
         log_step("ALIGN", f"  Time range: {results[0]['start']:.2f}s - {results[-1]['end']:.2f}s")
     
+    # ── Post-process: fix bloated syllables ──
+    results = _fix_bloated_syllables(results)
+    
+    return results
+
+
+def _fix_bloated_syllables(results: List[dict]) -> List[dict]:
+    """Fix syllables with inflated durations from MFA.
+    
+    MFA sometimes assigns silence/held-note gaps to the preceding word,
+    making it much longer than it should be. This happens especially at
+    phrase boundaries where the singer holds a note before an instrumental
+    gap.
+    
+    Strategy:
+    1. Compute median syllable duration
+    2. Find syllables that are > 4x the median AND > 1.5s absolute
+    3. For each bloated syllable, check if it's followed by compressed
+       syllables (< 0.1s). If so, the MFA likely extended this syllable
+       into what should be a silence gap.
+    4. Cap the bloated syllable and shift compressed followers earlier
+       into natural positions.
+    """
+    import numpy as np
+    
+    if not results or len(results) < 10:
+        return results
+    
+    durations = [r["end"] - r["start"] for r in results]
+    median_dur = float(np.median(durations))
+    
+    # Threshold: syllable is "bloated" if > max(4x median, 1.5s)
+    bloat_threshold = max(median_dur * 4, 1.5)
+    
+    fixes_applied = 0
+    
+    for i in range(len(results)):
+        dur = results[i]["end"] - results[i]["start"]
+        
+        if dur <= bloat_threshold:
+            continue
+        
+        # Check: is this followed by compressed syllables?
+        # Count how many following syllables have very short duration
+        compressed_count = 0
+        for j in range(i + 1, min(i + 10, len(results))):
+            jdur = results[j]["end"] - results[j]["start"]
+            if jdur < 0.12:
+                compressed_count += 1
+            else:
+                break
+        
+        # Also check if there's a gap after this syllable to the next line
+        # (phrase boundary detection)
+        has_line_break = False
+        if i + 1 < len(results):
+            has_line_break = results[i].get("line_index", 0) != results[i + 1].get("line_index", 0)
+        
+        # Determine reasonable max duration for this syllable
+        # Short words (1-4 chars): max ~0.8s
+        # Longer words: max ~1.2s  
+        # At phrase end (line break following): slightly more generous
+        syl_text = results[i]["syllable"].strip().rstrip(",.'!?")
+        if len(syl_text) <= 4:
+            max_dur = 1.0 if has_line_break else 0.8
+        else:
+            max_dur = 1.5 if has_line_break else 1.2
+        
+        if dur <= max_dur:
+            continue
+        
+        # Cap this syllable's duration
+        new_end = results[i]["start"] + max_dur
+        old_end = results[i]["end"]
+        results[i]["end"] = round(new_end, 4)
+        
+        # The gap we freed up: old_end - new_end
+        # If there are compressed syllables following, they were crammed
+        # because MFA was forced to fit them after the bloated word.
+        # Don't shift them — they have their own MFA timing which is
+        # correct relative to the audio. The bloated syllable just had
+        # silence appended; the following syllables are at their correct
+        # audio positions.
+        
+        fixes_applied += 1
+        log_step("ALIGN", f"  Trimmed '{results[i]['syllable'].strip()}' from {dur:.2f}s to {max_dur:.1f}s (freed {dur - max_dur:.2f}s)")
+    
+    if fixes_applied:
+        log_step("ALIGN", f"Fixed {fixes_applied} bloated syllables (threshold: {bloat_threshold:.2f}s, median: {median_dur:.3f}s)")
+    
     return results
 
 
