@@ -5,12 +5,16 @@
 The core idea: **find each syllable in the audio first, then extract pitch**.
 This replaces the old approach of detecting pitches first and guessing syllable boundaries.
 
+**Two key tools, used in sequence:**
+1. **Whisper (ASR)** — discovers WHAT words are sung (word recognition)
+2. **MFA (Forced Aligner)** — finds exactly WHEN each word/syllable is sung (precise timing)
+
 ```
 OLD (broken):
   Audio → Detect all pitches → Guess which pitch = which syllable → Wrong timing
 
 NEW (correct):
-  Audio + Lyrics → Find each syllable in audio → Extract pitch per syllable → Correct timing
+  Audio → Whisper (what words?) → User corrects → MFA (precise timing) → Extract pitch → Done
 ```
 
 ---
@@ -18,8 +22,8 @@ NEW (correct):
 ## Prerequisites
 
 - **Python 3.12** (upgrade from 3.9)
-- **Montreal Forced Aligner (MFA)** — needs Python 3.10+
-- This unlocks real syllable-level audio alignment
+- **OpenAI Whisper** — speech recognition, discovers what words are sung
+- **Montreal Forced Aligner (MFA)** — precise syllable timing (needs Python 3.10+)
 
 ### Upgrade Steps
 
@@ -38,17 +42,20 @@ python3.12 -m venv .venv
 # 4. Install dependencies
 .venv/bin/pip install -r backend/requirements.txt
 
-# 5. Install MFA
+# 5. Install Whisper (ASR — word discovery)
+.venv/bin/pip install openai-whisper
+
+# 6. Install MFA (forced alignment — precise timing)
 .venv/bin/pip install montreal-forced-aligner
 
-# 6. Download MFA English model
+# 7. Download MFA English model
 .venv/bin/mfa model download acoustic english_mfa
 .venv/bin/mfa model download dictionary english_mfa
 
-# 7. (Optional) Try CREPE again — may work on Python 3.12
+# 8. (Optional) Try CREPE again — may work on Python 3.12
 .venv/bin/pip install crepe
 
-# 8. (Optional) Try Metal GPU support
+# 9. (Optional) Try Metal GPU support
 .venv/bin/pip install tensorflow-metal
 ```
 
@@ -56,44 +63,73 @@ python3.12 -m venv .venv
 
 ## Pipeline Steps
 
-### Step 1: User Provides Cleaned Vocal Audio
+### Step 1: Upload Vocal Audio + Select Language
 
 ```
-Input:  Cleaned vocal audio file (.wav or .mp3)
-        - Either extracted via Demucs + manually cleaned
-        - Or uploaded directly if user already has isolated vocals
-Output: vocal.wav stored in session
+Input:  Cleaned vocal audio file (.wav or .mp3) + language selection
+Output: vocal.wav stored in session, language stored
 ```
 
-- No processing needed — just store the file
+- User uploads isolated vocal audio (extracted via Demucs or provided directly)
+- User selects language (English, German, French, etc.)
 - Frontend plays preview so user can confirm it sounds right
-- If vocals are not clean, user should fix externally before proceeding
+- Language is used by both Whisper (ASR) and MFA (alignment)
 
 ---
 
-### Step 2: User Provides Lyrics
+### Step 2: Whisper Transcription → Lyrics Text Field ⭐ KEY STEP
 
 ```
-Input:  Plain text lyrics (one line per phrase)
-Output: Raw lyrics stored in session
+Input:  vocal.wav + language
+Output: Transcribed lyrics auto-filled in the text area
 
 Example:
-  The heart is a bloom
-  Shoots up through the stony ground
-  There's no room
-  No space to rent in this town
+  Whisper hears:
+    "the heart is a bloom"
+    "shoots up through the stony ground"
+    "there's no room"
+    "no space to rent in this town"
+    ...
 ```
 
-- User types, pastes, or uploads a .txt file
-- No hyphenation yet — just raw text
-- Each line = one phrase (will become break lines in Ultrastar)
+**How it works:**
+1. Run Whisper locally on the vocal audio with `word_timestamps=True`
+2. Whisper discovers what words are being sung
+3. Use Whisper's segment boundaries to insert line breaks after natural phrases
+   (Whisper groups words into segments with start/end times — gaps between
+   segments indicate phrase boundaries)
+4. Auto-fill the lyrics text area with the transcription
+5. User reviews and corrects:
+   - Fix misspelled words (Whisper may mishear lyrics)
+   - Fix line breaks if needed (merge or split phrases)
+   - Add any words Whisper missed
+   - Remove any words Whisper hallucinated
+6. The user is the "reconciliation layer" — they see what Whisper heard
+   and fix it to match reality
+
+**Whisper settings:**
+- Model: `medium` or `large-v3` (balance accuracy vs speed)
+- Language: set explicitly from Step 1 selection
+- `word_timestamps=True` for phrase boundary detection
+- Runs locally via `openai-whisper` pip package
+
+**Why Whisper + User is better than user-only:**
+- Whisper gives you 90%+ correct starting text — much faster than typing
+- Since the text comes FROM the audio, it naturally matches what's sung
+- User only needs to fix the ~10% Whisper gets wrong
+- No more phantom words or missing words causing MFA misalignment
+
+**Why Whisper + User is better than Whisper-only:**
+- Whisper can mishear sung words (singing ≠ speech)
+- Proper spelling matters for Ultrastar display
+- User knows the song and can catch mistakes quickly
 
 ---
 
-### Step 3: Auto-Hyphenate Lyrics into Syllables (Frontend)
+### Step 3: Auto-Hyphenate + Validate
 
 ```
-Input:  Raw lyrics text
+Input:  Corrected lyrics text (from Step 2)
 Output: Hyphenated lyrics with syllable markers
 
 Example:
@@ -122,10 +158,10 @@ Example:
 
 ---
 
-### Step 4: Find Syllables in Audio (MFA Forced Alignment) ⭐ KEY STEP
+### Step 4: MFA Forced Alignment (Precise Timing)
 
 ```
-Input:  vocal.wav + hyphenated lyrics
+Input:  vocal.wav + hyphenated lyrics (verified by user)
 Output: Start time + end time for each syllable
 
 Example:
@@ -140,20 +176,20 @@ Example:
 ```
 
 **How MFA works:**
-1. Takes the vocal audio + text transcript
+1. Takes the vocal audio + user-verified text transcript
 2. Uses an acoustic model trained on speech/singing
 3. Knows what each phoneme sounds like (e.g., "th", "eh", "h", "aa", "r", "t")
 4. Walks through the audio finding where each phoneme occurs
 5. Groups phonemes back into syllables/words
-6. Returns precise timestamps with confidence scores
+6. Returns precise timestamps (~10-20ms accuracy)
 
-**This is the critical step that v1 was missing.**
-Without this, syllable timing was pure guesswork.
+**Because lyrics were transcribed FROM the audio and verified by user,
+MFA gets a perfect word match → accurate timing.**
 
-**Confidence scores:**
-- Each alignment gets a confidence value (0-1)
-- Low confidence = MFA wasn't sure (background noise, unclear pronunciation)
-- These are flagged in the Piano Roll editor for manual review
+**Whisper vs MFA — different jobs:**
+- Whisper: "What words are sung?" (word discovery, ~100-200ms timing)
+- MFA: "When exactly is each phoneme?" (precise timing, ~10-20ms)
+- We need Whisper's word discovery + MFA's timing precision
 
 **Fallback if MFA fails:**
 - If MFA can't align a segment, fall back to energy-based detection
@@ -354,24 +390,29 @@ Output files:
 ## Pipeline Diagram
 
 ```
-┌──────────────┐    ┌──────────────┐
-│ 1. Upload    │    │ 2. Lyrics    │
-│    Vocal     │    │    Text      │
-│    Audio     │    │              │
-└──────┬───────┘    └──────┬───────┘
-       │                   │
-       │            ┌──────▼───────┐
-       │            │ 3. Auto      │
-       │            │    Hyphenate │
-       │            │    Syllables │
-       │            └──────┬───────┘
-       │                   │
-┌──────▼───────────────────▼───────┐
-│ 4. MFA Forced Alignment ⭐       │
-│    Find each syllable in audio   │
-│    → start_time, end_time        │
-│    → confidence score            │
-└──────┬───────────────────────────┘
+┌────────────────────────────────────┐
+│ 1. Upload Vocal Audio              │
+│    + Select Language               │
+└──────┬─────────────────────────────┘
+       │
+┌──────▼─────────────────────────────┐
+│ 2. Whisper ASR Transcription ⭐     │
+│    → Auto-fill lyrics text field   │
+│    → User reviews & corrects       │
+│    (text comes FROM audio =        │
+│     naturally matches what's sung)  │
+└──────┬─────────────────────────────┘
+       │
+┌──────▼─────────────────────────────┐
+│ 3. Auto-Hyphenate + Validate       │
+│    → Syllable markers for Ultrastar│
+└──────┬─────────────────────────────┘
+       │
+┌──────▼─────────────────────────────┐
+│ 4. MFA Forced Alignment            │
+│    Audio + verified lyrics         │
+│    → precise timing per syllable   │
+└──────┬─────────────────────────────┘
        │
 ┌──────▼───────┐    ┌──────────────┐
 │ 5. Detect    │    │ 6. Extract   │
@@ -380,9 +421,9 @@ Output files:
 └──────┬───────┘    └──────┬───────┘
        │                   │
 ┌──────▼───────────────────▼───────┐
-│ 7. Calculate GAP                 │
-│ 8. Convert to Ultrastar Beats    │
-│ 9. Generate Break Lines          │
+│  7. Calculate GAP                │
+│  8. Convert to Ultrastar Beats   │
+│  9. Generate Break Lines         │
 │ 10. Assemble Ultrastar File      │
 └──────┬───────────────────────────┘
        │
@@ -405,16 +446,22 @@ Output files:
 
 ## Upgrade Checklist
 
-- [ ] Install Python 3.12 via Homebrew
-- [ ] Recreate .venv with Python 3.12
-- [ ] Reinstall all pip dependencies
-- [ ] Install MFA + download English acoustic model
-- [ ] Test MFA with test_vocal.wav + lyrics.txt
+- [x] Install Python 3.12 via Homebrew
+- [x] Recreate .venv with Python 3.12
+- [x] Reinstall all pip dependencies
+- [x] Install MFA + download English acoustic model
+- [x] Test MFA with test_vocal.wav + lyrics.txt
+- [ ] Install Whisper (`pip install openai-whisper`)
+- [ ] Implement Whisper transcription backend endpoint
+- [ ] Auto-fill lyrics text field from Whisper output
+- [ ] Add language selector to Step 1 UI
+- [ ] Add phrase-level line breaks from Whisper segments
+- [ ] Remove old band-aids (_remove_phantom_words, _fix_bloated_syllables)
 - [ ] Test CREPE on Python 3.12 (may work now)
 - [ ] Test tensorflow-metal GPU (may work now)
-- [ ] Update alignment.py to use real MFA
+- [x] Update alignment.py to use real MFA
 - [ ] Update pitch_detection.py to extract pitch per syllable window
-- [ ] Update ultrastar.py to use MFA timestamps
+- [x] Update ultrastar.py to use MFA timestamps
 - [ ] Update COMMANDS.md with new Python version
 - [ ] Test full pipeline end-to-end
 - [ ] Compare output with reference U2 Beautiful Day
