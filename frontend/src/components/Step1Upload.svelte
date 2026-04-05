@@ -1,5 +1,5 @@
 <script>
-  import { sessionId, uploadData, referenceData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult } from '../stores/appStore.js';
+  import { sessionId, uploadData, referenceData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
   import { uploadAudio, extractVocals, uploadCorrectedVocals, getAudioUrl, uploadReference, resumeLastSession, getGenerationResult } from '../services/api.js';
 
   let dragOver = false;
@@ -123,6 +123,8 @@
 
     try {
       const result = await resumeLastSession();
+      console.log('[Resume] API response:', JSON.stringify(result, null, 2));
+      console.log('[Resume] session_id:', result.session_id, 'has_lyrics:', result.has_lyrics, 'has_result:', result.has_result);
       sessionId.set(result.session_id);
       uploadData.set({
         filename: result.filename,
@@ -131,6 +133,7 @@
       });
       // Restore reference data if carried over
       if (result.reference) {
+        console.log('[Resume] Restoring reference:', result.reference);
         referenceData.set({
           uploaded: true,
           filename: result.reference.filename,
@@ -140,8 +143,11 @@
           comparison: null,
           lyricsComparison: null,
         });
+      } else {
+        console.log('[Resume] No reference data');
       }
       if (result.has_lyrics) {
+        console.log('[Resume] Has lyrics, syllables:', result.syllable_count, 'lines:', result.line_count);
         lyricsData.set({
           text: result.lyrics,
           artist: result.artist,
@@ -153,31 +159,42 @@
         });
         // If previous session had a generation result, load it and jump to step 3
         if (result.has_result) {
+          console.log('[Resume] has_result=true, fetching generation result for session:', result.session_id);
           try {
             const genResult = await getGenerationResult(result.session_id);
-            console.log('[Step1] getGenerationResult response:', genResult);
+            console.log('[Resume] getGenerationResult response:', genResult);
+            console.log('[Resume] genResult.status:', genResult?.status, 'bpm:', genResult?.bpm, 'gap_ms:', genResult?.gap_ms);
             if (genResult && genResult.status === 'ok') {
               generationResult.set(genResult);
-              console.log('[Step1] Restored generation result, jumping to step 3');
+              generationShowPreview.set(true);
+              generationLog.set([{
+                time: new Date().toLocaleTimeString(),
+                text: `📂 Restored previous generation (BPM: ${genResult.bpm}, GAP: ${genResult.gap_ms}ms, ${genResult.syllable_count} syllables)`
+              }]);
+              console.log('[Resume] ✅ generationResult SET, generationShowPreview SET to true');
             } else {
-              console.warn('[Step1] Generation result not ready:', genResult?.status);
+              console.warn('[Resume] ❌ Generation result not ready, status:', genResult?.status);
             }
           } catch (e) {
-            console.warn('[Step1] Could not restore generation result:', e);
+            console.warn('[Resume] ❌ Could not restore generation result:', e.message, e);
           }
         } else {
-          console.log('[Step1] No previous generation result (has_result=false). Server may have restarted.');
+          console.log('[Resume] has_result=false — no previous generation');
         }
         // Jump to step 3 (generate) since lyrics are already submitted
+        console.log('[Resume] Jumping to step 3');
         currentStep.set(3);
       } else {
+        console.log('[Resume] No lyrics, jumping to step 2');
         currentStep.set(2);
       }
       processingStatus.set('');
     } catch (err) {
+      console.error('[Resume] ❌ Error:', err.message, err);
       errorMessage.set(err.message);
     } finally {
       isProcessing.set(false);
+      console.log('[Resume] Done, isProcessing=false');
     }
   }
 

@@ -834,12 +834,14 @@ async def get_generation_result(session_id: str):
         return {"status": "pending", "current_status": session["status"]}
     
     result = session.get("result", {})
-    return {
-        "status": "ok",
-        "session_id": session_id,
-        **{k: v for k, v in result.items() if k not in ("syllable_timings", "ultrastar_content")},
-        "ultrastar_preview": result.get("ultrastar_content", "")[:2000],
-    }
+    # Build response safely — exclude large fields
+    exclude_keys = {"syllable_timings", "ultrastar_content"}
+    response = {"status": "ok", "session_id": session_id}
+    for k, v in result.items():
+        if k not in exclude_keys:
+            response[k] = v
+    response["ultrastar_preview"] = result.get("ultrastar_content", "")[:2000]
+    return response
 
 
 # ────────────────────────────────────────────────────────────
