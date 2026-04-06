@@ -5,19 +5,8 @@ python-multipart==0.0.9
 
 # Audio processing
 librosa==0.10.2
-soundfile==0.12.1
 numpy>=1.24.0
 essentia>=2.1b6
-
-# Pitch detection
-# crepe==0.0.16  # Broken on Python 3.12, using PYIN instead
-# tensorflow>=2.0.0  # Not needed without CREPE
-
-# Forced alignment
-# MFA is installed via conda, not pip:
-#   conda create -n mfa -c conda-forge montreal-forced-aligner
-#   conda run -n mfa mfa model download acoustic english_mfa
-#   conda run -n mfa mfa model download dictionary english_mfa
 
 # Vocal separation
 demucs==4.0.1
@@ -31,9 +20,8 @@ openai-whisper  # fallback
 # MIDI
 mido==1.3.2
 
-# Syllable splitting fallback
+# Syllable splitting
 pyphen==0.16.0
 
-# Utilities
-aiofiles==24.1.0
+# Data validation (FastAPI dependency)
 pydantic>=2.0.0

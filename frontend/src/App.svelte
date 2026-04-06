@@ -29,8 +29,7 @@
     <div class="backend-status" class:online={backendStatus === 'ok'} class:offline={backendStatus === 'offline'}>
       {#if backendStatus === 'ok'}
         ● Backend online
-        {#if backendModels.crepe}| CREPE ✓{/if}
-        {#if backendModels.mfa}| MFA ✓{/if}
+
       {:else if backendStatus === 'offline'}
         ● Backend offline — start the backend server
       {:else}

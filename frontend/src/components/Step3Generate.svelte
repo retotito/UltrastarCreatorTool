@@ -118,8 +118,8 @@
     <p>This will run the full processing pipeline:</p>
     <ol>
       <li>Detect BPM from audio</li>
-      <li>Detect pitches with CREPE (deep learning)</li>
-      <li>Align syllables to audio with MFA</li>
+      <li>Detect pitches with PYIN</li>
+      <li>Align syllables to audio with WhisperX</li>
       <li>Generate Ultrastar .txt + MIDI files</li>
     </ol>
   </div>

@@ -102,16 +102,14 @@ load_sessions()
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
-    from services.pitch_detection import CREPE_AVAILABLE
-    from services.alignment import _check_mfa
     from services.vocal_separation import DEMUCS_AVAILABLE
     
     return {
         "status": "ok",
         "version": "2.0.0",
         "models": {
-            "crepe": CREPE_AVAILABLE,
-            "mfa": _check_mfa(),
+            "pitch": "PYIN",
+            "alignment": "WhisperX",
             "demucs": DEMUCS_AVAILABLE,
         }
     }
@@ -779,9 +777,9 @@ async def generate_ultrastar_files(session_id: str):
         
         # Step 3b: Pitch Detection
         log_step("GENERATE", "Step 2/4: Pitch detection")
-        from services.pitch_detection import detect_pitches_crepe
+        from services.pitch_detection import detect_pitches
         
-        pitch_data = detect_pitches_crepe(vocal_path)
+        pitch_data = detect_pitches(vocal_path)
         
         # Step 3c: Alignment
         log_step("GENERATE", "Step 3/4: Syllable alignment")
@@ -819,9 +817,9 @@ async def generate_ultrastar_files(session_id: str):
                 log_step("GENERATE", f"Onset snapping skipped: {e}")
         
         if not syllable_timings:
-            log_step("GENERATE", "Using MFA alignment (fallback)")
+            log_step("GENERATE", "Using energy-based alignment (fallback)")
             from services.alignment import align_lyrics_to_audio
-            syllable_timings = align_lyrics_to_audio(vocal_path, lyrics, language, whisper_words=whisper_words)
+            syllable_timings = align_lyrics_to_audio(vocal_path, lyrics, language)
         
         # Calculate GAP from first syllable
         gap_ms = 0
@@ -858,10 +856,8 @@ async def generate_ultrastar_files(session_id: str):
             language=language,
         )
         
-        # Determine pitch/alignment methods (from actual results, not just availability)
-        from services.pitch_detection import CREPE_AVAILABLE
-        from services.alignment import _check_mfa as check_mfa_avail
-        pitch_method = "CREPE" if CREPE_AVAILABLE else "PYIN (fallback)"
+        # Determine pitch/alignment methods (from actual results)
+        pitch_method = "PYIN"
         
         # Check what method was actually used by looking at syllable_timings
         if syllable_timings:
@@ -873,17 +869,14 @@ async def generate_ultrastar_files(session_id: str):
             elif "whisper" in methods_used:
                 whisper_count = sum(1 for t in syllable_timings if t.get("method") == "whisper")
                 align_method = f"Whisper ({whisper_count}/{len(syllable_timings)} syllables)"
-            elif "mfa" in methods_used:
-                mfa_count = sum(1 for t in syllable_timings if t.get("method") == "mfa")
-                align_method = f"MFA (chunked, {mfa_count}/{len(syllable_timings)} syllables)"
             elif "fallback_energy" in methods_used:
-                align_method = "Energy-based fallback (MFA failed)"
+                align_method = "Energy-based fallback"
             elif "fallback_even" in methods_used:
                 align_method = "Even distribution fallback"
             else:
                 align_method = f"Mixed ({', '.join(methods_used)})"
         else:
-            align_method = "MFA" if check_mfa_avail() else "Even distribution (fallback)"
+            align_method = "Energy-based fallback"
         
         # Generate summary
         summary_content = generate_processing_summary(

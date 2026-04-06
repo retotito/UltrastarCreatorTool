@@ -114,8 +114,8 @@ def generate_processing_summary(
     bpm: float,
     gap_ms: int,
     audio_duration: float,
-    pitch_method: str = "CREPE",
-    alignment_method: str = "MFA"
+    pitch_method: str = "PYIN",
+    alignment_method: str = "WhisperX"
 ) -> str:
     """Generate a human-readable processing summary.
     

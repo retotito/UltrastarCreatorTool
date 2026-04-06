@@ -8,8 +8,8 @@ AI-powered tool that generates **Ultrastar karaoke files** from any song. Upload
 
 ### AI Pipeline
 - **Vocal separation** (Demucs v4) — isolates vocals from full mix
-- **Pitch detection** (CREPE) — deep learning pitch tracking
-- **Forced alignment** (MFA/WhisperX) — syllable-level timing with ~42ms median accuracy
+- **Pitch detection** (PYIN) — robust pitch tracking via librosa
+- **Forced alignment** (WhisperX) — syllable-level timing with ~50ms median accuracy
 - **BPM detection** — automatic tempo analysis
 - **One-click generation** — audio → Ultrastar format in minutes
 
@@ -46,9 +46,9 @@ AI-powered tool that generates **Ultrastar karaoke files** from any song. Upload
 
 | Model | Purpose | Status |
 |-------|---------|--------|
-| CREPE | Pitch detection (deep learning) | Required |
+| PYIN (librosa) | Pitch detection | Built-in |
+| WhisperX | Forced alignment (syllable timing) | Required |
 | Demucs v4 | Vocal separation | Optional (can upload vocals directly) |
-| MFA | Forced alignment (syllable timing) | Optional (fallback: even distribution) |
 
 ## Quick Start
 
@@ -60,13 +60,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install core dependencies
-pip install fastapi uvicorn python-multipart librosa soundfile numpy mido pyphen aiofiles pydantic crepe
+pip install fastapi uvicorn python-multipart librosa numpy mido pyphen pydantic
+
+# Install WhisperX for alignment
+pip install whisperx openai-whisper
 
 # Optional: Install Demucs for vocal separation
 pip install demucs
-
-# Optional: Install MFA for forced alignment
-pip install montreal-forced-aligner
 
 # Start backend
 cd backend && python main.py
