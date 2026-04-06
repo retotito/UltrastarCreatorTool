@@ -125,10 +125,16 @@ def align_whisper(
     matched_count = sum(1 for m in matches if m is not None)
     log_step("ALIGN", f"Matched {matched_count}/{len(word_groups)} words to timestamps")
     
+    # ── Debug: dump match state before gap filling ──
+    _dump_alignment_debug(word_groups, matches, whisper_words, "pre_gap_fill")
+    
     # ── Step 3: Hybrid gap alignment ──
     # For large gaps of unmatched words, use energy-based sub-alignment
     # on the audio segment instead of blind interpolation.
     _fill_gaps_hybrid(word_groups, matches, whisper_words, audio_path)
+    
+    # ── Debug: dump match state after gap filling ──
+    _dump_alignment_debug(word_groups, matches, whisper_words, "post_gap_fill")
     
     # ── Step 4: Distribute syllables within each word's time span ──
     results = _distribute_syllables(word_groups, matches, char_lookup, method_name)
@@ -384,14 +390,41 @@ def _interpolate_unmatched(word_groups: list, matches: list, whisper_words: list
         }
 
 
+def _find_whisper_silent_regions(whisper_words: list, min_gap: float = 2.0) -> list:
+    """Find regions in the audio where WhisperX detected nothing.
+    
+    These are gaps between consecutive WhisperX words exceeding min_gap seconds.
+    These regions typically contain vocals that WhisperX failed to transcribe
+    (e.g., repetitive "La-da-dee" or "Ah!" sections).
+    
+    Returns: list of (start_time, end_time) tuples, sorted chronologically.
+    """
+    if not whisper_words or len(whisper_words) < 2:
+        return []
+    
+    regions = []
+    for i in range(len(whisper_words) - 1):
+        gap_start = whisper_words[i]["end"]
+        gap_end = whisper_words[i + 1]["start"]
+        if gap_end - gap_start >= min_gap:
+            regions.append((gap_start, gap_end))
+    
+    return regions
+
+
 def _fill_gaps_hybrid(word_groups: list, matches: list, whisper_words: list,
                       audio_path: Optional[str] = None):
     """Fill unmatched word gaps using energy-based sub-alignment when possible.
     
+    Key improvement: when anchor-bounded time for a gap is too small (e.g.,
+    WhisperX detected words on both sides of the lyrics gap but they're
+    chronologically adjacent), we look for WhisperX-silent regions in the
+    audio timeline and remap the gap there. This handles repetitive choruses
+    that WhisperX can't transcribe.
+    
     For large gaps (3+ consecutive unmatched words), loads the audio segment
     and uses vocal energy detection to distribute syllables where there's
-    actually sound — much better than blind interpolation for repetitive
-    lyrics like "La-da-dee" x10 or "Ah!" x16.
+    actually sound.
     
     For small gaps (1-2 words), falls back to simple interpolation.
     
@@ -414,7 +447,6 @@ def _fill_gaps_hybrid(word_groups: list, matches: list, whisper_words: list,
         if audio_path:
             _energy_align_range(word_groups, matches, 0, n - 1, audio_start, audio_end, audio_path)
         else:
-            # No audio path — even distribution fallback
             dur_per_word = (audio_end - audio_start) / max(1, n)
             for i in range(n):
                 matches[i] = {
@@ -424,6 +456,15 @@ def _fill_gaps_hybrid(word_groups: list, matches: list, whisper_words: list,
                     "confidence": 0.3,
                 }
         return
+    
+    # Find WhisperX-silent regions (gaps > 2s in whisper timeline)
+    # These are where WhisperX failed to transcribe — likely repetitive vocals
+    silent_regions = _find_whisper_silent_regions(whisper_words, min_gap=2.0)
+    silent_region_idx = 0  # Track consumed regions (process in order)
+    
+    if silent_regions:
+        log_step("ALIGN", f"Found {len(silent_regions)} WhisperX-silent regions: "
+                 + ", ".join(f"{s:.1f}-{e:.1f}s" for s, e in silent_regions))
     
     # Find contiguous runs of unmatched words (gaps)
     gaps = []  # list of (gap_start_idx, gap_end_idx) inclusive
@@ -450,17 +491,21 @@ def _fill_gaps_hybrid(word_groups: list, matches: list, whisper_words: list,
                 next_anchor = (idx, start, end)
                 break
         
-        # Determine the audio time range for this gap
+        # Determine the audio time range for this gap from anchors
         if prev_anchor and next_anchor:
             time_start = prev_anchor[2]  # end of previous matched word
             time_end = next_anchor[1]    # start of next matched word
         elif prev_anchor:
             time_start = prev_anchor[2]
-            # Extrapolate forward: estimate based on gap size and avg word duration
             avg_dur = _avg_matched_word_duration(matches)
             time_end = time_start + gap_size * avg_dur
             if whisper_words:
-                time_end = min(time_end, whisper_words[-1]["end"])
+                # Cap at end of audio, but never less than time_start + some minimum
+                audio_end = whisper_words[-1]["end"]
+                # Allow extending beyond last whisper word up to audio duration
+                time_end = min(time_end, audio_end + 15.0)
+                # Ensure minimum duration for the gap
+                time_end = max(time_end, time_start + gap_size * 0.15)
         elif next_anchor:
             time_end = next_anchor[1]
             avg_dur = _avg_matched_word_duration(matches)
@@ -470,6 +515,49 @@ def _fill_gaps_hybrid(word_groups: list, matches: list, whisper_words: list,
         
         if time_end <= time_start:
             time_end = time_start + 0.1 * gap_size
+        
+        gap_duration = time_end - time_start
+        min_needed = gap_size * 0.12  # ~120ms per word minimum for singing
+        
+        # ── Check if gap has sufficient time ──
+        # When bounding anchors are too close (e.g., WhisperX transcribed words
+        # on both sides but missed the chorus in between), remap to a
+        # WhisperX-silent region where the actual vocals likely are.
+        if gap_size >= 3 and gap_duration < min_needed and silent_regions:
+            # Find the nearest WhisperX-silent region at or after the gap's time
+            best_region = None
+            for sr_idx in range(silent_region_idx, len(silent_regions)):
+                sr_start, sr_end = silent_regions[sr_idx]
+                # Region should be near the gap's anchors (within 30s forward)
+                if sr_start >= time_start - 2.0 and sr_start <= time_start + 30.0:
+                    best_region = (sr_idx, sr_start, sr_end)
+                    break
+                # Also accept regions that overlap with the gap time
+                if sr_end >= time_start and sr_start <= time_end + 30.0:
+                    best_region = (sr_idx, sr_start, sr_end)
+                    break
+            
+            if best_region:
+                sr_idx, new_start, new_end = best_region
+                
+                # If the selected region is still too small for this gap,
+                # combine with subsequent silent regions to get enough time.
+                combined_end = new_end
+                combined_idx = sr_idx
+                combined_duration = combined_end - new_start
+                while combined_duration < min_needed and combined_idx + 1 < len(silent_regions):
+                    combined_idx += 1
+                    _, next_end = silent_regions[combined_idx]
+                    combined_end = next_end
+                    combined_duration = combined_end - new_start
+                
+                silent_region_idx = combined_idx + 1  # consume all used regions
+                log_step("ALIGN", f"Gap [{gap_start}..{gap_end}] ({gap_size} words): "
+                         f"anchor time too small ({gap_duration:.2f}s < {min_needed:.2f}s needed), "
+                         f"remapped to WhisperX-silent region {new_start:.2f}s - {combined_end:.2f}s")
+                time_start = new_start
+                time_end = combined_end
+                gap_duration = time_end - time_start
         
         # For large gaps with audio available: use energy-based sub-alignment
         if gap_size >= 3 and audio_path:
@@ -500,6 +588,58 @@ def _avg_matched_word_duration(matches: list) -> float:
     if durations:
         return sum(durations) / len(durations)
     return 0.3  # default 300ms
+
+
+def _dump_alignment_debug(word_groups: list, matches: list, whisper_words: list, phase: str):
+    """Write a debug dump file showing the match state for each word group."""
+    import os
+    debug_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads")
+    os.makedirs(debug_dir, exist_ok=True)
+    debug_path = os.path.join(debug_dir, f"alignment_whisper_debug_{phase}.txt")
+    
+    try:
+        with open(debug_path, "w") as f:
+            f.write(f"ALIGNMENT WHISPER DEBUG — {phase}\n")
+            f.write(f"{'='*70}\n")
+            f.write(f"Word groups: {len(word_groups)}, WhisperX words: {len(whisper_words)}\n")
+            matched = sum(1 for m in matches if m is not None)
+            f.write(f"Matched: {matched}/{len(word_groups)}\n\n")
+            
+            # List all word groups with their match status
+            f.write(f"{'#':>4} {'Word':<20} {'Matched?':>8} {'Start':>8} {'End':>8} {'Conf':>5} {'Line':>4}\n")
+            f.write(f"{'-'*70}\n")
+            
+            gap_count = 0
+            in_gap = False
+            for i, (wg, m) in enumerate(zip(word_groups, matches)):
+                word = wg['word'][:20]
+                line_idx = wg.get('line_index', '?')
+                if m is not None:
+                    if in_gap:
+                        f.write(f"  --- end gap ({gap_count} words) ---\n")
+                        in_gap = False
+                        gap_count = 0
+                    f.write(f"{i:4d} {word:<20} {'YES':>8} {m['start']:8.3f} {m['end']:8.3f} {m.get('confidence', 0):5.2f} {line_idx:>4}\n")
+                else:
+                    if not in_gap:
+                        f.write(f"  --- gap start ---\n")
+                        in_gap = True
+                    gap_count += 1
+                    f.write(f"{i:4d} {word:<20} {'---':>8} {'':>8} {'':>8} {'':>5} {line_idx:>4}\n")
+            
+            if in_gap:
+                f.write(f"  --- end gap ({gap_count} words) ---\n")
+            
+            # List WhisperX-silent regions
+            f.write(f"\n{'='*70}\n")
+            f.write(f"WHISPERX-SILENT REGIONS (gaps > 2s in whisper timeline):\n")
+            regions = _find_whisper_silent_regions(whisper_words, min_gap=2.0)
+            for i, (s, e) in enumerate(regions):
+                f.write(f"  Region {i+1}: {s:.2f}s - {e:.2f}s ({e-s:.1f}s)\n")
+            if not regions:
+                f.write(f"  (none)\n")
+    except Exception as e:
+        log_step("ALIGN", f"Debug dump failed: {e}")
 
 
 def _energy_align_range(word_groups: list, matches: list,
