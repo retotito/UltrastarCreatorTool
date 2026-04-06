@@ -1051,6 +1051,7 @@ async def generate_ultrastar_files(session_id: str):
                 syllable_timings = align_whisper(
                     lyrics, whisper_words, language,
                     char_timestamps=whisper_chars,
+                    audio_path=vocal_path,
                 )
                 if syllable_timings:
                     log_step("GENERATE", f"Alignment: {len(syllable_timings)} syllables")

@@ -15,7 +15,8 @@ Algorithm:
 3. Match lyrics words to Whisper/X word timestamps (fuzzy sequential matching)
 4. For matched words with char timestamps: use char boundaries for syllable splits
 5. For matched words without char timestamps: proportional splitting by char count
-6. Interpolate any unmatched words from neighbors
+6. For unmatched gap sections: energy-based sub-alignment on the audio segment
+7. Interpolate any remaining small gaps from neighbors
 """
 
 import re
@@ -77,6 +78,7 @@ def align_whisper(
     whisper_words: List[dict],
     language: str = "english",
     char_timestamps: Optional[List[dict]] = None,
+    audio_path: Optional[str] = None,
 ) -> List[dict]:
     """Align lyrics to audio using Whisper/WhisperX word timestamps.
     
@@ -87,6 +89,9 @@ def align_whisper(
         char_timestamps: Optional list of {char, start, end} from WhisperX
                         forced alignment. When present, enables precise
                         character-level syllable splitting.
+        audio_path: Optional path to vocal audio file. When provided, enables
+                   energy-based sub-alignment for unmatched gap sections
+                   (much better than blind interpolation for repetitive lyrics).
         
     Returns:
         List of dicts matching alignment.py format:
@@ -120,8 +125,10 @@ def align_whisper(
     matched_count = sum(1 for m in matches if m is not None)
     log_step("ALIGN", f"Matched {matched_count}/{len(word_groups)} words to timestamps")
     
-    # ── Step 3: Interpolate unmatched words ──
-    _interpolate_unmatched(word_groups, matches, whisper_words)
+    # ── Step 3: Hybrid gap alignment ──
+    # For large gaps of unmatched words, use energy-based sub-alignment
+    # on the audio segment instead of blind interpolation.
+    _fill_gaps_hybrid(word_groups, matches, whisper_words, audio_path)
     
     # ── Step 4: Distribute syllables within each word's time span ──
     results = _distribute_syllables(word_groups, matches, char_lookup, method_name)
@@ -262,7 +269,7 @@ def _match_words(word_groups: list, whisper_words: list) -> list:
         
         # Lookahead in Whisper words (skip Whisper words not in lyrics)
         found = False
-        for look_w in range(1, 8):
+        for look_w in range(1, 20):
             if w_idx + look_w >= len(whisper_words):
                 break
             if _clean_word(whisper_words[w_idx + look_w].get("word", "")) == g_clean:
@@ -281,7 +288,7 @@ def _match_words(word_groups: list, whisper_words: list) -> list:
             continue
         
         # Lookahead in lyrics words (skip lyrics words not in Whisper)
-        for look_g in range(1, 8):
+        for look_g in range(1, 20):
             if g_idx + look_g >= len(word_groups):
                 break
             if word_groups[g_idx + look_g]["clean"] == ww_clean:
@@ -374,6 +381,303 @@ def _interpolate_unmatched(word_groups: list, matches: list, whisper_words: list
             "end": t_end,
             "whisper_idx": -1,
             "confidence": 0.4,  # lower confidence for interpolated
+        }
+
+
+def _fill_gaps_hybrid(word_groups: list, matches: list, whisper_words: list,
+                      audio_path: Optional[str] = None):
+    """Fill unmatched word gaps using energy-based sub-alignment when possible.
+    
+    For large gaps (3+ consecutive unmatched words), loads the audio segment
+    and uses vocal energy detection to distribute syllables where there's
+    actually sound — much better than blind interpolation for repetitive
+    lyrics like "La-da-dee" x10 or "Ah!" x16.
+    
+    For small gaps (1-2 words), falls back to simple interpolation.
+    
+    Modifies matches in-place.
+    """
+    n = len(matches)
+    
+    # Build anchors (matched words with known timestamps)
+    anchors = [(i, m["start"], m["end"]) for i, m in enumerate(matches) if m is not None]
+    
+    if not anchors:
+        # No matches at all — use full audio range with energy alignment
+        if whisper_words:
+            audio_start = whisper_words[0]["start"]
+            audio_end = whisper_words[-1]["end"]
+        else:
+            audio_start = 0.0
+            audio_end = 60.0
+        
+        if audio_path:
+            _energy_align_range(word_groups, matches, 0, n - 1, audio_start, audio_end, audio_path)
+        else:
+            # No audio path — even distribution fallback
+            dur_per_word = (audio_end - audio_start) / max(1, n)
+            for i in range(n):
+                matches[i] = {
+                    "start": audio_start + i * dur_per_word,
+                    "end": audio_start + (i + 1) * dur_per_word,
+                    "whisper_idx": -1,
+                    "confidence": 0.3,
+                }
+        return
+    
+    # Find contiguous runs of unmatched words (gaps)
+    gaps = []  # list of (gap_start_idx, gap_end_idx) inclusive
+    i = 0
+    while i < n:
+        if matches[i] is None:
+            gap_start = i
+            while i < n and matches[i] is None:
+                i += 1
+            gaps.append((gap_start, i - 1))
+        else:
+            i += 1
+    
+    for gap_start, gap_end in gaps:
+        gap_size = gap_end - gap_start + 1
+        
+        # Find the bounding anchors for this gap
+        prev_anchor = None
+        next_anchor = None
+        for idx, start, end in anchors:
+            if idx < gap_start:
+                prev_anchor = (idx, start, end)
+            elif idx > gap_end and next_anchor is None:
+                next_anchor = (idx, start, end)
+                break
+        
+        # Determine the audio time range for this gap
+        if prev_anchor and next_anchor:
+            time_start = prev_anchor[2]  # end of previous matched word
+            time_end = next_anchor[1]    # start of next matched word
+        elif prev_anchor:
+            time_start = prev_anchor[2]
+            # Extrapolate forward: estimate based on gap size and avg word duration
+            avg_dur = _avg_matched_word_duration(matches)
+            time_end = time_start + gap_size * avg_dur
+            if whisper_words:
+                time_end = min(time_end, whisper_words[-1]["end"])
+        elif next_anchor:
+            time_end = next_anchor[1]
+            avg_dur = _avg_matched_word_duration(matches)
+            time_start = max(0.0, time_end - gap_size * avg_dur)
+        else:
+            continue
+        
+        if time_end <= time_start:
+            time_end = time_start + 0.1 * gap_size
+        
+        # For large gaps with audio available: use energy-based sub-alignment
+        if gap_size >= 3 and audio_path:
+            log_step("ALIGN", f"Gap of {gap_size} unmatched words [{gap_start}..{gap_end}] "
+                     f"→ energy sub-alignment ({time_start:.2f}s - {time_end:.2f}s)")
+            _energy_align_range(word_groups, matches, gap_start, gap_end,
+                               time_start, time_end, audio_path)
+        else:
+            # Small gaps: simple interpolation
+            for idx in range(gap_start, gap_end + 1):
+                frac = (idx - gap_start) / max(1, gap_size)
+                t_start = time_start + frac * (time_end - time_start)
+                t_end = time_start + (frac + 1.0 / gap_size) * (time_end - time_start)
+                t_end = min(t_end, time_end)
+                if t_end <= t_start:
+                    t_end = t_start + 0.05
+                matches[idx] = {
+                    "start": t_start,
+                    "end": t_end,
+                    "whisper_idx": -1,
+                    "confidence": 0.4,
+                }
+
+
+def _avg_matched_word_duration(matches: list) -> float:
+    """Calculate average duration of matched words."""
+    durations = [m["end"] - m["start"] for m in matches if m is not None]
+    if durations:
+        return sum(durations) / len(durations)
+    return 0.3  # default 300ms
+
+
+def _energy_align_range(word_groups: list, matches: list,
+                        gap_start: int, gap_end: int,
+                        time_start: float, time_end: float,
+                        audio_path: str):
+    """Use energy-based alignment to place unmatched words in an audio segment.
+    
+    Loads the audio segment, detects vocal energy, finds micro-sections
+    where there's sound, and distributes the gap words across those sections.
+    This handles repetitive lyrics (La-da-dee x10, Ah! x16) much better
+    than linear interpolation.
+    """
+    import librosa
+    import numpy as np
+    
+    gap_size = gap_end - gap_start + 1
+    segment_duration = time_end - time_start
+    
+    if segment_duration < 0.1:
+        # Segment too short — just distribute evenly
+        _even_distribute(matches, gap_start, gap_end, time_start, time_end)
+        return
+    
+    try:
+        # Load only the relevant audio segment
+        y, sr = librosa.load(audio_path, sr=16000, mono=True,
+                             offset=time_start, duration=segment_duration)
+        
+        if len(y) == 0:
+            _even_distribute(matches, gap_start, gap_end, time_start, time_end)
+            return
+        
+        # Detect energy using RMS
+        hop_length = 256
+        frame_length = 1024
+        rms = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
+        times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
+        
+        if len(rms) == 0:
+            _even_distribute(matches, gap_start, gap_end, time_start, time_end)
+            return
+        
+        # Adaptive threshold: 10% of max RMS
+        threshold = np.max(rms) * 0.10
+        is_voiced = rms > threshold
+        
+        # Find voiced micro-segments with small gap merging
+        raw_segments = []
+        in_seg = False
+        seg_start_t = 0.0
+        
+        for i in range(len(is_voiced)):
+            if is_voiced[i] and not in_seg:
+                seg_start_t = times[i]
+                in_seg = True
+            elif not is_voiced[i] and in_seg:
+                raw_segments.append((seg_start_t, times[i]))
+                in_seg = False
+        if in_seg:
+            raw_segments.append((seg_start_t, times[-1] if len(times) > 0 else segment_duration))
+        
+        # Merge segments with short gaps (< 0.3s) — breathing gaps within phrases
+        merged = []
+        for seg in raw_segments:
+            if merged and seg[0] - merged[-1][1] < 0.3:
+                merged[-1] = (merged[-1][0], seg[1])
+            else:
+                merged.append(seg)
+        
+        # Filter tiny segments (< 0.08s)
+        segments = [(s, e) for s, e in merged if e - s >= 0.08]
+        
+        if not segments:
+            _even_distribute(matches, gap_start, gap_end, time_start, time_end)
+            return
+        
+        # Convert relative times to absolute times
+        segments = [(s + time_start, e + time_start) for s, e in segments]
+        
+        total_voiced_time = sum(e - s for s, e in segments)
+        log_step("ALIGN", f"  Energy sub-alignment: {len(segments)} voiced sections, "
+                 f"{total_voiced_time:.2f}s voiced / {segment_duration:.2f}s total")
+        
+        # Build line groups for the gap words to detect phrase breaks
+        # Words on the same lyrics line should be in the same segment
+        line_groups = []  # list of (line_idx, word_indices)
+        current_line = None
+        current_indices = []
+        for idx in range(gap_start, gap_end + 1):
+            line_idx = word_groups[idx]["line_index"]
+            if current_line is not None and line_idx != current_line:
+                line_groups.append((current_line, current_indices))
+                current_indices = []
+            current_line = line_idx
+            current_indices.append(idx)
+        if current_indices:
+            line_groups.append((current_line, current_indices))
+        
+        # Distribute line groups across voiced segments proportionally
+        # (by syllable count per group vs segment duration)
+        total_syllables = sum(len(word_groups[idx]["syllables"]) for idx in range(gap_start, gap_end + 1))
+        
+        # Assign line groups to segments proportionally by voiced duration
+        seg_durations = [e - s for s, e in segments]
+        total_seg_dur = sum(seg_durations)
+        
+        # Calculate how many syllables each segment "should" hold
+        seg_capacities = [(dur / total_seg_dur) * total_syllables for dur in seg_durations]
+        
+        # Greedily assign line groups to segments
+        assignments = []  # (word_idx, seg_start, seg_end) for each gap word
+        seg_idx = 0
+        seg_used = 0.0  # syllables assigned to current segment
+        
+        for line_idx, word_indices in line_groups:
+            group_syllables = sum(len(word_groups[idx]["syllables"]) for idx in word_indices)
+            
+            # Move to next segment if current is full (allow 50% overflow to keep lines together)
+            while (seg_idx < len(segments) - 1 and
+                   seg_used > 0 and
+                   seg_used + group_syllables > seg_capacities[seg_idx] * 1.5):
+                seg_idx += 1
+                seg_used = 0.0
+            
+            seg_s, seg_e = segments[min(seg_idx, len(segments) - 1)]
+            for word_idx in word_indices:
+                assignments.append((word_idx, seg_s, seg_e))
+            seg_used += group_syllables
+        
+        # Now distribute words within their assigned segments
+        # Group by segment to calculate timing
+        from collections import defaultdict
+        seg_words = defaultdict(list)
+        for word_idx, seg_s, seg_e in assignments:
+            seg_words[(seg_s, seg_e)].append(word_idx)
+        
+        for (seg_s, seg_e), word_indices in seg_words.items():
+            seg_dur = seg_e - seg_s
+            total_syls = sum(len(word_groups[idx]["syllables"]) for idx in word_indices)
+            if total_syls == 0:
+                continue
+            
+            # Distribute time across words proportional to their syllable count
+            current_t = seg_s
+            for word_idx in word_indices:
+                n_syls = len(word_groups[word_idx]["syllables"])
+                word_dur = seg_dur * (n_syls / total_syls)
+                matches[word_idx] = {
+                    "start": current_t,
+                    "end": current_t + word_dur,
+                    "whisper_idx": -1,
+                    "confidence": 0.55,  # better than blind interpolation (0.4) but worse than WhisperX match (0.9)
+                }
+                current_t += word_dur
+        
+        # Fill any remaining unmatched (shouldn't happen but safety)
+        for idx in range(gap_start, gap_end + 1):
+            if matches[idx] is None:
+                _even_distribute(matches, idx, idx, time_start, time_end)
+        
+    except Exception as e:
+        log_step("ALIGN", f"  Energy sub-alignment failed: {e}, falling back to interpolation")
+        _even_distribute(matches, gap_start, gap_end, time_start, time_end)
+
+
+def _even_distribute(matches: list, gap_start: int, gap_end: int,
+                     time_start: float, time_end: float):
+    """Evenly distribute unmatched words across a time range (last resort)."""
+    gap_size = gap_end - gap_start + 1
+    dur_per_word = (time_end - time_start) / max(1, gap_size)
+    for i in range(gap_start, gap_end + 1):
+        offset = i - gap_start
+        matches[i] = {
+            "start": time_start + offset * dur_per_word,
+            "end": time_start + (offset + 1) * dur_per_word,
+            "whisper_idx": -1,
+            "confidence": 0.3,
         }
 
 
