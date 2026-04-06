@@ -14,6 +14,7 @@
   let importTxtFile = null;
   let importMixFile = null;
   let importVocalFile = null;
+  let txtError = '';
 
   onMount(async () => {
     try {
@@ -95,6 +96,7 @@
       importMixFile = null;
       importVocalFile = null;
       importError = '';
+      txtError = '';
     }
   }
 
@@ -105,7 +107,7 @@
     input.onchange = (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      if (slot === 'txt') importTxtFile = file;
+      if (slot === 'txt') { importTxtFile = file; txtError = ''; }
       else if (slot === 'mix') importMixFile = file;
       else if (slot === 'vocal') importVocalFile = file;
     };
@@ -113,7 +115,7 @@
   }
 
   function clearSlot(slot) {
-    if (slot === 'txt') importTxtFile = null;
+    if (slot === 'txt') { importTxtFile = null; txtError = ''; }
     else if (slot === 'mix') importMixFile = null;
     else if (slot === 'vocal') importVocalFile = null;
   }
@@ -148,7 +150,15 @@
       generationResult.set(data.result || {});
       currentStep.set(4); // Go straight to editor
     } catch (e) {
-      importError = e.message || 'Import failed';
+      const msg = e.message || 'Import failed';
+      // Show .txt-related errors inline on the txt slot
+      if (msg.includes('Ultrastar') || msg.includes('notes') || msg.includes('BPM') || msg.includes('headers')) {
+        txtError = 'Please upload a valid Ultrastar .txt file. The file must contain note data (lines starting with : or *).';
+        importError = '';
+      } else {
+        txtError = '';
+        importError = msg;
+      }
     } finally {
       importing = false;
     }
@@ -215,7 +225,7 @@
     <div class="import-panel">
       <div class="import-slots">
         <!-- TXT slot (required) -->
-        <div class="import-slot" class:filled={importTxtFile}>
+        <div class="import-slot" class:filled={importTxtFile} class:slot-error={txtError}>
           <div class="slot-header">
             <span class="slot-label">📄 Ultrastar .txt</span>
             <span class="slot-badge required">required</span>
@@ -227,6 +237,9 @@
             </div>
           {:else}
             <button class="slot-pick" on:click={() => pickFile('txt')}>Select .txt file</button>
+          {/if}
+          {#if txtError}
+            <p class="slot-error-msg">{txtError}</p>
           {/if}
         </div>
 
@@ -514,6 +527,19 @@
     background: #30363d;
     color: #c9d1d9;
     border-color: #4fc3f7;
+  }
+
+  .import-slot.slot-error {
+    border-color: #ef5350;
+    border-style: solid;
+    background: #1a0d0d;
+  }
+
+  .slot-error-msg {
+    margin: 0.3rem 0 0;
+    font-size: 0.75rem;
+    color: #ef9a9a;
+    line-height: 1.3;
   }
 
   .import-hint {
