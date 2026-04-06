@@ -8,7 +8,12 @@
   let backendOnline = false;
   let importing = false;
   let importError = '';
-  let dragOver = false;
+  let showImportPanel = false;
+
+  // 3 file slots for import
+  let importTxtFile = null;
+  let importMixFile = null;
+  let importVocalFile = null;
 
   onMount(async () => {
     try {
@@ -39,10 +44,13 @@
     try {
       const data = await resumeSession(session.id);
       sessionId.set(data.session_id);
+      const hasVocals = data.has_vocals !== false;
+      const hasOriginal = data.has_original !== false;
       uploadData.set({
         filename: data.filename,
-        hasVocals: true,
-        vocalUrl: getAudioUrl(data.session_id, 'vocals'),
+        hasVocals,
+        hasOriginal,
+        vocalUrl: hasVocals ? getAudioUrl(data.session_id, 'vocals') : (hasOriginal ? getAudioUrl(data.session_id, 'original') : null),
       });
       if (data.has_lyrics) {
         lyricsData.set({
@@ -79,57 +87,54 @@
     }
   }
 
-  // Import: accept .txt + .mp3 via file picker or drag-and-drop
-  async function handleImportClick() {
+  // Import: 3 explicit file slots
+  function toggleImportPanel() {
+    showImportPanel = !showImportPanel;
+    if (!showImportPanel) {
+      importTxtFile = null;
+      importMixFile = null;
+      importVocalFile = null;
+      importError = '';
+    }
+  }
+
+  function pickFile(slot) {
     const input = document.createElement('input');
     input.type = 'file';
-    input.multiple = true;
-    input.accept = '.txt,.mp3,.m4a,.ogg,.wav,.flac';
-    input.onchange = (e) => handleImportFiles(Array.from(e.target.files));
+    input.accept = slot === 'txt' ? '.txt' : '.mp3,.m4a,.ogg,.wav,.flac';
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (slot === 'txt') importTxtFile = file;
+      else if (slot === 'mix') importMixFile = file;
+      else if (slot === 'vocal') importVocalFile = file;
+    };
     input.click();
   }
 
-  function handleDragOver(e) {
-    e.preventDefault();
-    dragOver = true;
+  function clearSlot(slot) {
+    if (slot === 'txt') importTxtFile = null;
+    else if (slot === 'mix') importMixFile = null;
+    else if (slot === 'vocal') importVocalFile = null;
   }
 
-  function handleDragLeave() {
-    dragOver = false;
-  }
+  $: canImport = importTxtFile && (importMixFile || importVocalFile);
 
-  function handleDrop(e) {
-    e.preventDefault();
-    dragOver = false;
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) handleImportFiles(files);
-  }
-
-  async function handleImportFiles(files) {
+  async function handleImport() {
+    if (!canImport) return;
     importError = '';
     importing = true;
-    
-    const txtFile = files.find(f => f.name.toLowerCase().endsWith('.txt'));
-    const audioFile = files.find(f => /\.(mp3|m4a|ogg|wav|flac)$/i.test(f.name));
-    
-    if (!txtFile) {
-      importError = 'Please include an Ultrastar .txt file';
-      importing = false;
-      return;
-    }
-    if (!audioFile) {
-      importError = 'Please include an audio file (.mp3, .m4a, .wav, etc.)';
-      importing = false;
-      return;
-    }
 
     try {
-      const data = await importUltrastar(txtFile, audioFile);
+      const data = await importUltrastar(importTxtFile, importMixFile, importVocalFile);
       sessionId.set(data.session_id);
+      const hasVocals = !!data.has_vocals;
+      const hasOriginal = !!data.has_original;
       uploadData.set({
         filename: data.filename,
-        hasVocals: true,
-        vocalUrl: getAudioUrl(data.session_id, 'original'),
+        hasVocals,
+        hasOriginal,
+        vocalUrl: hasVocals ? getAudioUrl(data.session_id, 'vocals') : (hasOriginal ? getAudioUrl(data.session_id, 'original') : null),
       });
       lyricsData.set({
         text: data.lyrics || '',
@@ -189,7 +194,7 @@
     {/if}
   </div>
 
-  <div class="cards" class:drag-over={dragOver} role="region" aria-label="Project actions" on:dragover={handleDragOver} on:dragleave={handleDragLeave} on:drop={handleDrop}>
+  <div class="cards">
     <!-- Create New -->
     <button class="card card-new" on:click={startNewSong} disabled={!backendOnline}>
       <div class="card-icon">✨</div>
@@ -198,16 +203,84 @@
     </button>
 
     <!-- Import Existing -->
-    <button class="card card-import" on:click={handleImportClick} disabled={!backendOnline || importing}>
+    <button class="card card-import" on:click={toggleImportPanel} disabled={!backendOnline || importing}>
       <div class="card-icon">{importing ? '⏳' : '📂'}</div>
       <h3>{importing ? 'Importing...' : 'Import Existing Song'}</h3>
-      <p>Open an Ultrastar .txt + audio file to edit in the piano roll</p>
-      <span class="card-hint">or drag & drop files here</span>
+      <p>Open an Ultrastar <strong>.txt</strong> with audio files in the piano roll editor</p>
+      <span class="card-hint">{showImportPanel ? 'click to close' : 'click to select files'}</span>
     </button>
   </div>
 
-  {#if importError}
-    <div class="import-error">{importError}</div>
+  {#if showImportPanel}
+    <div class="import-panel">
+      <div class="import-slots">
+        <!-- TXT slot (required) -->
+        <div class="import-slot" class:filled={importTxtFile}>
+          <div class="slot-header">
+            <span class="slot-label">📄 Ultrastar .txt</span>
+            <span class="slot-badge required">required</span>
+          </div>
+          {#if importTxtFile}
+            <div class="slot-file">
+              <span class="slot-filename">{importTxtFile.name}</span>
+              <button class="slot-clear" on:click={() => clearSlot('txt')}>✕</button>
+            </div>
+          {:else}
+            <button class="slot-pick" on:click={() => pickFile('txt')}>Select .txt file</button>
+          {/if}
+        </div>
+
+        <!-- Mix audio slot (optional) -->
+        <div class="import-slot" class:filled={importMixFile}>
+          <div class="slot-header">
+            <span class="slot-label">🎵 Full Mix Audio</span>
+            <span class="slot-badge optional">optional</span>
+          </div>
+          {#if importMixFile}
+            <div class="slot-file">
+              <span class="slot-filename">{importMixFile.name}</span>
+              <button class="slot-clear" on:click={() => clearSlot('mix')}>✕</button>
+            </div>
+          {:else}
+            <button class="slot-pick" on:click={() => pickFile('mix')}>Select audio file</button>
+          {/if}
+        </div>
+
+        <!-- Vocals audio slot (optional) -->
+        <div class="import-slot" class:filled={importVocalFile}>
+          <div class="slot-header">
+            <span class="slot-label">🎤 Vocals Audio</span>
+            <span class="slot-badge optional">optional</span>
+          </div>
+          {#if importVocalFile}
+            <div class="slot-file">
+              <span class="slot-filename">{importVocalFile.name}</span>
+              <button class="slot-clear" on:click={() => clearSlot('vocal')}>✕</button>
+            </div>
+          {:else}
+            <button class="slot-pick" on:click={() => pickFile('vocal')}>Select vocals file</button>
+          {/if}
+        </div>
+      </div>
+
+      {#if !importTxtFile || (!importMixFile && !importVocalFile)}
+        <p class="import-hint">
+          {#if !importTxtFile}
+            Select an Ultrastar .txt file to start
+          {:else}
+            Add at least one audio file (mix or vocals)
+          {/if}
+        </p>
+      {/if}
+
+      {#if importError}
+        <div class="import-error">{importError}</div>
+      {/if}
+
+      <button class="btn-import" on:click={handleImport} disabled={!canImport || importing}>
+        {importing ? '⏳ Importing...' : '📥 Import Song'}
+      </button>
+    </div>
   {/if}
 
   <!-- Recent Sessions -->
@@ -271,15 +344,9 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
     padding: 4px;
     border-radius: 16px;
-    transition: outline 0.2s;
-  }
-
-  .cards.drag-over {
-    outline: 2px dashed #4fc3f7;
-    outline-offset: 4px;
   }
 
   .card {
@@ -336,15 +403,160 @@
     color: #4fc3f7;
   }
 
+  /* Import panel with 3 file slots */
+  .import-panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .import-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .import-slot {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.75rem 1rem;
+    background: #0d1117;
+    border: 1px dashed #30363d;
+    border-radius: 8px;
+    transition: all 0.2s;
+  }
+
+  .import-slot.filled {
+    border-style: solid;
+    border-color: #2ea043;
+    background: #0d1117;
+  }
+
+  .slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .slot-label {
+    font-size: 0.85rem;
+    color: #c9d1d9;
+    font-weight: 500;
+  }
+
+  .slot-badge {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+
+  .slot-badge.required {
+    background: #3e2723;
+    color: #ef9a9a;
+  }
+
+  .slot-badge.optional {
+    background: #1a2e4a;
+    color: #4fc3f7;
+  }
+
+  .slot-file {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0.6rem;
+    background: #1a2e1a;
+    border-radius: 6px;
+  }
+
+  .slot-filename {
+    font-size: 0.8rem;
+    color: #66bb6a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slot-clear {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+  }
+
+  .slot-clear:hover {
+    color: #ef5350;
+    background: rgba(239, 83, 80, 0.1);
+  }
+
+  .slot-pick {
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #8b949e;
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+
+  .slot-pick:hover {
+    background: #30363d;
+    color: #c9d1d9;
+    border-color: #4fc3f7;
+  }
+
+  .import-hint {
+    text-align: center;
+    color: #666;
+    font-size: 0.8rem;
+    margin: 0.75rem 0 0;
+  }
+
   .import-error {
     text-align: center;
     padding: 0.5rem 1rem;
-    margin-bottom: 1.5rem;
+    margin-top: 0.75rem;
     background: #3e2723;
     border: 1px solid #ef5350;
     border-radius: 8px;
     color: #ef9a9a;
     font-size: 0.85rem;
+  }
+
+  .btn-import {
+    display: block;
+    width: 100%;
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    font-weight: 500;
+  }
+
+  .btn-import:hover:not(:disabled) {
+    background: #1565c0;
+  }
+
+  .btn-import:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .recent h2 {

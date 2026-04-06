@@ -27,7 +27,7 @@
       const result = await uploadAudio(file);
       console.log('[Step1] Upload result:', result);
       sessionId.set(result.session_id);
-      uploadData.update(d => ({ ...d, filename: result.filename }));
+      uploadData.update(d => ({ ...d, filename: result.filename, hasOriginal: true }));
       processingStatus.set('Upload complete! Choose an option below.');
     } catch (err) {
       console.error('[Step1] Upload error:', err);
@@ -129,6 +129,7 @@
       uploadData.set({
         filename: result.filename,
         hasVocals: true,
+        hasOriginal: true,
         vocalUrl: getAudioUrl(result.session_id, 'vocals'),
       });
       // Restore reference data if carried over
@@ -276,18 +277,26 @@
     </button>
 
   {:else if !$uploadData.hasVocals}
-    <!-- File uploaded, choose extraction method -->
+    <!-- File uploaded, but no vocals yet — offer extraction or upload -->
     <div class="uploaded-info">
       <p>✅ Uploaded: <strong>{$uploadData.filename}</strong></p>
+      {#if $uploadData.hasOriginal}
+        <p class="hint">🎵 Full mix available</p>
+      {/if}
+      {#if !$uploadData.hasVocals}
+        <p class="hint" style="color: #ffa726">🎤 No vocals track yet</p>
+      {/if}
     </div>
 
     <div class="action-buttons">
-      <button class="btn btn-primary" on:click={handleExtractVocals} disabled={$isProcessing}>
-        🎤 Extract Vocals (Demucs)
-      </button>
+      {#if $uploadData.hasOriginal}
+        <button class="btn btn-primary" on:click={handleExtractVocals} disabled={$isProcessing}>
+          🎤 Extract Vocals from Mix (Demucs)
+        </button>
+      {/if}
       
       <label class="btn btn-secondary">
-        📂 Upload Corrected Vocals Instead
+        📂 Upload Vocals Audio
         <input type="file" accept="audio/*" on:change={handleUploadVocals} hidden />
       </label>
     </div>
@@ -295,7 +304,14 @@
   {:else}
     <!-- Vocals ready -->
     <div class="vocals-ready">
-      <p>✅ Vocals ready: <strong>{$uploadData.filename}</strong></p>
+      <div class="audio-status">
+        <p>🎤 Vocals: <strong style="color: #66bb6a">{$uploadData.filename}</strong></p>
+        {#if $uploadData.hasOriginal}
+          <p>🎵 Full mix: <strong style="color: #66bb6a">available</strong></p>
+        {:else}
+          <p>🎵 Full mix: <span style="color: #888">not uploaded</span></p>
+        {/if}
+      </div>
       
       {#if $uploadData.vocalUrl}
         <div class="audio-preview">

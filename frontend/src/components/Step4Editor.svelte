@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { sessionId, generationResult, editorState, referenceData, errorMessage, lyricsData } from '../stores/appStore.js';
+  import { sessionId, generationResult, editorState, referenceData, errorMessage, lyricsData, currentStep } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, getReferenceNotes, applyBpm, saveEditorState } from '../services/api.js';
 
   // Canvas refs
@@ -119,6 +119,8 @@
   // Audio source toggle (vocals vs full mix)
   let audioSource = 'vocals'; // 'vocals' | 'original'
   let originalUrl = '';
+  let hasVocalsAudio = true;
+  let hasOriginalAudio = true;
 
   // Text editor modal
   let showTextEditor = false;
@@ -1557,6 +1559,18 @@
     console.log('[Step4] Audio source:', source);
   }
 
+  function handleMissingAudio(type) {
+    if (type === 'vocals') {
+      if (confirm('No vocals track available.\n\nGo to Step 1 to extract vocals from the mix or upload a vocals file?')) {
+        currentStep.set(1);
+      }
+    } else {
+      if (confirm('No full mix audio available.\n\nGo to Step 1 to upload the full mix?')) {
+        currentStep.set(1);
+      }
+    }
+  }
+
   // ── Text editor (raw Ultrastar .txt) ──
   function openTextEditor() {
     textEditorContent = buildUltrastarContent();
@@ -2162,10 +2176,17 @@
       editCount = data.edit_count || 0;
       lastSaveTime = data.last_saved ? new Date(data.last_saved * 1000) : null;
       hasUnsavedChanges = false;
+      hasVocalsAudio = data.has_vocals !== false;
+      hasOriginalAudio = data.has_original !== false;
       vocalUrl = data.vocal_url;
-      originalUrl = `/api/preview-audio/${$sessionId}/original`;
-      audioSource = 'vocals';
-      console.log('[Step4] Vocal URL for playback:', vocalUrl);
+      originalUrl = hasOriginalAudio ? `/api/preview-audio/${$sessionId}/original` : '';
+      // Default to whichever audio is available
+      if (hasVocalsAudio) {
+        audioSource = 'vocals';
+      } else if (hasOriginalAudio) {
+        audioSource = 'original';
+      }
+      console.log('[Step4] Audio: vocals=' + hasVocalsAudio + ', original=' + hasOriginalAudio + ', source=' + audioSource);
       computeTotalBeats();
 
       // Position playhead and scroll at GAP (song start)
@@ -2377,8 +2398,8 @@
         📝 Text
       </button>
       <div class="audio-source-toggle" title="Audio source">
-        <button class="tool-btn sm" class:active={audioSource === 'vocals'} on:click={() => switchAudioSource('vocals')}>🎤</button>
-        <button class="tool-btn sm" class:active={audioSource === 'original'} on:click={() => switchAudioSource('original')}>🎵</button>
+        <button class="tool-btn sm" class:active={audioSource === 'vocals'} class:disabled-audio={!hasVocalsAudio} on:click={() => hasVocalsAudio ? switchAudioSource('vocals') : handleMissingAudio('vocals')} title={hasVocalsAudio ? 'Vocals' : 'No vocals — go to Step 1 to extract or upload'}>🎤</button>
+        <button class="tool-btn sm" class:active={audioSource === 'original'} class:disabled-audio={!hasOriginalAudio} on:click={() => hasOriginalAudio ? switchAudioSource('original') : handleMissingAudio('original')} title={hasOriginalAudio ? 'Full mix' : 'No full mix — go to Step 1 to upload'}>🎵</button>
       </div>
       {#if hasUnsavedChanges}
         <span class="unsaved-indicator">● unsaved</span>
@@ -3093,6 +3114,17 @@
     background: #111;
     border-radius: 6px;
     padding: 1px;
+  }
+
+  .tool-btn.disabled-audio {
+    opacity: 0.3;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .tool-btn.disabled-audio:hover {
+    opacity: 0.5;
+    background: #3e2723;
   }
 
   /* Text editor modal */

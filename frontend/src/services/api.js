@@ -57,10 +57,11 @@ export async function resumeSession(sessionId) {
   return request('POST', `/resume/${sessionId}`);
 }
 
-export async function importUltrastar(txtFile, audioFile) {
+export async function importUltrastar(txtFile, audioFile, vocalFile) {
   const form = new FormData();
   form.append('txt_file', txtFile);
-  form.append('audio_file', audioFile);
+  if (audioFile) form.append('audio_file', audioFile);
+  if (vocalFile) form.append('vocal_file', vocalFile);
   return request('POST', '/import', form, true);
 }
 // ─── Step 1: Upload ────────────────────────────

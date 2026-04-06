@@ -13,6 +13,7 @@ export const sessionId = writable(null);
 export const uploadData = writable({
   filename: null,
   hasVocals: false,
+  hasOriginal: false,
   vocalUrl: null,
 });
 
@@ -69,7 +70,7 @@ export const canGoToStep = derived(
   ([$currentStep, $sessionId, $uploadData, $lyricsData, $generationResult]) => {
     return (step) => {
       if (step === 1) return true;
-      if (step === 2) return $uploadData.hasVocals;
+      if (step === 2) return $uploadData.hasVocals || $uploadData.hasOriginal;
       if (step === 3) return $lyricsData.syllableCount > 0;
       if (step === 4) return $generationResult !== null;
       if (step === 5) return $generationResult !== null;
@@ -82,7 +83,7 @@ export const canGoToStep = derived(
 export function resetSession() {
   currentStep.set(0);
   sessionId.set(null);
-  uploadData.set({ filename: null, hasVocals: false, vocalUrl: null });
+  uploadData.set({ filename: null, hasVocals: false, hasOriginal: false, vocalUrl: null });
   lyricsData.set({ text: '', artist: '', title: '', language: 'en', syllableCount: 0, lineCount: 0, preview: [] });
   generationResult.set(null);
   generationLog.set([]);

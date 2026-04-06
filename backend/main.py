@@ -174,9 +174,14 @@ async def resume_specific_session(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    vocal = session.get("vocal_audio") or session.get("original_audio")
-    if not vocal or not os.path.exists(vocal):
+    vocal = session.get("vocal_audio")
+    original = session.get("original_audio")
+    any_audio = vocal or original
+    if not any_audio or not os.path.exists(any_audio):
         raise HTTPException(status_code=404, detail="Audio files no longer exist")
+
+    has_vocals = vocal is not None and os.path.exists(vocal)
+    has_original = original is not None and os.path.exists(original)
 
     lyrics = session.get("lyrics", "")
     syllable_count = 0
@@ -185,10 +190,16 @@ async def resume_specific_session(session_id: str):
         syllable_count = sum(len(line) for line in session["parsed_lyrics"])
         line_count = len(session["parsed_lyrics"])
 
+    # Use best available filename for display
+    display_file = vocal if has_vocals else original
+    display_filename = os.path.basename(display_file)
+
     return {
         "status": "ok",
         "session_id": session_id,
-        "filename": os.path.basename(vocal),
+        "filename": display_filename,
+        "has_vocals": has_vocals,
+        "has_original": has_original,
         "has_lyrics": bool(lyrics),
         "lyrics": lyrics,
         "artist": session.get("artist", "Unknown Artist"),
@@ -204,15 +215,25 @@ async def resume_specific_session(session_id: str):
 @app.post("/api/import")
 async def import_ultrastar(
     txt_file: UploadFile = File(...),
-    audio_file: UploadFile = File(...),
+    audio_file: UploadFile = File(None),
+    vocal_file: UploadFile = File(None),
 ):
-    """Import an existing Ultrastar song (.txt + audio) into a new session.
+    """Import an existing Ultrastar song (.txt + optional audio files) into a new session.
+
+    Accepts:
+        txt_file: Required — Ultrastar .txt with notes
+        audio_file: Optional — full mix audio
+        vocal_file: Optional — isolated vocals audio
+    At least one audio file must be provided.
 
     Parses the Ultrastar .txt to extract notes, BPM, GAP, and metadata.
     Creates a session with a pre-populated result so the editor opens directly.
     """
     from services.reference_comparison import parse_ultrastar_file
     import librosa
+
+    if not audio_file and not vocal_file:
+        raise HTTPException(status_code=400, detail="At least one audio file is required (mix or vocals)")
 
     # Read .txt content
     txt_content = (await txt_file.read()).decode("utf-8", errors="replace")
@@ -229,19 +250,33 @@ async def import_ultrastar(
     title = headers.get("TITLE", "Unknown Song")
     language = headers.get("LANGUAGE", "en")
 
-    # Save audio file
+    # Save audio files
     session_id = str(uuid.uuid4())[:8]
     session_dir = os.path.join(UPLOAD_DIR, session_id)
     os.makedirs(session_dir, exist_ok=True)
 
-    audio_path = os.path.join(session_dir, audio_file.filename)
-    audio_bytes = await audio_file.read()
-    with open(audio_path, "wb") as f:
-        f.write(audio_bytes)
+    original_path = None
+    vocal_path = None
+    duration_path = None  # whichever audio we use to measure duration
+
+    if audio_file:
+        original_path = os.path.join(session_dir, audio_file.filename)
+        audio_bytes = await audio_file.read()
+        with open(original_path, "wb") as f:
+            f.write(audio_bytes)
+        duration_path = original_path
+
+    if vocal_file:
+        vocal_path = os.path.join(session_dir, vocal_file.filename)
+        vocal_bytes = await vocal_file.read()
+        with open(vocal_path, "wb") as f:
+            f.write(vocal_bytes)
+        if not duration_path:
+            duration_path = vocal_path
 
     # Get audio duration
     try:
-        audio_duration = librosa.get_duration(filename=audio_path)
+        audio_duration = librosa.get_duration(filename=duration_path)
     except Exception:
         audio_duration = 0.0
 
@@ -267,12 +302,12 @@ async def import_ultrastar(
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(txt_content)
 
-    # Create session with result
+    # Create session with result — store None for missing files, not aliases
     session = {
         "id": session_id,
-        "original_audio": audio_path,
-        "vocal_audio": audio_path,  # Use original for imported songs
-        "lyrics": "",  # Could extract from notes but not needed
+        "original_audio": original_path,
+        "vocal_audio": vocal_path,
+        "lyrics": "",
         "artist": artist,
         "title": title,
         "language": language,
@@ -297,13 +332,19 @@ async def import_ultrastar(
     sessions[session_id] = session
     save_session(session_id)
 
+    has_vocals = vocal_path is not None
+    has_original = original_path is not None
+    # Use the first available filename for display
+    display_filename = (audio_file.filename if audio_file else vocal_file.filename)
+
     log_step("IMPORT", f"Imported '{artist} - {title}' as session {session_id} "
-             f"({len(syllable_timings)} notes, BPM={bpm}, GAP={gap_ms}ms)")
+             f"({len(syllable_timings)} notes, BPM={bpm}, GAP={gap_ms}ms, "
+             f"vocals={'yes' if has_vocals else 'no'}, mix={'yes' if has_original else 'no'})")
 
     return {
         "status": "ok",
         "session_id": session_id,
-        "filename": audio_file.filename,
+        "filename": display_filename,
         "artist": artist,
         "title": title,
         "language": language,
@@ -314,6 +355,8 @@ async def import_ultrastar(
         "has_lyrics": True,
         "lyrics": "",
         "has_result": True,
+        "has_vocals": has_vocals,
+        "has_original": has_original,
         "result": session["result"],
     }
 
@@ -1208,6 +1251,19 @@ async def get_editor_data(session_id: str):
     if not result:
         raise ServiceError("No generation result", "Run generation first")
     
+    vocal = session.get("vocal_audio")
+    original = session.get("original_audio")
+    has_vocals = vocal is not None and os.path.exists(vocal)
+    has_original = original is not None and os.path.exists(original)
+
+    # Determine vocal_url — prefer vocals, fall back to original
+    if has_vocals:
+        vocal_url = f"/api/preview-audio/{session_id}/vocals"
+    elif has_original:
+        vocal_url = f"/api/preview-audio/{session_id}/original"
+    else:
+        vocal_url = None
+
     return {
         "status": "ok",
         "session_id": session_id,
@@ -1216,7 +1272,9 @@ async def get_editor_data(session_id: str):
         "audio_duration": result["audio_duration"],
         "syllable_timings": result["syllable_timings"],
         "ultrastar_content": result["ultrastar_content"],
-        "vocal_url": f"/api/preview-audio/{session_id}/vocals",
+        "vocal_url": vocal_url,
+        "has_vocals": has_vocals,
+        "has_original": has_original,
         "has_edits": result.get("has_edits", False),
         "edit_count": result.get("edit_count", 0),
         "last_saved": result.get("last_saved"),
