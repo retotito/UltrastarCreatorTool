@@ -1,8 +1,9 @@
 <script>
   import { onMount } from 'svelte';
-  import { currentStep } from './stores/appStore.js';
+  import { currentStep, resetSession } from './stores/appStore.js';
   import { checkHealth } from './services/api.js';
   import StepNavigation from './components/StepNavigation.svelte';
+  import ProjectLauncher from './components/ProjectLauncher.svelte';
   import Step1Upload from './components/Step1Upload.svelte';
   import Step2Lyrics from './components/Step2Lyrics.svelte';
   import Step3Generate from './components/Step3Generate.svelte';
@@ -10,49 +11,58 @@
   import Step5Export from './components/Step5Export.svelte';
 
   let backendStatus = 'checking';
-  let backendModels = {};
 
   onMount(async () => {
     try {
       const health = await checkHealth();
       backendStatus = health.status;
-      backendModels = health.models || {};
     } catch (e) {
       backendStatus = 'offline';
     }
   });
+
+  function goHome() {
+    if (confirm('Return to the home screen? Unsaved changes will be lost.')) {
+      resetSession();
+      currentStep.set(0);
+    }
+  }
 </script>
 
 <div class="app" class:full-width={$currentStep === 4}>
-  <header>
-    <h1>🎤 Ultrastar Song Generator</h1>
-    <div class="backend-status" class:online={backendStatus === 'ok'} class:offline={backendStatus === 'offline'}>
-      {#if backendStatus === 'ok'}
-        ● Backend online
+  {#if $currentStep === 0}
+    <ProjectLauncher />
+  {:else}
+    <header>
+      <button class="home-btn" on:click={goHome} title="Back to Home">🏠</button>
+      <h1>🎤 Ultrastar Song Generator</h1>
+      <div class="backend-status" class:online={backendStatus === 'ok'} class:offline={backendStatus === 'offline'}>
+        {#if backendStatus === 'ok'}
+          ● Backend online
+        {:else if backendStatus === 'offline'}
+          ● Backend offline — start the backend server
+        {:else}
+          ● Checking backend...
+        {/if}
+      </div>
+    </header>
 
-      {:else if backendStatus === 'offline'}
-        ● Backend offline — start the backend server
-      {:else}
-        ● Checking backend...
+    <StepNavigation />
+
+    <main>
+      {#if $currentStep === 1}
+        <Step1Upload />
+      {:else if $currentStep === 2}
+        <Step2Lyrics />
+      {:else if $currentStep === 3}
+        <Step3Generate />
+      {:else if $currentStep === 4}
+        <Step4Editor />
+      {:else if $currentStep === 5}
+        <Step5Export />
       {/if}
-    </div>
-  </header>
-
-  <StepNavigation />
-
-  <main>
-    {#if $currentStep === 1}
-      <Step1Upload />
-    {:else if $currentStep === 2}
-      <Step2Lyrics />
-    {:else if $currentStep === 3}
-      <Step3Generate />
-    {:else if $currentStep === 4}
-      <Step4Editor />
-    {:else if $currentStep === 5}
-      <Step5Export />
-    {/if}
-  </main>
+    </main>
+  {/if}
 </div>
 
 <style>
@@ -83,6 +93,26 @@
   header {
     text-align: center;
     margin-bottom: 0.5rem;
+    position: relative;
+  }
+
+  .home-btn {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: 1px solid #333;
+    border-radius: 8px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0.3rem 0.6rem;
+    transition: all 0.2s;
+  }
+
+  .home-btn:hover {
+    background: #1a2a3e;
+    border-color: #4fc3f7;
   }
 
   h1 {

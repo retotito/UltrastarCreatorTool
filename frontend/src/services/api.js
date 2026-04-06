@@ -44,7 +44,25 @@ async function request(method, path, body = null, isFormData = false) {
 export async function checkHealth() {
   return request('GET', '/health');
 }
+// ─── Sessions ──────────────────────────────────────────────
+export async function listSessions() {
+  return request('GET', '/sessions');
+}
 
+export async function deleteSession(sessionId) {
+  return request('DELETE', `/sessions/${sessionId}`);
+}
+
+export async function resumeSession(sessionId) {
+  return request('POST', `/resume/${sessionId}`);
+}
+
+export async function importUltrastar(txtFile, audioFile) {
+  const form = new FormData();
+  form.append('txt_file', txtFile);
+  form.append('audio_file', audioFile);
+  return request('POST', '/import', form, true);
+}
 // ─── Step 1: Upload ────────────────────────────
 export async function uploadAudio(file) {
   const form = new FormData();

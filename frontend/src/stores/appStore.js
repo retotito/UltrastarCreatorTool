@@ -3,8 +3,8 @@
  */
 import { writable, derived } from 'svelte/store';
 
-// Current step (1-5)
-export const currentStep = writable(1);
+// Current step (0 = launcher, 1-5 = wizard)
+export const currentStep = writable(0);
 
 // Session ID from backend
 export const sessionId = writable(null);
@@ -80,7 +80,7 @@ export const canGoToStep = derived(
 
 // Reset everything
 export function resetSession() {
-  currentStep.set(1);
+  currentStep.set(0);
   sessionId.set(null);
   uploadData.set({ filename: null, hasVocals: false, vocalUrl: null });
   lyricsData.set({ text: '', artist: '', title: '', language: 'en', syllableCount: 0, lineCount: 0, preview: [] });

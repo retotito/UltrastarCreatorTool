@@ -116,6 +116,209 @@ async def health_check():
 
 
 # ────────────────────────────────────────────────────────────
+# Session management
+# ────────────────────────────────────────────────────────────
+@app.get("/api/sessions")
+async def list_all_sessions():
+    """List all sessions (for the launcher page)."""
+    result = []
+    for sid, s in sessions.items():
+        result.append({
+            "id": sid,
+            "artist": s.get("artist", "Unknown"),
+            "title": s.get("title", "Untitled"),
+            "status": s.get("status", "unknown"),
+            "created_at": s.get("created_at", 0),
+            "has_result": s.get("result") is not None,
+        })
+    # Sort newest first
+    result.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"status": "ok", "sessions": result}
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session_endpoint(session_id: str):
+    """Delete a session and its files."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Remove session file
+    session_file = os.path.join(SESSIONS_DIR, f"{session_id}.json")
+    if os.path.exists(session_file):
+        os.remove(session_file)
+
+    # Remove upload directory if it exists
+    upload_dir = os.path.join(UPLOAD_DIR, session_id)
+    if os.path.isdir(upload_dir):
+        shutil.rmtree(upload_dir, ignore_errors=True)
+
+    # Remove generated files
+    result = session.get("result", {})
+    for key in ("txt_file", "midi_file", "summary_file", "corrected_txt_file"):
+        fname = result.get(key) if isinstance(result, dict) else None
+        if fname:
+            fpath = os.path.join(DOWNLOADS_DIR, fname)
+            if os.path.exists(fpath):
+                os.remove(fpath)
+
+    del sessions[session_id]
+    log_step("SESSION", f"Deleted session {session_id}")
+    return {"status": "ok"}
+
+
+@app.post("/api/resume/{session_id}")
+async def resume_specific_session(session_id: str):
+    """Resume an existing session by ID (opens it without cloning)."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    vocal = session.get("vocal_audio") or session.get("original_audio")
+    if not vocal or not os.path.exists(vocal):
+        raise HTTPException(status_code=404, detail="Audio files no longer exist")
+
+    lyrics = session.get("lyrics", "")
+    syllable_count = 0
+    line_count = 0
+    if session.get("parsed_lyrics"):
+        syllable_count = sum(len(line) for line in session["parsed_lyrics"])
+        line_count = len(session["parsed_lyrics"])
+
+    return {
+        "status": "ok",
+        "session_id": session_id,
+        "filename": os.path.basename(vocal),
+        "has_lyrics": bool(lyrics),
+        "lyrics": lyrics,
+        "artist": session.get("artist", "Unknown Artist"),
+        "title": session.get("title", "Unknown Song"),
+        "language": session.get("language", "en"),
+        "syllable_count": syllable_count,
+        "line_count": line_count,
+        "has_result": session.get("result") is not None,
+        "result": session.get("result"),
+    }
+
+
+@app.post("/api/import")
+async def import_ultrastar(
+    txt_file: UploadFile = File(...),
+    audio_file: UploadFile = File(...),
+):
+    """Import an existing Ultrastar song (.txt + audio) into a new session.
+
+    Parses the Ultrastar .txt to extract notes, BPM, GAP, and metadata.
+    Creates a session with a pre-populated result so the editor opens directly.
+    """
+    from services.reference_comparison import parse_ultrastar_file
+    import librosa
+
+    # Read .txt content
+    txt_content = (await txt_file.read()).decode("utf-8", errors="replace")
+    parsed = parse_ultrastar_file(txt_content)
+
+    if not parsed["notes"]:
+        raise HTTPException(status_code=400, detail="No notes found in Ultrastar file")
+
+    bpm = parsed["bpm"]
+    gap_ms = int(parsed["gap"])
+    headers = parsed["headers"]
+
+    artist = headers.get("ARTIST", "Unknown Artist")
+    title = headers.get("TITLE", "Unknown Song")
+    language = headers.get("LANGUAGE", "en")
+
+    # Save audio file
+    session_id = str(uuid.uuid4())[:8]
+    session_dir = os.path.join(UPLOAD_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+
+    audio_path = os.path.join(session_dir, audio_file.filename)
+    audio_bytes = await audio_file.read()
+    with open(audio_path, "wb") as f:
+        f.write(audio_bytes)
+
+    # Get audio duration
+    try:
+        audio_duration = librosa.get_duration(filename=audio_path)
+    except Exception:
+        audio_duration = 0.0
+
+    # Build syllable_timings from parsed notes (convert beats to seconds)
+    syllable_timings = []
+    for note in parsed["notes"]:
+        start_sec = gap_ms / 1000.0 + note["start_beat"] * 15.0 / bpm
+        end_sec = gap_ms / 1000.0 + (note["start_beat"] + note["duration"]) * 15.0 / bpm
+        syllable_timings.append({
+            "syllable": note["syllable"],
+            "start": round(start_sec, 4),
+            "end": round(end_sec, 4),
+            "midi_note": note["pitch"],
+            "confidence": 1.0,
+            "method": "imported",
+            "is_rap": note.get("is_rap", False),
+        })
+
+    # Save the .txt to downloads
+    timestamp = int(time.time())
+    txt_filename = f"song_{timestamp}.txt"
+    txt_path = os.path.join(DOWNLOADS_DIR, txt_filename)
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(txt_content)
+
+    # Create session with result
+    session = {
+        "id": session_id,
+        "original_audio": audio_path,
+        "vocal_audio": audio_path,  # Use original for imported songs
+        "lyrics": "",  # Could extract from notes but not needed
+        "artist": artist,
+        "title": title,
+        "language": language,
+        "status": "generated",
+        "created_at": time.time(),
+        "imported": True,
+        "result": {
+            "txt_file": txt_filename,
+            "midi_file": None,
+            "summary_file": None,
+            "bpm": bpm,
+            "gap_ms": gap_ms,
+            "syllable_count": len(syllable_timings),
+            "audio_duration": audio_duration,
+            "pitch_method": "imported",
+            "alignment_method": "imported",
+            "elapsed_seconds": 0,
+            "syllable_timings": syllable_timings,
+            "ultrastar_content": txt_content,
+        },
+    }
+    sessions[session_id] = session
+    save_session(session_id)
+
+    log_step("IMPORT", f"Imported '{artist} - {title}' as session {session_id} "
+             f"({len(syllable_timings)} notes, BPM={bpm}, GAP={gap_ms}ms)")
+
+    return {
+        "status": "ok",
+        "session_id": session_id,
+        "filename": audio_file.filename,
+        "artist": artist,
+        "title": title,
+        "language": language,
+        "syllable_count": len(syllable_timings),
+        "line_count": len(parsed["breaks"]) + 1,
+        "bpm": bpm,
+        "gap_ms": gap_ms,
+        "has_lyrics": True,
+        "lyrics": "",
+        "has_result": True,
+        "result": session["result"],
+    }
+
+
+# ────────────────────────────────────────────────────────────
 # Step 1: Upload & Vocal Extraction
 # ────────────────────────────────────────────────────────────
 @app.post("/api/upload")
