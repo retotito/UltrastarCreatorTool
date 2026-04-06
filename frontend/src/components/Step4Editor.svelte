@@ -40,10 +40,22 @@
 
   // Interaction
   let selectedNote = null;
+  let selectedNotes = new Set(); // multi-select
   let dragMode = null;     // 'move' | 'resize-left' | 'resize-right'
   let dragStart = { x: 0, y: 0 };
   let isDragging = false;
   let scrollBarEl;
+
+  // Rubber-band (box) selection
+  let isBoxSelecting = false;
+  let boxSelectStart = { x: 0, y: 0 };
+  let boxSelectEnd = { x: 0, y: 0 };
+
+  // Clipboard (cut/copy/paste)
+  let clipboard = null;        // { notes: [...], mode: 'cut'|'copy', sourceBeat: number }
+  let pasteMode = false;       // user is positioning the paste
+  let pastePreviewBeat = null; // ghost preview beat position
+  let cutNoteIds = new Set();  // ids of notes being cut (rendered semi-transparent)
 
   // Drag pitch preview (oscillator while dragging a note)
   let dragOsc = null;
@@ -666,25 +678,29 @@
       const width = note.duration * zoom;
 
       // Note rectangle
-      const isSelected = selectedNote === note.id;
+      const isSelected = selectedNote === note.id || selectedNotes.has(note.id);
+      const isCut = cutNoteIds.has(note.id);
       const hasChanged = note.original && (
         note.startBeat !== note.original.startBeat ||
         note.duration !== note.original.duration ||
         note.pitch !== note.original.pitch
       );
 
+      // Cut notes are semi-transparent
+      const cutAlpha = isCut ? '44' : '';
+
       if (note.isGolden) {
-        ctx.fillStyle = isSelected ? '#ffd70088' : '#ffd70044';
-        ctx.strokeStyle = '#ffd700';
+        ctx.fillStyle = isSelected ? '#ffd70088' : (isCut ? '#ffd70022' : '#ffd70044');
+        ctx.strokeStyle = isCut ? '#ffd70066' : '#ffd700';
       } else if (note.isRap) {
-        ctx.fillStyle = isSelected ? '#ff980088' : '#ff980044';
-        ctx.strokeStyle = '#ff9800';
+        ctx.fillStyle = isSelected ? '#ff980088' : (isCut ? '#ff980022' : '#ff980044');
+        ctx.strokeStyle = isCut ? '#ff980066' : '#ff9800';
       } else if (hasChanged) {
-        ctx.fillStyle = isSelected ? '#fdd83588' : '#fdd83544';
-        ctx.strokeStyle = '#fdd835';
+        ctx.fillStyle = isSelected ? '#fdd83588' : (isCut ? '#fdd83522' : '#fdd83544');
+        ctx.strokeStyle = isCut ? '#fdd83566' : '#fdd835';
       } else {
-        ctx.fillStyle = isSelected ? '#4fc3f788' : '#4fc3f744';
-        ctx.strokeStyle = '#4fc3f7';
+        ctx.fillStyle = isSelected ? '#4fc3f788' : (isCut ? '#4fc3f722' : '#4fc3f744');
+        ctx.strokeStyle = isCut ? '#4fc3f766' : '#4fc3f7';
       }
 
       ctx.lineWidth = isSelected ? 2 : 1;
@@ -819,6 +835,55 @@
       }
     }
 
+    // ── Paste ghost preview ──
+    if (pasteMode && clipboard && pastePreviewBeat !== null) {
+      const offset = pastePreviewBeat - clipboard.sourceBeat;
+      ctx.globalAlpha = 0.4;
+      for (const cn of clipboard.notes) {
+        const gx = beatToX(cn.startBeat + offset);
+        const gy = pitchToY(cn.pitch);
+        const gw = cn.duration * zoom;
+        ctx.fillStyle = '#69f0ae';
+        ctx.strokeStyle = '#69f0ae';
+        ctx.lineWidth = 1;
+        ctx.fillRect(gx, gy - noteHeight / 2, gw, noteHeight);
+        ctx.strokeRect(gx, gy - noteHeight / 2, gw, noteHeight);
+        if (zoom > 1 && gw > 10) {
+          ctx.fillStyle = '#fff';
+          ctx.font = '10px sans-serif';
+          ctx.fillText(cn.syllable.trim(), gx + 2, gy + 3);
+        }
+      }
+      ctx.globalAlpha = 1.0;
+
+      // Paste insertion line
+      const px = beatToX(pastePreviewBeat);
+      const pianoBottom = h - timeAxisHeight;
+      ctx.strokeStyle = '#69f0ae';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, pianoBottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ── Rubber-band selection box ──
+    if (isBoxSelecting) {
+      const bx = Math.min(boxSelectStart.x, boxSelectEnd.x);
+      const by = Math.min(boxSelectStart.y, boxSelectEnd.y);
+      const bw = Math.abs(boxSelectEnd.x - boxSelectStart.x);
+      const bh = Math.abs(boxSelectEnd.y - boxSelectStart.y);
+      ctx.fillStyle = '#42a5f518';
+      ctx.strokeStyle = '#42a5f5';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.setLineDash([]);
+    }
+
     syncScrollbar();
   }
 
@@ -895,6 +960,14 @@
       return;
     }
 
+    // ── Paste mode: click to place ──
+    if (pasteMode && clipboard) {
+      finalizePaste(Math.round(beat));
+      return;
+    }
+
+    const isMultiKey = event.metaKey || event.ctrlKey;
+
     // Find clicked note (check regular notes first, then breaks)
     let found = null;
     for (const note of notes) {
@@ -907,10 +980,12 @@
       if (mx >= nx && mx <= nx + nw && my >= ny - noteHeight / 2 && my <= ny + noteHeight / 2) {
         found = note;
 
-        // Detect resize zones (edges)
-        if (mx - nx < 5) dragMode = 'resize-left';
-        else if (nx + nw - mx < 5) dragMode = 'resize-right';
-        else dragMode = 'move';
+        // Detect resize zones (edges) — only for single note drag, not multi-select toggle
+        if (!isMultiKey) {
+          if (mx - nx < 5) dragMode = 'resize-left';
+          else if (nx + nw - mx < 5) dragMode = 'resize-right';
+          else dragMode = 'move';
+        }
 
         break;
       }
@@ -930,25 +1005,58 @@
     }
 
     if (found) {
-      selectedNote = found.id;
-      isDragging = true;
-      dragStart = { x: mx, y: my, beat: found.startBeat, pitch: found.pitch, duration: found.duration, endBeat: found.endBeat };
-      if (found.type !== 'break') {
-        pushUndo();
-        // Start pitch preview oscillator for move drag
-        if (dragMode === 'move') {
-          startDragOsc(found.pitch);
+      if (isMultiKey && found.type !== 'break') {
+        // Ctrl/Cmd click: toggle note in multi-selection
+        if (selectedNotes.has(found.id)) {
+          selectedNotes.delete(found.id);
+          if (selectedNote === found.id) selectedNote = null;
+        } else {
+          selectedNotes.add(found.id);
+          selectedNote = found.id;
         }
-        console.log(`[Mouse] Selected note id=${found.id} '${found.syllable}' mode=${dragMode}`);
+        selectedNotes = new Set(selectedNotes); // trigger reactivity
+        dragMode = null;
+        console.log(`[Mouse] Multi-select toggle id=${found.id}, count=${selectedNotes.size}`);
       } else {
-        pushUndo();
-        console.log(`[Mouse] Selected break id=${found.id} at beat ${found.startBeat} mode=${dragMode}`);
+        // Regular click: single select (clear multi-select unless clicking within it)
+        if (selectedNotes.size > 0 && selectedNotes.has(found.id)) {
+          // Clicking a note in the multi-selection → drag the whole group
+          selectedNote = found.id;
+          if (found.type !== 'break') {
+            dragMode = 'move';
+          }
+        } else {
+          // Clear multi-select, single select
+          selectedNotes = new Set();
+          selectedNote = found.id;
+        }
+        isDragging = true;
+        dragStart = { x: mx, y: my, beat: found.startBeat, pitch: found.pitch, duration: found.duration, endBeat: found.endBeat };
+        if (found.type !== 'break') {
+          pushUndo();
+          if (dragMode === 'move') {
+            startDragOsc(found.pitch);
+          }
+          console.log(`[Mouse] Selected note id=${found.id} '${found.syllable}' mode=${dragMode}`);
+        } else {
+          pushUndo();
+          console.log(`[Mouse] Selected break id=${found.id} at beat ${found.startBeat} mode=${dragMode}`);
+        }
       }
     } else {
-      selectedNote = null;
-      // Click on empty canvas space → seek playhead there
-      seekToTime(beatToTime(beat));
-      console.log(`[Mouse] No note — seek to beat ${beat.toFixed(1)}`);
+      // No hit — start rubber-band selection or seek
+      if (isMultiKey) {
+        // Ctrl/Cmd + drag empty space → rubber-band box selection
+        isBoxSelecting = true;
+        boxSelectStart = { x: mx, y: my };
+        boxSelectEnd = { x: mx, y: my };
+        console.log('[Mouse] Start box selection');
+      } else {
+        selectedNote = null;
+        selectedNotes = new Set();
+        seekToTime(beatToTime(beat));
+        console.log(`[Mouse] No note — seek to beat ${beat.toFixed(1)}`);
+      }
     }
 
     draw();
@@ -1050,7 +1158,21 @@
         }
       }
 
-      canvasEl.style.cursor = cursor;
+      canvasEl.style.cursor = pasteMode ? 'crosshair' : cursor;
+    }
+
+    // ── Box selection tracking ──
+    if (isBoxSelecting) {
+      boxSelectEnd = { x: mx, y: my };
+      draw();
+      return;
+    }
+
+    // ── Paste preview tracking ──
+    if (pasteMode && clipboard) {
+      pastePreviewBeat = Math.round(xToBeat(mx));
+      draw();
+      return;
     }
 
     if (!isDragging || selectedNote === null) return;
@@ -1077,7 +1199,33 @@
 
     if (note.type === 'break') return;
 
-    if (dragMode === 'move') {
+    // ── Multi-note drag ──
+    if (dragMode === 'move' && selectedNotes.size > 1 && selectedNotes.has(note.id)) {
+      const beatDelta = Math.round(dx / zoom);
+      const pitchDelta = yToPitch(dragStart.y + dy) - dragStart.pitch;
+      
+      if (!dragStart.groupOffsets) {
+        // Capture initial positions of all selected notes
+        dragStart.groupOffsets = [];
+        for (const n of notes) {
+          if (selectedNotes.has(n.id) && n.type !== 'break') {
+            dragStart.groupOffsets.push({ id: n.id, beat: n.startBeat, pitch: n.pitch });
+          }
+        }
+      }
+      
+      for (const offset of dragStart.groupOffsets) {
+        const n = notes.find(nn => nn.id === offset.id);
+        if (n) {
+          n.startBeat = Math.max(0, offset.beat + beatDelta);
+          n.pitch = Math.max(minPitch, Math.min(maxPitch, offset.pitch + pitchDelta));
+        }
+      }
+      
+      if (note.pitch !== dragLastPitch) {
+        updateDragOsc(note.pitch);
+      }
+    } else if (dragMode === 'move') {
       note.startBeat = Math.max(0, Math.round(dragStart.beat + dx / zoom));
       note.pitch = Math.max(minPitch, Math.min(maxPitch, yToPitch(dragStart.y + dy)));
       // Update pitch preview if pitch changed
@@ -1144,6 +1292,36 @@
       return;
     }
 
+    // ── Finish box selection ──
+    if (isBoxSelecting) {
+      isBoxSelecting = false;
+      const x1 = Math.min(boxSelectStart.x, boxSelectEnd.x);
+      const x2 = Math.max(boxSelectStart.x, boxSelectEnd.x);
+      const y1 = Math.min(boxSelectStart.y, boxSelectEnd.y);
+      const y2 = Math.max(boxSelectStart.y, boxSelectEnd.y);
+
+      // Find all notes within the box
+      let count = 0;
+      for (const note of notes) {
+        if (note.type === 'break') continue;
+        const nx = beatToX(note.startBeat);
+        const ny = pitchToY(note.pitch);
+        const nw = note.duration * zoom;
+        // Note intersects box if its rectangle overlaps
+        if (nx + nw >= x1 && nx <= x2 && ny + noteHeight / 2 >= y1 && ny - noteHeight / 2 <= y2) {
+          selectedNotes.add(note.id);
+          count++;
+        }
+      }
+      selectedNotes = new Set(selectedNotes); // trigger reactivity
+      if (count > 0) selectedNote = [...selectedNotes][0];
+      console.log(`[BoxSelect] Selected ${count} notes (total ${selectedNotes.size})`);
+      boxSelectStart = null;
+      boxSelectEnd = null;
+      draw();
+      return;
+    }
+
     if (isDragging) {
       console.log('[Mouse] mouseUp, drag ended');
       stopDragOsc();
@@ -1191,6 +1369,124 @@
     dragLastPitch = null;
   }
 
+  // ──── Clipboard: Cut / Copy / Paste ──────────
+  function getSelectedNoteObjects() {
+    if (selectedNotes.size > 0) {
+      return notes.filter(n => selectedNotes.has(n.id) && n.type !== 'break');
+    } else if (selectedNote !== null) {
+      const n = notes.find(nn => nn.id === selectedNote && nn.type !== 'break');
+      return n ? [n] : [];
+    }
+    return [];
+  }
+
+  function clipboardCut() {
+    const sel = getSelectedNoteObjects();
+    if (sel.length === 0) return;
+
+    const minBeat = Math.min(...sel.map(n => n.startBeat));
+    clipboard = {
+      notes: sel.map(n => ({
+        startBeat: n.startBeat - minBeat,
+        duration: n.duration,
+        pitch: n.pitch,
+        syllable: n.syllable,
+        type: n.type || ':',
+        isRap: n.isRap || false,
+        isGolden: n.isGolden || false,
+      })),
+      mode: 'cut',
+      sourceBeat: minBeat,
+    };
+    cutNoteIds = new Set(sel.map(n => n.id));
+    pasteMode = true;
+    pastePreviewBeat = null;
+    console.log(`[Clipboard] Cut ${sel.length} notes from beat ${minBeat}`);
+    closeContextMenu();
+    draw();
+  }
+
+  function clipboardCopy() {
+    const sel = getSelectedNoteObjects();
+    if (sel.length === 0) return;
+
+    const minBeat = Math.min(...sel.map(n => n.startBeat));
+    clipboard = {
+      notes: sel.map(n => ({
+        startBeat: n.startBeat - minBeat,
+        duration: n.duration,
+        pitch: n.pitch,
+        syllable: n.syllable,
+        type: n.type || ':',
+        isRap: n.isRap || false,
+        isGolden: n.isGolden || false,
+      })),
+      mode: 'copy',
+      sourceBeat: minBeat,
+    };
+    cutNoteIds = new Set();
+    pasteMode = true;
+    pastePreviewBeat = null;
+    console.log(`[Clipboard] Copied ${sel.length} notes from beat ${minBeat}`);
+    closeContextMenu();
+    draw();
+  }
+
+  function finalizePaste(targetBeat) {
+    if (!clipboard || !pasteMode) return;
+    pushUndo();
+
+    // If cut mode, remove original notes
+    if (clipboard.mode === 'cut' && cutNoteIds.size > 0) {
+      notes = notes.filter(n => !cutNoteIds.has(n.id));
+      cutNoteIds = new Set();
+    }
+
+    // Generate new note IDs and insert copied notes
+    let maxId = Math.max(0, ...notes.map(n => typeof n.id === 'number' ? n.id : 0));
+    const newNotes = clipboard.notes.map(cn => ({
+      id: ++maxId,
+      startBeat: targetBeat + cn.startBeat,
+      duration: cn.duration,
+      pitch: cn.pitch,
+      syllable: cn.syllable,
+      type: cn.type,
+      isRap: cn.isRap,
+      isGolden: cn.isGolden,
+    }));
+
+    notes = [...notes, ...newNotes].sort((a, b) => a.startBeat - b.startBeat);
+
+    // Select the newly pasted notes
+    selectedNotes = new Set(newNotes.map(n => n.id));
+    selectedNote = newNotes[0]?.id || null;
+
+    // If copy mode, stay in paste mode for repeated pastes
+    if (clipboard.mode === 'copy') {
+      pastePreviewBeat = null;
+    } else {
+      // Cut mode: exit paste mode after placing
+      pasteMode = false;
+      clipboard = null;
+      pastePreviewBeat = null;
+    }
+
+    editorState.update(s => ({ ...s, hasChanges: true }));
+    hasUnsavedChanges = true;
+    console.log(`[Clipboard] Pasted ${newNotes.length} notes at beat ${targetBeat}`);
+    draw();
+  }
+
+  function cancelPaste() {
+    // Restore cut notes (make them visible again)
+    cutNoteIds = new Set();
+    pasteMode = false;
+    clipboard = null;
+    pastePreviewBeat = null;
+    console.log('[Clipboard] Paste cancelled');
+    draw();
+  }
+
   // ──── Context Menu ──────────────────────────
   function handleContextMenu(event) {
     event.preventDefault();
@@ -1227,6 +1523,10 @@
 
     if (found) {
       selectedNote = found.id;
+      // If right-clicking on a note in the multi-selection, keep it; otherwise select just this note
+      if (!selectedNotes.has(found.id)) {
+        selectedNotes = new Set();
+      }
       syllableUndoPushed = false;
       if (!isBreak) editingSyllable = found.syllable;
       // Store the exact beat where user right-clicked (for split-at-cursor)
@@ -1266,6 +1566,8 @@
     pushUndo();
     notes = notes.filter(n => n.id !== id);
     if (selectedNote === id) selectedNote = null;
+    selectedNotes.delete(id);
+    selectedNotes = new Set(selectedNotes);
     markUnsaved();
     closeContextMenu();
     computeTotalBeats();
@@ -1750,6 +2052,33 @@
       return;
     }
 
+    // ── Clipboard shortcuts ──
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyX') {
+      e.preventDefault();
+      clipboardCut();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyC') {
+      e.preventDefault();
+      clipboardCopy();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyV') {
+      e.preventDefault();
+      if (clipboard) {
+        // If already in paste mode, paste at playhead position
+        if (pasteMode) {
+          finalizePaste(Math.round(playbackBeat));
+        } else {
+          // Re-enter paste mode
+          pasteMode = true;
+          pastePreviewBeat = null;
+          draw();
+        }
+      }
+      return;
+    }
+
     // Spacebar: toggle play/pause
     if (e.code === 'Space') {
       e.preventDefault();
@@ -1771,10 +2100,16 @@
       e.preventDefault();
       toggleLoop();
     }
-    // Escape: clear loop region
+    // Escape: cancel paste mode, or clear loop, or deselect
     if (e.code === 'Escape') {
-      if (loopStartBeat !== null) {
-        e.preventDefault();
+      e.preventDefault();
+      if (pasteMode) {
+        cancelPaste();
+      } else if (selectedNotes.size > 0) {
+        selectedNotes = new Set();
+        selectedNote = null;
+        draw();
+      } else if (loopStartBeat !== null) {
         clearLoop();
       }
     }
@@ -1787,7 +2122,17 @@
       }
       if (e.code === 'Delete' || e.code === 'Backspace') {
         e.preventDefault();
-        deleteNote(selectedNote);
+        if (selectedNotes.size > 1) {
+          pushUndo();
+          notes = notes.filter(n => !selectedNotes.has(n.id));
+          selectedNotes = new Set();
+          selectedNote = null;
+          editorState.update(s => ({ ...s, hasChanges: true }));
+          hasUnsavedChanges = true;
+          draw();
+        } else {
+          deleteNote(selectedNote);
+        }
       }
       if (e.code === 'KeyS' && !e.shiftKey) {
         e.preventDefault();
@@ -2315,6 +2660,24 @@
     ></canvas>
   </div>
 
+  <!-- Paste mode overlay bar -->
+  {#if pasteMode}
+    <div class="paste-mode-bar">
+      <span class="paste-mode-text">
+        {clipboard?.mode === 'cut' ? '✂️ CUT' : '📋 COPY'} MODE — Click on the canvas to place {clipboard?.notes.length || 0} note{clipboard?.notes.length !== 1 ? 's' : ''}, or press Esc to cancel
+      </span>
+      <button class="paste-cancel-btn" on:click={cancelPaste}>✕ Cancel</button>
+    </div>
+  {/if}
+
+  <!-- Selection count indicator -->
+  {#if selectedNotes.size > 1 && !pasteMode}
+    <div class="selection-info-bar">
+      <span>{selectedNotes.size} notes selected</span>
+      <span class="selection-hint">⌘X cut · ⌘C copy · Del delete · Esc deselect</span>
+    </div>
+  {/if}
+
   <!-- Context Menu -->
   {#if contextMenu.visible}
     {@const ctxNote = notes.find(n => n.id === contextMenu.noteId)}
@@ -2387,6 +2750,13 @@
             >F Rap</button>
           </div>
           <div class="ctx-divider"></div>
+          <button class="ctx-item" on:click={clipboardCut}>
+            ✂️ Cut {selectedNotes.size > 1 ? `(${selectedNotes.size} notes)` : ''} <span class="ctx-shortcut">⌘X</span>
+          </button>
+          <button class="ctx-item" on:click={clipboardCopy}>
+            📋 Copy {selectedNotes.size > 1 ? `(${selectedNotes.size} notes)` : ''} <span class="ctx-shortcut">⌘C</span>
+          </button>
+          <div class="ctx-divider"></div>
           <button class="ctx-item danger" on:click={() => deleteNote(ctxNote.id)}>
             🗑 Delete Note <span class="ctx-shortcut">Del</span>
           </button>
@@ -2409,6 +2779,12 @@
         <button class="ctx-item" on:click={() => addBreakAt(contextMenu.beat)}>
           ┃ Add Break
         </button>
+        {#if clipboard}
+          <div class="ctx-divider"></div>
+          <button class="ctx-item" on:click={() => { finalizePaste(contextMenu.beat); closeContextMenu(); }}>
+            📌 Paste Here ({clipboard.notes.length} notes)
+          </button>
+        {/if}
         <div class="ctx-divider"></div>
         <button class="ctx-item" on:click={() => { seekToTime(beatToTime(contextMenu.beat)); closeContextMenu(); }}>
           ⏩ Seek Here
@@ -2496,6 +2872,59 @@
   }
 
   h2 { color: #4fc3f7; margin-bottom: 1rem; }
+
+  /* ── Paste mode bar ── */
+  .paste-mode-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    background: linear-gradient(90deg, #1a3a2a, #2a5a3a);
+    border: 1px solid #4caf50;
+    border-radius: 6px;
+    padding: 6px 16px;
+    margin: 4px 0;
+    animation: paste-pulse 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes paste-pulse {
+    from { border-color: #4caf50; }
+    to { border-color: #81c784; box-shadow: 0 0 8px rgba(76, 175, 80, 0.3); }
+  }
+  .paste-mode-text {
+    color: #a5d6a7;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .paste-cancel-btn {
+    background: #c62828;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .paste-cancel-btn:hover { background: #e53935; }
+
+  /* ── Selection info bar ── */
+  .selection-info-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    background: rgba(33, 150, 243, 0.1);
+    border: 1px solid rgba(33, 150, 243, 0.3);
+    border-radius: 6px;
+    padding: 4px 16px;
+    margin: 4px 0;
+    color: #90caf9;
+    font-size: 0.82rem;
+  }
+  .selection-hint {
+    color: #607d8b;
+    font-size: 0.75rem;
+  }
 
   .toolbar {
     display: flex;
