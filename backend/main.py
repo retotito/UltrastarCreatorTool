@@ -1079,11 +1079,11 @@ async def generate_ultrastar_files(session_id: str):
             from services.alignment import align_lyrics_to_audio
             syllable_timings = align_lyrics_to_audio(vocal_path, lyrics, language)
         
-        # Calculate GAP aligned to the musical beat grid
-        # Instead of GAP = first syllable (forces beat 0 = first note),
-        # we find the last musical beat at or before the first syllable.
-        # This way the beat grid follows the music's rhythm and notes
-        # can start at fractional beats (e.g., beat 3.5).
+        # Calculate GAP aligned to the musical beat grid.
+        # GAP = the beat phase offset, i.e. where the song's actual rhythm starts.
+        # The beat grid follows the real music (kick drum, instruments),
+        # NOT the first syllable. The first note will land on whatever beat
+        # it naturally falls on (e.g. beat 32, 64, etc.).
         gap_ms = 0
         if syllable_timings:
             first_start_ms = syllable_timings[0]["start"] * 1000
@@ -1091,12 +1091,8 @@ async def generate_ultrastar_files(session_id: str):
             beat_period_ms = 60000.0 / musical_bpm
             phase_ms = beat_phase_sec * 1000.0
             
-            # Find the last musical beat at or before the first syllable
-            n_beats = int((first_start_ms - phase_ms) / beat_period_ms)
-            gap_ms = int(phase_ms + n_beats * beat_period_ms)
-            if gap_ms > first_start_ms:
-                gap_ms = int(gap_ms - beat_period_ms)
-            gap_ms = max(0, gap_ms)
+            # GAP = beat phase (where the actual first musical beat falls)
+            gap_ms = max(0, int(round(phase_ms)))
             
             first_note_offset_ms = first_start_ms - gap_ms
             first_note_beat = first_note_offset_ms * bpm / 15000
