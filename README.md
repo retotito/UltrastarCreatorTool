@@ -9,7 +9,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 | Step | What you do | What the tool does |
 |------|-------------|-------------------|
 | **1. Upload** | Upload a song (full mix or vocals-only) | Optionally separates vocals using Demucs |
-| **2. Lyrics** | Paste or type the song lyrics | Auto-hyphenates syllables (e.g. `beau-ti-ful`) |
+| **2. Lyrics** | Transcribe lyrics | Auto-hyphenates syllables (e.g. `beau-ti-ful`) |
 | **3. Generate** | Click "Generate" | Detects BPM, analyzes pitch, aligns syllables to audio |
 | **4. Editor** | Review and adjust notes in the piano roll | Shows waveform, plays MIDI pitches, supports grid snap |
 | **5. Export** | Download your files | Exports Ultrastar .txt, MIDI, and a processing summary |
@@ -53,8 +53,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 - **GAP adjustment** (⌘S) — click any grid line to set the GAP position
 - **Text editor** — edit raw Ultrastar content with live preview
 - **Undo/Redo** — full snapshot history (notes, BPM, GAP, headers)
-- **Reference overlay** — compare AI-generated notes with reference songs
-- **Waveform display** — see the audio waveform behind the notes
+- **Waveform display** — see the audio (full-mix or vocal-track) waveform by the the notes
 - **Extra headers** — YOUTUBE, COVER, GENRE and other Ultrastar tags
 - **Context menus** — right-click on notes or empty space for quick actions
 
@@ -72,7 +71,6 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 
 ### Project Management
 - **Project launcher** — create, open, rename, and delete song projects
-- **Auto-save** — editor state saved automatically on changes
 - **Session persistence** — projects survive server restarts
 
 ### Export
