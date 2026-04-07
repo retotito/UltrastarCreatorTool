@@ -80,8 +80,8 @@ sudo apt install ffmpeg
 ### 1. Clone & Setup Backend
 
 ```bash
-git clone https://github.com/retotito/SongCreatorGrok.git
-cd SongCreatorGrok
+git clone https://github.com/retotito/UltrastarCreatorTool.git
+cd UltrastarCreatorTool
 
 # Create virtual environment
 python3 -m venv .venv
@@ -97,7 +97,7 @@ cd backend && python main.py
 ### 2. Setup Frontend (new terminal)
 
 ```bash
-cd SongCreatorGrok/frontend
+cd UltrastarCreatorTool/frontend
 
 # Install Node dependencies
 npm install
