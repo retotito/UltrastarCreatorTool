@@ -57,15 +57,6 @@
   let pastePreviewBeat = null; // ghost preview beat position
   let cutNoteIds = new Set();  // ids of notes being cut (rendered semi-transparent)
 
-  // Grid alignment line (press G to show, drag to reposition beat 0)
-  let gridAlignMode = false;      // alignment line visible
-  let gridAlignTimeSec = 0;       // line position in absolute audio seconds
-  let gridAlignDragging = false;  // currently dragging the alignment line
-
-  // Set GAP mode (Ctrl+S: pick which grid line becomes Ultrastar beat 0)
-  let setGapMode = false;          // set-GAP mode active
-  let setGapHoverBeat = null;      // beat of the grid line currently hovered (or null)
-
   // Drag pitch preview (oscillator while dragging a note)
   let dragOsc = null;
   let dragGain = null;
@@ -578,95 +569,24 @@
       const isEighth = b % beatsPerEighth === 0;
       
       if (isMeasure) {
-        ctx.strokeStyle = '#4a4a7e';
+        ctx.strokeStyle = '#3a3a5e';
         ctx.lineWidth = 1.5;
       } else if (isQuarter) {
-        ctx.strokeStyle = '#3a3a6e';
+        ctx.strokeStyle = '#2a2a4e';
         ctx.lineWidth = 1;
       } else if (isEighth) {
-        ctx.strokeStyle = '#2a2a50';
+        ctx.strokeStyle = '#1e1e38';
         ctx.lineWidth = 0.5;
       } else {
         // 16th note level — only show if zoomed in enough (> 4px per beat)
         if (zoom < 4) continue;
-        ctx.strokeStyle = '#1e1e38';
+        ctx.strokeStyle = '#161625';
         ctx.lineWidth = 0.3;
       }
       ctx.beginPath();
       ctx.moveTo(x, wt);
       ctx.lineTo(x, pianoH);
       ctx.stroke();
-    }
-
-    // ── GAP marker — persistent yellow line at beat 0 ──
-    {
-      const gapX = beatToX(0);
-      if (gapX >= -2 && gapX <= w + 2) {
-        ctx.strokeStyle = '#ffd70066';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        ctx.moveTo(gapX, wt);
-        ctx.lineTo(gapX, pianoH);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Small label
-        ctx.fillStyle = '#ffd70088';
-        ctx.font = '9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('GAP', gapX, wt + 12);
-        ctx.textAlign = 'left';
-      }
-    }
-
-    // ── Set GAP mode: highlight hovered grid line ──
-    if (setGapMode && setGapHoverBeat !== null) {
-      const hx = beatToX(setGapHoverBeat);
-      if (hx >= -2 && hx <= w + 2) {
-        // Bright yellow highlight line
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(hx, wt);
-        ctx.lineTo(hx, pianoH);
-        ctx.stroke();
-
-        // Handle dot at top
-        ctx.fillStyle = '#ffd700';
-        ctx.beginPath();
-        ctx.arc(hx, wt + 14, 7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('S', hx, wt + 17);
-        ctx.textAlign = 'left';
-
-        // Label showing time
-        const hoverTimeSec = beatToTime(setGapHoverBeat);
-        const ms = Math.round(hoverTimeSec * 1000);
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 10px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(`GAP → ${ms}ms`, hx, pianoH + 14);
-        ctx.textAlign = 'left';
-
-        // Hint at top
-        ctx.fillStyle = '#ffd700cc';
-        ctx.font = '11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Click to set GAP here · Esc to cancel', w / 2, wt + 30);
-        ctx.textAlign = 'left';
-      }
-    } else if (setGapMode) {
-      // Show hint even when not hovering a line
-      ctx.fillStyle = '#ffd700aa';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Hover a grid line to set as GAP · Esc to cancel', w / 2, wt + 30);
-      ctx.textAlign = 'left';
     }
 
     // ── Time axis (bottom strip) ──
@@ -884,55 +804,6 @@
       }
     }
 
-    // ── Grid alignment line (when in grid-align mode) ──
-    if (gridAlignMode) {
-      const lineBeat = ((gridAlignTimeSec - gapMs / 1000) * bpm) / 15;
-      const lx = beatToX(lineBeat);
-      const pianoBottom = h - timeAxisHeight;
-
-      // Full-height blue line
-      ctx.strokeStyle = '#42a5f5';
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(lx, 0);
-      ctx.lineTo(lx, pianoBottom);
-      ctx.stroke();
-
-      // Handle at top (circle)
-      ctx.fillStyle = '#42a5f5';
-      ctx.beginPath();
-      ctx.arc(lx, 14, 8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 10px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('G', lx, 18);
-      ctx.textAlign = 'left';
-
-      // Handle at bottom (circle on time axis)
-      ctx.fillStyle = '#42a5f5';
-      ctx.beginPath();
-      ctx.arc(lx, pianoBottom + timeAxisHeight / 2, 8, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Time label near bottom handle
-      const mins = Math.floor(gridAlignTimeSec / 60);
-      const secs = (gridAlignTimeSec % 60).toFixed(2);
-      ctx.fillStyle = '#42a5f5';
-      ctx.font = 'bold 10px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${mins}:${secs.padStart(5, '0')}`, lx, pianoBottom + timeAxisHeight - 2);
-      ctx.textAlign = 'left';
-
-      // Hint text at top
-      ctx.fillStyle = '#42a5f5aa';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Drag to align • ←→ nudge by beat • ⌘G to cancel', w / 2, pianoBottom - 6);
-      ctx.textAlign = 'left';
-    }
-
     // Playback cursor (show when playing OR when paused at non-zero position)
     if (isPlaying || currentTimeSec > 0) {
       const cx = beatToX(playbackBeat);
@@ -1028,52 +899,6 @@
 
     // Ignore right-click — let contextmenu handler deal with it
     if (event.button === 2) return;
-
-    // ── Grid alignment line: click near line to start dragging ──
-    // ── Set GAP mode: click on hovered grid line → set GAP ──
-    if (setGapMode) {
-      if (setGapHoverBeat !== null) {
-        const newGapTimeSec = beatToTime(setGapHoverBeat);
-        const newGapMs = Math.max(0, Math.round(newGapTimeSec * 1000));
-        const oldGapMs = gapMs;
-        if (newGapMs !== oldGapMs) {
-          pushUndo();
-          gapMs = newGapMs;
-          requantizeFromMs();
-          if (currentTimeSec > 0) playbackBeat = timeToBeat(currentTimeSec);
-          bpmChanged = (bpm !== initialBpm || gapMs !== initialGap);
-          markUnsaved();
-          console.log(`[SetGAP] Applied GAP: ${oldGapMs}ms → ${gapMs}ms (beat ${setGapHoverBeat})`);
-        }
-        // Exit set-GAP mode
-        setGapMode = false;
-        setGapHoverBeat = null;
-        canvasEl.style.cursor = '';
-        draw();
-      }
-      return;
-    }
-
-    if (gridAlignMode) {
-      const lineTimeSec = gridAlignTimeSec;
-      const lineBeat = ((lineTimeSec - gapMs / 1000) * bpm) / 15;
-      const lineX = beatToX(lineBeat);
-      if (Math.abs(mx - lineX) <= 20) {
-        // Grab the alignment line
-        gridAlignDragging = true;
-        canvasEl.style.cursor = 'grabbing';
-        console.log(`[GridAlign] Drag start at ${gridAlignTimeSec.toFixed(3)}s`);
-        return;
-      }
-      // Click far from line — place line at click position
-      const clickBeat = xToBeat(mx);
-      gridAlignTimeSec = beatToTime(clickBeat);
-      gridAlignDragging = true;
-      canvasEl.style.cursor = 'grabbing';
-      console.log(`[GridAlign] Placed at ${gridAlignTimeSec.toFixed(3)}s`);
-      draw();
-      return;
-    }
 
     // Close context menu on left-click
     if (contextMenu.visible) closeContextMenu();
@@ -1242,14 +1067,6 @@
     const mx = event.clientX - rect.left;
     const my = event.clientY - rect.top;
 
-    // ── Grid alignment line dragging (visual only, no recalc yet) ──
-    if (gridAlignDragging) {
-      const beat = xToBeat(mx);
-      gridAlignTimeSec = Math.max(0, beatToTime(beat));
-      draw();
-      return;
-    }
-
     // Playhead drag (scrub)
     if (playheadDrag) {
       const beat = xToBeat(mx);
@@ -1295,40 +1112,9 @@
       return;
     }
 
-    // ── Set GAP mode: detect nearest grid line under cursor ──
-    if (setGapMode) {
-      const hoverBeat = xToBeat(mx);
-      // Snap to nearest quarter-note grid line
-      const nearestQuarter = Math.round(hoverBeat / BEATS_PER_QUARTER) * BEATS_PER_QUARTER;
-      const nearestX = beatToX(nearestQuarter);
-      if (Math.abs(mx - nearestX) <= 12) {
-        if (setGapHoverBeat !== nearestQuarter) {
-          setGapHoverBeat = nearestQuarter;
-          canvasEl.style.cursor = 'pointer';
-          draw();
-        }
-      } else {
-        if (setGapHoverBeat !== null) {
-          setGapHoverBeat = null;
-          canvasEl.style.cursor = 'crosshair';
-          draw();
-        }
-      }
-      return;
-    }
-
     // Cursor style based on hover target
     if (!isDragging && !isSettingLoop && !loopHandleDrag && !playheadDrag) {
       let cursor = '';
-
-      // Check grid alignment line hover
-      if (gridAlignMode && !gridAlignDragging) {
-        const lineBeat = ((gridAlignTimeSec - gapMs / 1000) * bpm) / 15;
-        const lineX = beatToX(lineBeat);
-        if (Math.abs(mx - lineX) <= 20) {
-          cursor = 'grab';
-        }
-      }
 
       // Check playhead handle (when paused)
       if (!isPlaying && currentTimeSec > 0) {
@@ -1462,28 +1248,6 @@
   }
 
   function handleMouseUp() {
-    // ── Finish grid alignment drag → apply new GAP ──
-    if (gridAlignDragging) {
-      gridAlignDragging = false;
-      // No snapping — GAP goes exactly where you placed the line
-      const newGapMs = Math.max(0, Math.round(gridAlignTimeSec * 1000));
-      const oldGapMs = gapMs;
-      if (newGapMs !== oldGapMs) {
-        pushUndo();
-        gapMs = newGapMs;
-        requantizeFromMs();
-        if (currentTimeSec > 0) playbackBeat = timeToBeat(currentTimeSec);
-        bpmChanged = (bpm !== initialBpm || gapMs !== initialGap);
-        markUnsaved();
-        console.log(`[GridAlign] Applied GAP: ${oldGapMs}ms → ${gapMs}ms`);
-      }
-      // Exit alignment mode
-      gridAlignMode = false;
-      canvasEl.style.cursor = '';
-      draw();
-      return;
-    }
-
     // Finish playhead drag
     if (playheadDrag) {
       playheadDrag = false;
@@ -2154,8 +1918,7 @@
 
   function handleWheel(event) {
     event.preventDefault();
-
-    // While in grid-align mode, scroll still works normally to navigate
+    
     if (event.ctrlKey || event.metaKey) {
       // Zoom
       const oldZoom = zoom;
@@ -2276,50 +2039,6 @@
     // Skip shortcuts when typing in context menu input
     if (e.target.tagName === 'INPUT' && e.target.classList.contains('ctx-syllable-input')) return;
 
-    // Toggle Set GAP mode with Ctrl/Cmd+S
-    if (e.code === 'KeyS' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
-      e.preventDefault();
-      if (!setGapMode) {
-        setGapMode = true;
-        setGapHoverBeat = null;
-        if (canvasEl) canvasEl.style.cursor = 'crosshair';
-        console.log('[SetGAP] ON');
-        draw();
-      } else {
-        setGapMode = false;
-        setGapHoverBeat = null;
-        if (canvasEl) canvasEl.style.cursor = '';
-        console.log('[SetGAP] Cancelled');
-        draw();
-      }
-      return;
-    }
-
-    // Toggle grid alignment mode with Ctrl/Cmd+G
-    if (e.code === 'KeyG' && (e.metaKey || e.ctrlKey) && !e.altKey) {
-      e.preventDefault();
-      if (!gridAlignMode) {
-        // Enter alignment mode — place line at nearest quarter-note beat to playhead
-        gridAlignMode = true;
-        gridAlignDragging = false;
-        // Find the nearest quarter-note grid line to the playhead
-        const nearestQuarter = Math.round(playbackBeat / BEATS_PER_QUARTER) * BEATS_PER_QUARTER;
-        gridAlignTimeSec = beatToTime(nearestQuarter);
-        if (gridAlignTimeSec < 0) gridAlignTimeSec = beatToTime(0);
-        if (canvasEl) canvasEl.style.cursor = 'ew-resize';
-        console.log(`[GridAlign] ON — line at ${gridAlignTimeSec.toFixed(3)}s (beat ${nearestQuarter})`);
-        draw();
-      } else {
-        // Cancel alignment mode without changing GAP
-        gridAlignMode = false;
-        gridAlignDragging = false;
-        if (canvasEl) canvasEl.style.cursor = '';
-        console.log('[GridAlign] Cancelled');
-        draw();
-      }
-      return;
-    }
-
     console.log(`[Key] ${e.code} shift=${e.shiftKey} ctrl=${e.ctrlKey} meta=${e.metaKey}`);
 
     // Undo / Redo (Cmd+Z / Cmd+Shift+Z on Mac, Ctrl+Z / Ctrl+Shift+Z on others)
@@ -2365,29 +2084,15 @@
       e.preventDefault();
       togglePlayback();
     }
-    // Left arrow: in grid align mode, nudge line one quarter note left; otherwise seek
+    // Left arrow: move cursor (seek) — 5s or 1s with Shift
     if (e.code === 'ArrowLeft') {
       e.preventDefault();
-      if (gridAlignMode) {
-        const beatPeriodSec = (BEATS_PER_QUARTER * 15) / bpm;
-        gridAlignTimeSec = Math.max(0, gridAlignTimeSec - beatPeriodSec);
-        console.log(`[GridAlign] ← ${gridAlignTimeSec.toFixed(3)}s`);
-        draw();
-      } else {
-        seekPlayback(e.shiftKey ? -1 : -5);
-      }
+      seekPlayback(e.shiftKey ? -1 : -5);
     }
-    // Right arrow: in grid align mode, nudge line one quarter note right; otherwise seek
+    // Right arrow: move cursor (seek) — 5s or 1s with Shift
     if (e.code === 'ArrowRight') {
       e.preventDefault();
-      if (gridAlignMode) {
-        const beatPeriodSec = (BEATS_PER_QUARTER * 15) / bpm;
-        gridAlignTimeSec = gridAlignTimeSec + beatPeriodSec;
-        console.log(`[GridAlign] → ${gridAlignTimeSec.toFixed(3)}s`);
-        draw();
-      } else {
-        seekPlayback(e.shiftKey ? 1 : 5);
-      }
+      seekPlayback(e.shiftKey ? 1 : 5);
     }
 
     // L: toggle loop on/off
@@ -2395,16 +2100,10 @@
       e.preventDefault();
       toggleLoop();
     }
-    // Escape: cancel paste mode, setGap mode, or clear loop, or deselect
+    // Escape: cancel paste mode, or clear loop, or deselect
     if (e.code === 'Escape') {
       e.preventDefault();
-      if (setGapMode) {
-        setGapMode = false;
-        setGapHoverBeat = null;
-        if (canvasEl) canvasEl.style.cursor = '';
-        console.log('[SetGAP] Cancelled via Escape');
-        draw();
-      } else if (pasteMode) {
+      if (pasteMode) {
         cancelPaste();
       } else if (selectedNotes.size > 0) {
         selectedNotes = new Set();
@@ -2444,10 +2143,6 @@
         mergeWithNext(selectedNote);
       }
     }
-  }
-
-  function handleKeyup(e) {
-    // Grid align mode is toggle-based (G on/off), no keyup action needed
   }
 
   function updatePlayback() {
@@ -2567,14 +2262,12 @@
   function updateMetronome(currentBeat) {
     // Click on every quarter note (every BEATS_PER_QUARTER ultrastar beats)
     // Apply offset to shift the click grid
-    // Works for negative beats (before GAP) too, so the grid is audible from audio start
     const offsetBeat = currentBeat - metronomeOffset;
     const quarterBeat = Math.floor(offsetBeat / BEATS_PER_QUARTER);
-    if (quarterBeat !== lastMetronomeBeat) {
+    if (quarterBeat !== lastMetronomeBeat && currentBeat >= 0) {
       lastMetronomeBeat = quarterBeat;
-      // Downbeat = beat 0 (where GAP is). Use modulo that works for negatives.
-      const mod = ((quarterBeat % 4) + 4) % 4;
-      const isDownbeat = mod === 0;
+      // Downbeat = first beat of measure (assuming 4/4 time, every 4 quarter notes)
+      const isDownbeat = quarterBeat % 4 === 0;
       playMetronomeClick(isDownbeat);
     }
   }
@@ -2817,7 +2510,6 @@
     }
     window.addEventListener('keydown', handleKeydown);
     window.addEventListener('keydown', handleKeydownSave);
-    window.addEventListener('keyup', handleKeyup);
     window.addEventListener('resize', resizeCanvas);
     window.addEventListener('click', handleGlobalClick);
   });
@@ -2826,7 +2518,6 @@
     cancelAnimationFrame(animFrame);
     window.removeEventListener('keydown', handleKeydown);
     window.removeEventListener('keydown', handleKeydownSave);
-    window.removeEventListener('keyup', handleKeyup);
     window.removeEventListener('resize', resizeCanvas);
     window.removeEventListener('click', handleGlobalClick);
   });
@@ -2909,12 +2600,10 @@
       <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; console.log('[UI] bpm+', bpm); handleBpmGapChange(); }}>+</button>
 
       <span class="bpm-label gap-label">GAP</span>
-      <button class="tool-btn sm" on:click={() => { gapMs = Math.max(0, gapMs - Math.round(15000 / bpm)); console.log('[UI] gap-', gapMs); handleBpmGapChange(); }}>−</button>
-      <input type="number" class="gap-input" bind:value={gapMs} on:change={() => { console.log('[UI] gap input', gapMs); handleBpmGapChange(); }} step="1" min="0" />
-      <button class="tool-btn sm" on:click={() => { gapMs = gapMs + Math.round(15000 / bpm); console.log('[UI] gap+', gapMs); handleBpmGapChange(); }}>+</button>
-      <span class="bpm-label gap-beats" title="GAP in musical beats (⌘G to visually adjust)">
-        {(gapMs * bpm / 15000).toFixed(1)}♩
-      </span>
+      <button class="tool-btn sm" on:click={() => { gapMs = Math.max(0, gapMs - 100); console.log('[UI] gap-', gapMs); handleBpmGapChange(); }}>−</button>
+      <input type="number" class="gap-input" bind:value={gapMs} on:change={() => { console.log('[UI] gap input', gapMs); handleBpmGapChange(); }} step="100" min="0" />
+      <button class="tool-btn sm" on:click={() => { gapMs = gapMs + 100; console.log('[UI] gap+', gapMs); handleBpmGapChange(); }}>+</button>
+      <span class="bpm-label">ms</span>
 
       {#if bpmChanged}
         <button class="tool-btn apply-btn" on:click={handleApplyBpm} disabled={applyingBpm}>
@@ -3463,13 +3152,6 @@
 
   .gap-label {
     margin-left: 0.6rem;
-  }
-
-  .gap-beats {
-    color: #4fc3f7;
-    font-family: monospace;
-    font-size: 0.75rem;
-    opacity: 0.7;
   }
 
   .bpm-input, .gap-input {
