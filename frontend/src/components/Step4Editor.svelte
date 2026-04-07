@@ -574,24 +574,46 @@
       const isEighth = b % beatsPerEighth === 0;
       
       if (isMeasure) {
-        ctx.strokeStyle = '#3a3a5e';
+        ctx.strokeStyle = '#4a4a7e';
         ctx.lineWidth = 1.5;
       } else if (isQuarter) {
-        ctx.strokeStyle = '#2a2a4e';
+        ctx.strokeStyle = '#3a3a6e';
         ctx.lineWidth = 1;
       } else if (isEighth) {
-        ctx.strokeStyle = '#1e1e38';
+        ctx.strokeStyle = '#2a2a50';
         ctx.lineWidth = 0.5;
       } else {
         // 16th note level — only show if zoomed in enough (> 4px per beat)
         if (zoom < 4) continue;
-        ctx.strokeStyle = '#161625';
+        ctx.strokeStyle = '#1e1e38';
         ctx.lineWidth = 0.3;
       }
       ctx.beginPath();
       ctx.moveTo(x, wt);
       ctx.lineTo(x, pianoH);
       ctx.stroke();
+    }
+
+    // ── GAP marker — persistent yellow line at beat 0 ──
+    {
+      const gapX = beatToX(0);
+      if (gapX >= -2 && gapX <= w + 2) {
+        ctx.strokeStyle = '#ffd70066';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(gapX, wt);
+        ctx.lineTo(gapX, pianoH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Small label
+        ctx.fillStyle = '#ffd70088';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAP', gapX, wt + 12);
+        ctx.textAlign = 'left';
+      }
     }
 
     // ── Time axis (bottom strip) ──
@@ -854,7 +876,7 @@
       ctx.fillStyle = '#42a5f5aa';
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Drag to align • ←→ nudge by beat • G to cancel', w / 2, pianoBottom - 6);
+      ctx.fillText('Drag to align • ←→ nudge by beat • ⌘G to cancel', w / 2, pianoBottom - 6);
       ctx.textAlign = 'left';
     }
 
@@ -2156,8 +2178,9 @@
     // Skip shortcuts when typing in context menu input
     if (e.target.tagName === 'INPUT' && e.target.classList.contains('ctx-syllable-input')) return;
 
-    // Toggle grid alignment mode with G
-    if (e.code === 'KeyG' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // Toggle grid alignment mode with Ctrl/Cmd+G
+    if (e.code === 'KeyG' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+      e.preventDefault();
       if (!gridAlignMode) {
         // Enter alignment mode — place line at nearest quarter-note beat to playhead
         gridAlignMode = true;
@@ -2766,7 +2789,7 @@
       <button class="tool-btn sm" on:click={() => { gapMs = Math.max(0, gapMs - Math.round(15000 / bpm)); console.log('[UI] gap-', gapMs); handleBpmGapChange(); }}>−</button>
       <input type="number" class="gap-input" bind:value={gapMs} on:change={() => { console.log('[UI] gap input', gapMs); handleBpmGapChange(); }} step="1" min="0" />
       <button class="tool-btn sm" on:click={() => { gapMs = gapMs + Math.round(15000 / bpm); console.log('[UI] gap+', gapMs); handleBpmGapChange(); }}>+</button>
-      <span class="bpm-label gap-beats" title="GAP in musical beats (press G to show alignment line)">
+      <span class="bpm-label gap-beats" title="GAP in musical beats (⌘G to visually adjust)">
         {(gapMs * bpm / 15000).toFixed(1)}♩
       </span>
 
