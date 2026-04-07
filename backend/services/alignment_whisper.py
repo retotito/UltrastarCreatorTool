@@ -27,7 +27,7 @@ from utils.logger import log_step
 def parse_lyrics(lyrics_text: str) -> List[List[dict]]:
     """Parse lyrics text into list of lines, each containing syllables.
     
-    Duplicated from alignment.py to avoid triggering the slow MFA check
+    Duplicated from alignment.py to keep imports independent
     that runs at import time in that module.
     
     Rules:

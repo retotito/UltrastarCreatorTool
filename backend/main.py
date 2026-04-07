@@ -1045,7 +1045,7 @@ async def generate_ultrastar_files(session_id: str):
         whisper_method = session.get("whisper_method", "whisper")
         
         # Primary: WhisperX-based alignment (phoneme-aligned ~50ms accuracy)
-        # Fallback: vanilla Whisper alignment (~200ms), then MFA
+        # Fallback: energy-based alignment
         syllable_timings = None
         if whisper_words:
             log_step("GENERATE", f"Using {whisper_method} alignment ({len(whisper_words)} words, {len(whisper_chars)} chars)")
@@ -1059,9 +1059,9 @@ async def generate_ultrastar_files(session_id: str):
                 if syllable_timings:
                     log_step("GENERATE", f"Alignment: {len(syllable_timings)} syllables")
                 else:
-                    log_step("GENERATE", "Alignment returned empty, falling back to MFA")
+                    log_step("GENERATE", "Alignment returned empty, falling back to energy-based")
             except Exception as e:
-                log_step("GENERATE", f"Alignment failed: {e}, falling back to MFA")
+                log_step("GENERATE", f"Alignment failed: {e}, falling back to energy-based")
                 import traceback
                 traceback.print_exc()
         

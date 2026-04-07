@@ -9,15 +9,21 @@ AI-powered tool that generates **Ultrastar karaoke files** from any song. Upload
 ### AI Pipeline
 - **Vocal separation** (Demucs v4) — isolates vocals from full mix
 - **Pitch detection** (PYIN) — robust pitch tracking via librosa
-- **Forced alignment** (WhisperX) — syllable-level timing with ~50ms median accuracy
-- **BPM detection** — automatic tempo analysis
+- **Forced alignment** (WhisperX) — syllable-level timing with ~50ms median accuracy, energy-based fallback
+- **BPM detection** — automatic tempo analysis with beat-phase alignment
+- **Onset snapping** — refines syllable boundaries using spectral onsets
 - **One-click generation** — audio → Ultrastar format in minutes
 
 ### Piano Roll Editor
 - **Full note editing** — move, resize, split, merge, delete notes
 - **Golden/Rap note types** — visual indicators (★ gold, orange rap)
+- **Grid alignment** (⌘G) — snap the entire beat grid to match the audio
+- **GAP adjustment** (⌘S) — click any grid line to set the GAP position
+- **Text editor** — edit raw Ultrastar content with live preview
+- **Undo/Redo** — full snapshot history (notes, BPM, GAP, headers)
 - **Reference overlay** — compare AI-generated notes with reference songs
 - **Waveform display** — see the audio waveform behind the notes
+- **Extra headers** — YOUTUBE, COVER, GENRE and other Ultrastar tags
 - **Context menus** — right-click on notes or empty space for quick actions
 
 ### Playback & Audio
@@ -32,6 +38,11 @@ AI-powered tool that generates **Ultrastar karaoke files** from any song. Upload
 - **Smart cursors** — move/resize indicators when hovering over notes
 - **Keyboard shortcuts** — Space (play), L (loop), Escape (clear loop), arrow keys (seek)
 
+### Project Management
+- **Project launcher** — create, open, rename, and delete song projects
+- **Auto-save** — editor state saved automatically on changes
+- **Session persistence** — projects survive server restarts
+
 ### Export
 - **Ultrastar .txt** — standard format, compatible with all Ultrastar players
 - **MIDI export** — pitch data as MIDI file
@@ -39,7 +50,7 @@ AI-powered tool that generates **Ultrastar karaoke files** from any song. Upload
 
 ## Architecture
 
-- **Frontend**: Svelte + Vite (port 5173) — 5-step wizard UI
+- **Frontend**: Svelte + Vite (port 5173) — 5-step wizard UI with project launcher
 - **Backend**: Python FastAPI (port 8001) — service-based with isolated AI workers
 
 ## AI Models
@@ -52,35 +63,52 @@ AI-powered tool that generates **Ultrastar karaoke files** from any song. Upload
 
 ## Quick Start
 
-### 1. Backend
+### Prerequisites
+
+- **Python 3.10+** with `pip`
+- **Node.js 18+** with `npm`
+- **FFmpeg** — required by audio processing libraries
 
 ```bash
-# Create virtual environment (if not present)
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt install ffmpeg
+```
+
+### 1. Clone & Setup Backend
+
+```bash
+git clone https://github.com/retotito/SongCreatorGrok.git
+cd SongCreatorGrok
+
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install core dependencies
-pip install fastapi uvicorn python-multipart librosa numpy mido pyphen pydantic
+# Install Python dependencies
+pip install -r backend/requirements.txt
 
-# Install WhisperX for alignment
-pip install whisperx openai-whisper
-
-# Optional: Install Demucs for vocal separation
-pip install demucs
-
-# Start backend
+# Start backend server (port 8001)
 cd backend && python main.py
 ```
 
-### 2. Frontend
+### 2. Setup Frontend (new terminal)
 
 ```bash
-cd frontend
+cd SongCreatorGrok/frontend
+
+# Install Node dependencies
 npm install
+
+# Start dev server (port 5173)
 npm run dev
 ```
 
-Open http://localhost:5173
+### 3. Open the App
+
+Open **http://localhost:5173** in your browser. The Vite proxy automatically forwards `/api/*` requests to the backend on port 8001.
 
 ## Workflow
 
