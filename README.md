@@ -1,8 +1,40 @@
-# Ultrastar Song Creator
+# Ultrastar Creator Tool
 
-AI-powered tool that generates **Ultrastar karaoke files** from any song. Upload audio + lyrics, and the app creates perfectly timed karaoke notes using deep learning — then fine-tune everything in a professional piano roll editor.
+A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you through 5 steps — from uploading audio to exporting a ready-to-play Ultrastar .txt file — using automatic vocal separation, pitch detection, and lyrics alignment to do the heavy lifting, while you fine-tune the result in a built-in piano roll editor.
 
 **Goal**: Make it easy for anyone to create Ultrastar songs, so more people sing together. 🎤
+
+## How it Works
+
+| Step | What you do | What the tool does |
+|------|-------------|-------------------|
+| **1. Upload** | Upload a song (full mix or vocals-only) | Optionally separates vocals using Demucs |
+| **2. Lyrics** | Paste or type the song lyrics | Auto-hyphenates syllables (e.g. `beau-ti-ful`) |
+| **3. Generate** | Click "Generate" | Detects BPM, analyzes pitch, aligns syllables to audio |
+| **4. Editor** | Review and adjust notes in the piano roll | Shows waveform, plays MIDI pitches, supports grid snap |
+| **5. Export** | Download your files | Exports Ultrastar .txt, MIDI, and a processing summary |
+
+## Screenshots
+
+### Project Launcher
+![Project Launcher](docs/screenshots/ultrastarSongGenerator0.png)
+
+### Step 1 — Upload
+![Step 1 - Upload](docs/screenshots/ultrastarSongGenerator1.png)
+
+### Step 2 — Lyrics
+![Step 2 - Lyrics](docs/screenshots/ultrastarSongGenerator2.png)
+
+### Step 3 — Generate
+![Step 3 - Generate](docs/screenshots/ultrastarSongGenerator3.png)
+
+### Step 4 — Piano Roll Editor
+![Step 4 - Editor Overview](docs/screenshots/ultrastarSongGenerator4.1.png)
+![Step 4 - Editor Detail](docs/screenshots/ultrastarSongGenerator4.2.png)
+![Step 4 - Editor Playback](docs/screenshots/ultrastarSongGenerator4.3.png)
+
+### Step 5 — Export
+![Step 5 - Export](docs/screenshots/ultrastarSongGenerator5.png)
 
 ## Features
 
@@ -109,14 +141,6 @@ npm run dev
 ### 3. Open the App
 
 Open **http://localhost:5173** in your browser. The Vite proxy automatically forwards `/api/*` requests to the backend on port 8001.
-
-## Workflow
-
-1. **Upload** — Upload a song (full mix or vocals-only). Optionally run Demucs to separate vocals.
-2. **Lyrics** — Enter or paste lyrics with syllable hyphenation (e.g. `beau-ti-ful`).
-3. **Generate** — Run the AI pipeline: BPM detection → pitch analysis → alignment → Ultrastar format.
-4. **Editor** — Review and correct notes in the built-in piano roll editor.
-5. **Export** — Download the Ultrastar .txt file, MIDI, and processing summary.
 
 ## VS Code Tasks
 
