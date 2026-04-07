@@ -57,12 +57,10 @@
   let pastePreviewBeat = null; // ghost preview beat position
   let cutNoteIds = new Set();  // ids of notes being cut (rendered semi-transparent)
 
-  // Grid slide (G+drag to move beat grid)
-  let gKeyDown = false;       // is G key currently held
-  let isGridSliding = false;  // currently dragging the grid
-  let gridSlideStartX = 0;    // mouse X at drag start
-  let gridSlideStartGap = 0;  // gapMs at drag start
-  let gridSlideWheelTimer = null; // debounce timer for wheel-based grid slide
+  // Grid alignment line (press G to show, drag to reposition beat 0)
+  let gridAlignMode = false;      // alignment line visible
+  let gridAlignTimeSec = 0;       // line position in absolute audio seconds
+  let gridAlignDragging = false;  // currently dragging the alignment line
 
   // Drag pitch preview (oscillator while dragging a note)
   let dragOsc = null;
@@ -811,6 +809,55 @@
       }
     }
 
+    // ── Grid alignment line (when in grid-align mode) ──
+    if (gridAlignMode) {
+      const lineBeat = ((gridAlignTimeSec - gapMs / 1000) * bpm) / 15;
+      const lx = beatToX(lineBeat);
+      const pianoBottom = h - timeAxisHeight;
+
+      // Full-height blue line
+      ctx.strokeStyle = '#42a5f5';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(lx, 0);
+      ctx.lineTo(lx, pianoBottom);
+      ctx.stroke();
+
+      // Handle at top (circle)
+      ctx.fillStyle = '#42a5f5';
+      ctx.beginPath();
+      ctx.arc(lx, 14, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('G', lx, 18);
+      ctx.textAlign = 'left';
+
+      // Handle at bottom (circle on time axis)
+      ctx.fillStyle = '#42a5f5';
+      ctx.beginPath();
+      ctx.arc(lx, pianoBottom + timeAxisHeight / 2, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Time label near bottom handle
+      const mins = Math.floor(gridAlignTimeSec / 60);
+      const secs = (gridAlignTimeSec % 60).toFixed(2);
+      ctx.fillStyle = '#42a5f5';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${mins}:${secs.padStart(5, '0')}`, lx, pianoBottom + timeAxisHeight - 2);
+      ctx.textAlign = 'left';
+
+      // Hint text at top
+      ctx.fillStyle = '#42a5f5aa';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Drag to set beat 0 • click to place • G to cancel', w / 2, pianoBottom - 6);
+      ctx.textAlign = 'left';
+    }
+
     // Playback cursor (show when playing OR when paused at non-zero position)
     if (isPlaying || currentTimeSec > 0) {
       const cx = beatToX(playbackBeat);
@@ -907,14 +954,25 @@
     // Ignore right-click — let contextmenu handler deal with it
     if (event.button === 2) return;
 
-    // ── G+drag: start grid slide ──
-    if (gKeyDown) {
-      isGridSliding = true;
-      gridSlideStartX = mx;
-      gridSlideStartGap = gapMs;
-      pushUndo();
-      canvasEl.style.cursor = 'ew-resize';
-      console.log(`[GridSlide] Start at gap=${gapMs}ms`);
+    // ── Grid alignment line: click near line to start dragging ──
+    if (gridAlignMode) {
+      const lineTimeSec = gridAlignTimeSec;
+      const lineBeat = ((lineTimeSec - gapMs / 1000) * bpm) / 15;
+      const lineX = beatToX(lineBeat);
+      if (Math.abs(mx - lineX) <= 20) {
+        // Grab the alignment line
+        gridAlignDragging = true;
+        canvasEl.style.cursor = 'grabbing';
+        console.log(`[GridAlign] Drag start at ${gridAlignTimeSec.toFixed(3)}s`);
+        return;
+      }
+      // Click far from line — place line at click position
+      const clickBeat = xToBeat(mx);
+      gridAlignTimeSec = beatToTime(clickBeat);
+      gridAlignDragging = true;
+      canvasEl.style.cursor = 'grabbing';
+      console.log(`[GridAlign] Placed at ${gridAlignTimeSec.toFixed(3)}s`);
+      draw();
       return;
     }
 
@@ -1085,23 +1143,11 @@
     const mx = event.clientX - rect.left;
     const my = event.clientY - rect.top;
 
-    // ── Grid slide tracking ──
-    if (isGridSliding) {
-      const dx = mx - gridSlideStartX;
-      // Convert pixel delta to ms: dx pixels / (pixels/beat) = beats, then beats * 15000/bpm = ms
-      const beatDelta = dx / zoom;
-      const msDelta = (beatDelta * 15000) / bpm;
-      // Snap to 1 Ultrastar beat (= 1/8 musical beat)
-      const oneBeatMs = 15000 / bpm;
-      const snappedMs = Math.round(msDelta / oneBeatMs) * oneBeatMs;
-      gapMs = Math.max(0, Math.round(gridSlideStartGap - snappedMs));
-      // Re-quantize notes to the new grid
-      requantizeFromMs();
-      // Update playback cursor
-      if (currentTimeSec > 0) {
-        playbackBeat = timeToBeat(currentTimeSec);
-      }
-      bpmChanged = (bpm !== initialBpm || gapMs !== initialGap);
+    // ── Grid alignment line dragging (visual only, no recalc yet) ──
+    if (gridAlignDragging) {
+      const beat = xToBeat(mx);
+      gridAlignTimeSec = Math.max(0, beatToTime(beat));
+      draw();
       return;
     }
 
@@ -1286,12 +1332,25 @@
   }
 
   function handleMouseUp() {
-    // ── Finish grid slide ──
-    if (isGridSliding) {
-      isGridSliding = false;
-      canvasEl.style.cursor = gKeyDown ? 'ew-resize' : '';
-      console.log(`[GridSlide] Done, GAP=${gapMs}ms`);
-      markUnsaved();
+    // ── Finish grid alignment drag → apply new GAP ──
+    if (gridAlignDragging) {
+      gridAlignDragging = false;
+      // Snap to nearest Ultrastar beat
+      const oneBeatMs = 15000 / bpm;
+      const newGapMs = Math.max(0, Math.round((gridAlignTimeSec * 1000) / oneBeatMs) * oneBeatMs);
+      const oldGapMs = gapMs;
+      if (newGapMs !== oldGapMs) {
+        pushUndo();
+        gapMs = newGapMs;
+        requantizeFromMs();
+        if (currentTimeSec > 0) playbackBeat = timeToBeat(currentTimeSec);
+        bpmChanged = (bpm !== initialBpm || gapMs !== initialGap);
+        markUnsaved();
+        console.log(`[GridAlign] Applied GAP: ${oldGapMs}ms → ${gapMs}ms`);
+      }
+      // Exit alignment mode
+      gridAlignMode = false;
+      canvasEl.style.cursor = '';
       draw();
       return;
     }
@@ -1967,35 +2026,7 @@
   function handleWheel(event) {
     event.preventDefault();
 
-    // ── G held: horizontal wheel slides the beat grid ──
-    if (gKeyDown && Math.abs(event.deltaX) > 1) {
-      if (!isGridSliding) {
-        // First wheel tick while G held — treat as grid-slide start
-        gridSlideStartGap = gapMs;
-        pushUndo();
-      }
-      isGridSliding = true;
-      // Convert pixel delta to ms, snap to 1 Ultrastar beat
-      const beatDelta = event.deltaX / zoom;
-      const msDelta = (beatDelta * 15000) / bpm;
-      const oneBeatMs = 15000 / bpm;
-      const snappedMs = Math.round(msDelta / oneBeatMs) * oneBeatMs;
-      if (snappedMs !== 0) {
-        gapMs = Math.max(0, Math.round(gapMs + snappedMs));
-        requantizeFromMs();
-        if (currentTimeSec > 0) playbackBeat = timeToBeat(currentTimeSec);
-        bpmChanged = (bpm !== initialBpm || gapMs !== initialGap);
-      }
-      // Clear the slide after a short idle (wheel events come in bursts)
-      clearTimeout(gridSlideWheelTimer);
-      gridSlideWheelTimer = setTimeout(() => {
-        isGridSliding = false;
-        console.log(`[GridSlide] Wheel done, gap=${gapMs}ms`);
-      }, 300);
-      draw();
-      return;
-    }
-    
+    // While in grid-align mode, scroll still works normally to navigate
     if (event.ctrlKey || event.metaKey) {
       // Zoom
       const oldZoom = zoom;
@@ -2116,11 +2147,25 @@
     // Skip shortcuts when typing in context menu input
     if (e.target.tagName === 'INPUT' && e.target.classList.contains('ctx-syllable-input')) return;
 
-    // Track G key for grid slide
+    // Toggle grid alignment mode with G
     if (e.code === 'KeyG' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      gKeyDown = true;
-      if (canvasEl) canvasEl.style.cursor = 'ew-resize';
-      return; // don't log, just track
+      if (!gridAlignMode) {
+        // Enter alignment mode — show line at current beat 0
+        gridAlignMode = true;
+        gridAlignTimeSec = gapMs / 1000;
+        gridAlignDragging = false;
+        if (canvasEl) canvasEl.style.cursor = 'ew-resize';
+        console.log(`[GridAlign] ON — line at ${gridAlignTimeSec.toFixed(3)}s`);
+        draw();
+      } else {
+        // Cancel alignment mode without changing GAP
+        gridAlignMode = false;
+        gridAlignDragging = false;
+        if (canvasEl) canvasEl.style.cursor = '';
+        console.log('[GridAlign] Cancelled');
+        draw();
+      }
+      return;
     }
 
     console.log(`[Key] ${e.code} shift=${e.shiftKey} ctrl=${e.ctrlKey} meta=${e.metaKey}`);
@@ -2230,10 +2275,7 @@
   }
 
   function handleKeyup(e) {
-    if (e.code === 'KeyG') {
-      gKeyDown = false;
-      if (!isGridSliding && canvasEl) canvasEl.style.cursor = '';
-    }
+    // Grid align mode is toggle-based (G on/off), no keyup action needed
   }
 
   function updatePlayback() {
@@ -2698,7 +2740,7 @@
       <button class="tool-btn sm" on:click={() => { gapMs = Math.max(0, gapMs - Math.round(15000 / bpm)); console.log('[UI] gap-', gapMs); handleBpmGapChange(); }}>−</button>
       <input type="number" class="gap-input" bind:value={gapMs} on:change={() => { console.log('[UI] gap input', gapMs); handleBpmGapChange(); }} step="1" min="0" />
       <button class="tool-btn sm" on:click={() => { gapMs = gapMs + Math.round(15000 / bpm); console.log('[UI] gap+', gapMs); handleBpmGapChange(); }}>+</button>
-      <span class="bpm-label gap-beats" title="GAP in musical beats (hold G + drag canvas to slide grid)">
+      <span class="bpm-label gap-beats" title="GAP in musical beats (press G to show alignment line)">
         {(gapMs * bpm / 15000).toFixed(1)}♩
       </span>
 
