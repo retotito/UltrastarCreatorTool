@@ -117,12 +117,17 @@ cd UltrastarCreatorTool
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install Python dependencies
+# Install Python dependencies (includes PyTorch ~2GB)
 pip install -r backend/requirements.txt
+
+# Optional: Pre-download AI models (~3GB, avoids delay on first use)
+python backend/download_models.py
 
 # Start backend server (port 8001)
 cd backend && python main.py
 ```
+
+> **Note:** The first time you run "Generate", WhisperX and Demucs will download their AI models automatically (~1–3GB). This can take several minutes depending on your internet connection. You can avoid this wait by running `python backend/download_models.py` after install.
 
 ### 2. Setup Frontend (new terminal)
 
