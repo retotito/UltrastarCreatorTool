@@ -73,6 +73,22 @@
     color: #e0e0e0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
+    overflow-y: scroll; /* always show vertical scrollbar */
+  }
+
+  /* Force scrollbar thumb to always be visible on macOS */
+  :global(::-webkit-scrollbar) {
+    width: 8px;
+  }
+  :global(::-webkit-scrollbar-track) {
+    background: #1a1f2b;
+  }
+  :global(::-webkit-scrollbar-thumb) {
+    background: #555;
+    border-radius: 4px;
+  }
+  :global(::-webkit-scrollbar-thumb:hover) {
+    background: #777;
   }
 
   :global(*) {

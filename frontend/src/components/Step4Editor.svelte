@@ -266,8 +266,9 @@
   }
 
   // Minimum beat (corresponds to audio time 0) — negative when GAP > 0
+  // Pad by 2 beats so the playhead at time 0 is visible and not clipped at the edge
   function getMinBeat() {
-    return timeToBeat(0);
+    return timeToBeat(0) - 2;
   }
 
   // Format seconds as m:ss.mmm
@@ -952,8 +953,8 @@
       }
     }
 
-    // Playback cursor
-    if (isPlaying || currentTimeSec > 0) {
+    // Playback cursor — always visible so user can see position at time 0
+    {
       const cx = beatToX(playbackBeat);
       const pianoBottom = h - timeAxisHeight;
       ctx.strokeStyle = isPlaying ? '#ff5252' : '#ff8a80';
@@ -2137,8 +2138,8 @@
       zoom = Math.max(0.5, Math.min(100, zoom + event.deltaY * -0.01));
       console.log(`[Wheel] Zoom ${oldZoom.toFixed(1)} → ${zoom.toFixed(1)}`);
     } else {
-      // Scroll — horizontal only; ignore if mostly vertical (trackpad two-finger swipe)
-      if (Math.abs(event.deltaX) > Math.abs(event.deltaY) * 0.5 && Math.abs(event.deltaX) > 1) {
+      // Horizontal scroll only
+      if (Math.abs(event.deltaX) > 1) {
         scrollX = Math.max(getMinBeat() * zoom, scrollX + event.deltaX);
       }
     }
@@ -2777,11 +2778,9 @@
     <div class="playback-controls">
       <button class="tool-btn" on:click={() => { console.log('[UI] jump to 0s'); seekToTime(0); }} title="Jump to 0s">⏮⏮</button>
       <button class="tool-btn" on:click={() => { console.log('[UI] jump to GAP'); seekToTime(gapMs / 1000); }} title="Jump to GAP (beat 0)">⏮</button>
-      <button class="tool-btn" on:click={() => { console.log('[UI] seek -5'); seekPlayback(-5); }} title="Back 5s (←)">⏪</button>
       <button class="tool-btn" on:click={() => { console.log('[UI] togglePlayback'); togglePlayback(); }} title="Space">
         {isPlaying ? '⏸ Pause' : '▶ Play'}
       </button>
-      <button class="tool-btn" on:click={() => { console.log('[UI] seek +5'); seekPlayback(5); }} title="Forward 5s (→)">⏩</button>
       <span class="time-display">{formatTime(currentTimeSec)}</span>
     </div>
 
@@ -3103,9 +3102,32 @@
     <audio bind:this={audioEl} src={vocalUrl} preload="auto"></audio>
   {/if}
 
-  <div class="help">
-    <p><strong>Controls:</strong> Click note to select • Drag to move • Drag edges to resize • Ctrl+Scroll to zoom • Scrollbar to pan • ←→: seek ±5s (Shift: ±1s) • Space: play/pause • ⌥+click to seek • Right-click for context menu • Click/drag breaks to move</p>
-    <p><strong>Shortcuts:</strong> ⌘Z: undo • ⇧⌘Z: redo • P: play pitch • S: split • M: merge • Del: delete • ⌘S: save</p>
+  <div class="shortcut-bar">
+    <div class="shortcut-group">
+      <span class="shortcut-label">Navigate</span>
+      <span class="shortcut"><kbd>Scroll</kbd> pan</span>
+      <span class="shortcut"><kbd>⌃Scroll</kbd> zoom</span>
+      <span class="shortcut"><kbd>←→</kbd> seek ±5s</span>
+      <span class="shortcut"><kbd>⇧←→</kbd> ±1s</span>
+      <span class="shortcut"><kbd>Space</kbd> play/pause</span>
+    </div>
+    <div class="shortcut-group">
+      <span class="shortcut-label">Edit</span>
+      <span class="shortcut"><kbd>Click</kbd> select</span>
+      <span class="shortcut"><kbd>Drag</kbd> move</span>
+      <span class="shortcut"><kbd>S</kbd> split</span>
+      <span class="shortcut"><kbd>M</kbd> merge</span>
+      <span class="shortcut"><kbd>Del</kbd> delete</span>
+      <span class="shortcut"><kbd>P</kbd> play pitch</span>
+    </div>
+    <div class="shortcut-group">
+      <span class="shortcut-label">Tools</span>
+      <span class="shortcut"><kbd>⌘Z</kbd> undo</span>
+      <span class="shortcut"><kbd>⇧⌘Z</kbd> redo</span>
+      <span class="shortcut"><kbd>⌘S</kbd> set GAP</span>
+      <span class="shortcut"><kbd>⌘G</kbd> grid align</span>
+      <span class="shortcut"><kbd>L</kbd> loop</span>
+    </div>
   </div>
 
   <!-- Text Editor Modal -->
@@ -3561,14 +3583,52 @@
     cursor: wait;
   }
 
-  .help {
-    margin-top: 0.75rem;
-    color: #666;
-    font-size: 0.8rem;
-    text-align: center;
+  .shortcut-bar {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #0a0e14;
+    border: 1px solid #1e2433;
+    border-radius: 8px;
+    flex-wrap: wrap;
   }
 
-  .help strong { color: #888; }
+  .shortcut-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .shortcut-label {
+    color: #4fc3f7;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 0.15rem;
+  }
+
+  .shortcut {
+    color: #667;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .shortcut kbd {
+    display: inline-block;
+    background: #1a1f2b;
+    border: 1px solid #2a3040;
+    border-radius: 3px;
+    padding: 0px 4px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 0.7rem;
+    color: #aab;
+    margin-right: 2px;
+    line-height: 1.5;
+  }
 
   .stats-bar {
     display: flex;
