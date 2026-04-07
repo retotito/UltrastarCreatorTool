@@ -179,7 +179,7 @@ def detect_beat_phase(audio_path: str, ultrastar_bpm: float) -> float:
     y, sr = librosa.load(audio_path, sr=22050)
     
     # Use librosa beat tracker with BPM hint
-    tempo, beat_frames = librosa.beat_track(y=y, sr=sr, bpm=musical_bpm)
+    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, bpm=musical_bpm)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
     
     if len(beat_times) < 4:
