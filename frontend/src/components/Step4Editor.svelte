@@ -157,6 +157,7 @@
   let micSmoothing = 'smooth'; // 'raw' | 'smooth' | 'snap'
   let micOctaveCorrect = true;
   let micStarting = false; // true while mic is initializing
+  let micDebug = false;    // show raw pitch dots + enable export
   // Sticky prediction state for smoothing
   let micLastPitch = -1;
   let micPitchConfidence = 0;
@@ -905,6 +906,23 @@
       const visibleStartBeat = xToBeat(0);
       const visibleEndBeat = xToBeat(w);
       const barHeight = noteHeight * 0.8;
+
+      // Debug layer: draw raw pitch as dim dots behind the smoothed bars
+      if (micDebug) {
+        ctx.fillStyle = 'rgba(255, 200, 50, 0.4)';
+        for (let i = 0; i < micPitchTrail.length; i++) {
+          const s = micPitchTrail[i];
+          if (s.rawPitch === undefined) continue;
+          const beat = timeToBeat(s.time);
+          if (beat < visibleStartBeat - 1 || beat > visibleEndBeat + 1) continue;
+          const x = beatToX(beat);
+          const y = pitchToY(s.rawPitch);
+          if (y < wt || y > h - timeAxisHeight) continue;
+          ctx.beginPath();
+          ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
 
       // Group consecutive samples with the same pitch into bars
       const bars = [];
@@ -2744,6 +2762,8 @@
     // Convert frequency to MIDI pitch
     let midiPitch = Math.round(12 * Math.log2(frequency / 440) + 69);
     const rawPitch = midiPitch;
+    let medianPitch = rawPitch;
+    let targetPitch = null;
 
     // ── Smoothing ──
     if (micSmoothing !== 'raw') {
@@ -2754,6 +2774,7 @@
       // Median of last 5 samples — much more stable than sticky prediction alone
       const sorted = [...micRecentPitches].sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)];
+      medianPitch = median;
 
       // If current pitch is within 2 semitones of median, use median (suppresses vibrato)
       if (Math.abs(midiPitch - median) <= 2) {
@@ -2782,7 +2803,6 @@
     if (micOctaveCorrect) {
       // Find the nearest song note at this time
       const currentBeat = timeToBeat(timeSec);
-      let targetPitch = null;
       for (const note of notes) {
         if (note.type === 'break') continue;
         if (currentBeat >= note.startBeat && currentBeat < note.startBeat + note.duration) {
@@ -2820,7 +2840,10 @@
       s.time < timeSec - 0.01 || s.time > timeSec + clearAhead
     );
 
-    micPitchTrail.push({ time: timeSec, pitch: midiPitch, rawPitch, clarity });
+    micPitchTrail.push({
+      time: timeSec, pitch: midiPitch, rawPitch, clarity,
+      frequency, medianPitch, targetPitch, confidence: micPitchConfidence
+    });
 
     // Cap buffer at 30000 samples (~8 min at 60fps)
     if (micPitchTrail.length > 30000) {
@@ -2834,6 +2857,32 @@
     micPitchConfidence = 0;
     micRecentPitches = [];
     draw();
+  }
+
+  function exportMicTrail() {
+    const data = {
+      exported: new Date().toISOString(),
+      settings: { smoothing: micSmoothing, octaveCorrect: micOctaveCorrect, clarityThreshold: micClarityThreshold },
+      song: { bpm, gapMs, noteCount: notes.filter(n => n.type !== 'break').length },
+      samples: micPitchTrail.map(s => ({
+        time: +s.time.toFixed(4),
+        freq: s.frequency ? +s.frequency.toFixed(1) : null,
+        rawMidi: s.rawPitch,
+        median: s.medianPitch ?? null,
+        smoothed: s.pitch,
+        target: s.targetPitch ?? null,
+        clarity: +s.clarity.toFixed(3),
+        confidence: s.confidence ?? null
+      }))
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mic-trail-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    console.log(`[Mic] Exported ${micPitchTrail.length} samples`);
   }
 
   // ──── Grain Scrub ────────────────────────────
@@ -3146,6 +3195,13 @@
         </label>
         {#if micPitchTrail.length > 0}
           <button class="tool-btn sm" on:click={clearMicTrail} title="Clear voice trail">🗑</button>
+        {/if}
+        <label class="mic-opt" title="Debug: show raw pitch dots + enable export">
+          <input type="checkbox" bind:checked={micDebug} on:change={() => draw()} />
+          Dbg
+        </label>
+        {#if micDebug && micPitchTrail.length > 0}
+          <button class="tool-btn sm" on:click={exportMicTrail} title="Export mic trail as JSON">📋 Export</button>
         {/if}
         {#if micDevices.length > 1}
           <select class="mic-select" value={micDeviceId} on:change={changeMicDevice} title="Select microphone">
