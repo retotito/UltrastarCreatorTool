@@ -150,10 +150,15 @@
   let micSourceNode = null;
   let micDetector = null;
   let micInputBuffer = null;
-  let micPitchTrail = [];    // array of { time, pitch, clarity }
+  let micPitchTrail = [];    // array of { time, pitch, rawPitch, clarity }
   let micDevices = [];       // available audio input devices
   let micDeviceId = '';      // selected device (empty = default)
   let micClarityThreshold = 0.8;
+  let micSmoothing = 'smooth'; // 'raw' | 'smooth' | 'snap'
+  let micOctaveCorrect = true;
+  // Sticky prediction state for smoothing
+  let micLastPitch = -1;
+  let micPitchConfidence = 0;
 
   // Text editor modal
   let showTextEditor = false;
@@ -897,18 +902,41 @@
     if (micShowTrail && micPitchTrail.length > 0) {
       const visibleStartBeat = xToBeat(0);
       const visibleEndBeat = xToBeat(w);
-      const dotRadius = 2.5;
-      ctx.fillStyle = 'rgba(255, 100, 100, 0.7)';
+      const barHeight = noteHeight * 0.8;
+
+      // Group consecutive samples with the same pitch into bars
+      const bars = [];
+      let currentBar = null;
       for (let i = 0; i < micPitchTrail.length; i++) {
         const s = micPitchTrail[i];
         const beat = timeToBeat(s.time);
-        if (beat < visibleStartBeat - 1 || beat > visibleEndBeat + 1) continue;
-        const x = beatToX(beat);
-        const y = pitchToY(s.pitch);
+        if (beat < visibleStartBeat - 2 || beat > visibleEndBeat + 2) {
+          if (currentBar) { bars.push(currentBar); currentBar = null; }
+          continue;
+        }
+        // Check if this sample continues the current bar
+        if (currentBar && s.pitch === currentBar.pitch && (s.time - currentBar.endTime) < 0.06) {
+          currentBar.endTime = s.time;
+          currentBar.endBeat = beat;
+        } else {
+          if (currentBar) bars.push(currentBar);
+          currentBar = { pitch: s.pitch, startTime: s.time, endTime: s.time, startBeat: beat, endBeat: beat };
+        }
+      }
+      if (currentBar) bars.push(currentBar);
+
+      // Draw bars
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.55)';
+      ctx.strokeStyle = 'rgba(255, 130, 130, 0.8)';
+      ctx.lineWidth = 1;
+      for (const bar of bars) {
+        const x1 = beatToX(bar.startBeat);
+        const x2 = beatToX(bar.endBeat);
+        const y = pitchToY(bar.pitch);
         if (y < wt || y > h - timeAxisHeight) continue;
-        ctx.beginPath();
-        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-        ctx.fill();
+        const bw = Math.max(x2 - x1, 2); // minimum 2px width for single samples
+        ctx.fillRect(x1, y - barHeight / 2, bw, barHeight);
+        ctx.strokeRect(x1, y - barHeight / 2, bw, barHeight);
       }
     }
 
@@ -2692,10 +2720,71 @@
     micAnalyser.getFloatTimeDomainData(micInputBuffer);
     const [frequency, clarity] = micDetector.findPitch(micInputBuffer, micAudioCtx.sampleRate);
 
-    if (clarity < micClarityThreshold || frequency < 60 || frequency > 2000) return;
+    if (clarity < micClarityThreshold || frequency < 60 || frequency > 2000) {
+      // Silence: decay confidence, reset sticky pitch
+      if (micPitchConfidence > 0) micPitchConfidence--;
+      if (micPitchConfidence === 0) micLastPitch = -1;
+      return;
+    }
 
     // Convert frequency to MIDI pitch
-    const midiPitch = Math.round(12 * Math.log2(frequency / 440) + 69);
+    let midiPitch = Math.round(12 * Math.log2(frequency / 440) + 69);
+    const rawPitch = midiPitch;
+
+    // ── Smoothing: sticky prediction ──
+    if (micSmoothing !== 'raw' && micLastPitch > 0) {
+      const drift = Math.abs(midiPitch - micLastPitch);
+      if (drift <= 1) {
+        // Close enough — accept and boost confidence
+        micPitchConfidence = Math.min(5, micPitchConfidence + 1);
+      } else if (micPitchConfidence >= 3) {
+        // Big jump but high confidence — keep previous pitch (suppress jitter)
+        midiPitch = micLastPitch;
+        micPitchConfidence--;
+      } else {
+        // Low confidence — accept new pitch
+        micPitchConfidence = 1;
+      }
+    } else if (micSmoothing !== 'raw') {
+      micPitchConfidence = 1;
+    }
+    micLastPitch = midiPitch;
+
+    // ── Octave correction ──
+    if (micOctaveCorrect) {
+      // Find the nearest song note at this time
+      const currentBeat = timeToBeat(timeSec);
+      let targetPitch = null;
+      for (const note of notes) {
+        if (note.type === 'break') continue;
+        if (currentBeat >= note.startBeat && currentBeat < note.startBeat + note.duration) {
+          targetPitch = note.pitch;
+          break;
+        }
+      }
+      // If not inside a note, look for the nearest note within 2 beats
+      if (targetPitch === null) {
+        let minDist = Infinity;
+        for (const note of notes) {
+          if (note.type === 'break') continue;
+          const dist = Math.min(Math.abs(currentBeat - note.startBeat), Math.abs(currentBeat - (note.startBeat + note.duration)));
+          if (dist < minDist && dist < 2) {
+            minDist = dist;
+            targetPitch = note.pitch;
+          }
+        }
+      }
+      if (targetPitch !== null) {
+        // Shift by octaves to be within 6 semitones of target
+        while (midiPitch - targetPitch > 6) midiPitch -= 12;
+        while (midiPitch - targetPitch < -6) midiPitch += 12;
+
+        // Snap mode: if within 2 semitones of target, snap to exact target
+        if (micSmoothing === 'snap' && Math.abs(midiPitch - targetPitch) <= 2) {
+          midiPitch = targetPitch;
+        }
+      }
+    }
 
     // Clear-ahead: remove old samples in a 200ms window ahead of current position
     const clearAhead = 0.2;
@@ -2703,7 +2792,7 @@
       s.time < timeSec - 0.01 || s.time > timeSec + clearAhead
     );
 
-    micPitchTrail.push({ time: timeSec, pitch: midiPitch, clarity });
+    micPitchTrail.push({ time: timeSec, pitch: midiPitch, rawPitch, clarity });
 
     // Cap buffer at 30000 samples (~8 min at 60fps)
     if (micPitchTrail.length > 30000) {
@@ -3015,6 +3104,15 @@
         {:else}
           <button class="tool-btn sm" on:click={() => { micShowTrail = true; draw(); }} title="Show voice trail">👁 Voice</button>
         {/if}
+        <select class="mic-select" bind:value={micSmoothing} on:change={() => draw()} title="Pitch smoothing mode">
+          <option value="raw">Raw</option>
+          <option value="smooth">Smooth</option>
+          <option value="snap">Snap</option>
+        </select>
+        <label class="mic-opt" title="Correct octave to match song notes">
+          <input type="checkbox" bind:checked={micOctaveCorrect} />
+          Oct
+        </label>
         {#if micPitchTrail.length > 0}
           <button class="tool-btn sm" on:click={clearMicTrail} title="Clear voice trail">🗑</button>
         {/if}
@@ -4061,6 +4159,13 @@
 
   .mic-select:focus {
     outline: 1px solid #4fc3f7;
+  }
+
+  .mic-opt {
+    font-size: 0.75rem;
+    color: #ccc;
+    cursor: pointer;
+    user-select: none;
   }
 
   .tool-btn.disabled-audio {
