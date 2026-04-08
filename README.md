@@ -95,7 +95,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 
 ### Prerequisites
 
-- **Python 3.10+** with `pip`
+- **Python 3.10–3.12** with `pip` (3.13+ may have compatibility issues with some AI libraries)
 - **Node.js 18+** with `npm`
 - **FFmpeg** — required by audio processing libraries
 
