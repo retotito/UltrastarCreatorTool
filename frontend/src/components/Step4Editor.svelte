@@ -2279,7 +2279,8 @@
     // Skip all shortcuts when text editor modal is open
     if (showTextEditor) return;
     // Skip shortcuts when typing in a text/number input field (BPM, GAP, context menu, etc.)
-    if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') return;
+    // Allow Space through on range inputs (volume slider) so play/pause still works
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !(e.target.type === 'range' && e.key === ' ')) return;
 
     console.log(`[Key] ${e.code} shift=${e.shiftKey} ctrl=${e.ctrlKey} meta=${e.metaKey}`);
 
