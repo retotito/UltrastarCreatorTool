@@ -1987,19 +1987,30 @@
     audioSource = source;
     const url = source === 'original' ? originalUrl : vocalUrl;
     const wasPlaying = isPlaying;
-    const time = audioEl?.currentTime || 0;
-    if (wasPlaying) stopPlayback();
+    const time = currentTimeSec || audioEl?.currentTime || 0;
+
+    // Pause without resetting position
+    if (isPlaying) {
+      audioEl?.pause();
+      isPlaying = false;
+      cancelAnimationFrame(animFrame);
+      stopAllMidiNotes();
+    }
+
     if (audioEl) {
       audioEl.src = url;
       audioEl.load();
-      audioEl.currentTime = time;
+      audioEl.oncanplay = () => {
+        audioEl.currentTime = time;
+        audioEl.oncanplay = null;
+        if (wasPlaying) {
+          togglePlayback();
+        }
+      };
     }
     // Re-load waveform for new source
     loadWaveform(url);
-    if (wasPlaying) {
-      audioEl.oncanplay = () => { togglePlayback(); audioEl.oncanplay = null; };
-    }
-    console.log('[Step4] Audio source:', source);
+    console.log('[Step4] Audio source:', source, 'at', time.toFixed(2) + 's', wasPlaying ? '(resuming)' : '(paused)');
   }
 
   function handleMissingAudio(type) {
