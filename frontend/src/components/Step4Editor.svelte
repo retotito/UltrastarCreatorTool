@@ -2689,16 +2689,29 @@
 
   async function startMic() {
     try {
-      const constraints = { audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true };
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: false,  // keep off — we want raw pitch, not normalized volume
+        ...(micDeviceId ? { deviceId: { exact: micDeviceId } } : {})
+      };
+      const constraints = { audio: audioConstraints };
       micStream = await navigator.mediaDevices.getUserMedia(constraints);
 
       micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
       micSourceNode = micAudioCtx.createMediaStreamSource(micStream);
 
+      // High-pass filter at 200Hz — removes bass bleed from speakers/room rumble
+      const highpass = micAudioCtx.createBiquadFilter();
+      highpass.type = 'highpass';
+      highpass.frequency.value = 200;
+      highpass.Q.value = 0.7;
+
       micAnalyser = micAudioCtx.createAnalyser();
       micAnalyser.fftSize = 2048;
       micAnalyser.smoothingTimeConstant = 0;
-      micSourceNode.connect(micAnalyser);
+      micSourceNode.connect(highpass);
+      highpass.connect(micAnalyser);
 
       micInputBuffer = new Float32Array(micAnalyser.fftSize);
       micDetector = PitchDetector.forFloat32Array(micAnalyser.fftSize);
