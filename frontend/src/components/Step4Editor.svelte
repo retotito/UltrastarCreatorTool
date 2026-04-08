@@ -2810,13 +2810,13 @@
           break;
         }
       }
-      // If not inside a note, look for the nearest note within 2 beats
+      // If not inside a note, look for the nearest note within 4 beats
       if (targetPitch === null) {
         let minDist = Infinity;
         for (const note of notes) {
           if (note.type === 'break') continue;
           const dist = Math.min(Math.abs(currentBeat - note.startBeat), Math.abs(currentBeat - (note.startBeat + note.duration)));
-          if (dist < minDist && dist < 2) {
+          if (dist < minDist && dist < 4) {
             minDist = dist;
             targetPitch = note.pitch;
           }
@@ -2831,7 +2831,16 @@
         if (micSmoothing === 'snap' && Math.abs(midiPitch - targetPitch) <= 2) {
           midiPitch = targetPitch;
         }
+      } else if (micLastPitch > 0) {
+        // No nearby note — use previous smoothed pitch as octave anchor
+        // This prevents wild octave jumps during gaps between phrases
+        while (midiPitch - micLastPitch > 6) midiPitch -= 12;
+        while (midiPitch - micLastPitch < -6) midiPitch += 12;
       }
+
+      // Clamp to realistic vocal range: C2 (36) to C6 (84)
+      if (midiPitch < 36) midiPitch += 12 * Math.ceil((36 - midiPitch) / 12);
+      if (midiPitch > 84) midiPitch -= 12 * Math.ceil((midiPitch - 84) / 12);
     }
 
     // Clear-ahead: remove old samples in a 200ms window ahead of current position
