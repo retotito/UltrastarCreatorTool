@@ -161,6 +161,8 @@
   let micRecorder = null;   // MediaRecorder for voice capture
   let micRecordedChunks = []; // recorded audio chunks
   let micRecordingStartTime = 0; // playback time when recording started
+  let micGain = 1.0;        // mic volume gain (0-2)
+  let micGainNode = null;   // GainNode for mic volume control
   let micLevel = 0;         // current mic input level (0-1) for indicator
   let micLevelTimer = null; // interval for level polling
   // Sticky prediction state for smoothing
@@ -2709,11 +2711,16 @@
       highpass.frequency.value = 200;
       highpass.Q.value = 0.7;
 
+      // Gain node for mic volume control
+      micGainNode = micAudioCtx.createGain();
+      micGainNode.gain.value = micGain;
+
       micAnalyser = micAudioCtx.createAnalyser();
       micAnalyser.fftSize = 2048;
       micAnalyser.smoothingTimeConstant = 0;
       micSourceNode.connect(highpass);
-      highpass.connect(micAnalyser);
+      highpass.connect(micGainNode);
+      micGainNode.connect(micAnalyser);
 
       micInputBuffer = new Float32Array(micAnalyser.fftSize);
       micDetector = PitchDetector.forFloat32Array(micAnalyser.fftSize);
@@ -2764,6 +2771,7 @@
       micStream.getTracks().forEach(t => t.stop());
       micStream = null;
     }
+    if (micGainNode) { micGainNode.disconnect(); micGainNode = null; }
     if (micSourceNode) { micSourceNode.disconnect(); micSourceNode = null; }
     if (micAudioCtx && micAudioCtx.state !== 'closed') {
       micAudioCtx.close().catch(() => {});
@@ -3261,6 +3269,10 @@
                class:mic-level-hot={micLevel > 0.8}
                class:mic-level-warm={micLevel > 0.3 && micLevel <= 0.8}></div>
         </div>
+        <input type="range" class="mic-gain-slider" min="0" max="200" step="1"
+               value={Math.round(micGain * 100)}
+               on:input={(e) => { micGain = parseInt(e.target.value) / 100; if (micGainNode) micGainNode.gain.value = micGain; }}
+               title="Mic volume: {Math.round(micGain * 100)}%" />
         {#if micShowTrail}
           <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide voice trail">👁 Voice</button>
         {:else}
@@ -4379,6 +4391,28 @@
 
   .mic-level-hot {
     background: #f44336;
+  }
+
+  .mic-gain-slider {
+    width: 50px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #444;
+    border-radius: 2px;
+    outline: none;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+
+  .mic-gain-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #4fc3f7;
+    cursor: pointer;
   }
 
   .mic-select {
