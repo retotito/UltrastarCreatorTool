@@ -161,6 +161,8 @@
   let micRecorder = null;   // MediaRecorder for voice capture
   let micRecordedChunks = []; // recorded audio chunks
   let micRecordingStartTime = 0; // playback time when recording started
+  let micLevel = 0;         // current mic input level (0-1) for indicator
+  let micLevelTimer = null; // interval for level polling
   // Sticky prediction state for smoothing
   let micLastPitch = -1;
   let micPitchConfidence = 0;
@@ -2731,6 +2733,19 @@
       // Load device list after permission is granted (labels become available)
       await loadMicDevices();
 
+      // Start mic level polling (for the level indicator)
+      micLevelTimer = setInterval(() => {
+        if (!micAnalyser) return;
+        const buf = new Float32Array(micAnalyser.fftSize);
+        micAnalyser.getFloatTimeDomainData(buf);
+        let maxVal = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = Math.abs(buf[i]);
+          if (v > maxVal) maxVal = v;
+        }
+        micLevel = Math.min(1, maxVal * 3); // amplify for visibility
+      }, 50);
+
       console.log('[Mic] Started — sampleRate:', micAudioCtx.sampleRate);
     } catch (err) {
       console.error('[Mic] Failed to start:', err);
@@ -2739,6 +2754,8 @@
   }
 
   function stopMic() {
+    if (micLevelTimer) { clearInterval(micLevelTimer); micLevelTimer = null; }
+    micLevel = 0;
     if (micRecorder && micRecorder.state !== 'inactive') {
       micRecorder.stop();
       console.log('[Mic] MediaRecorder stopped,', micRecordedChunks.length, 'chunks');
@@ -3239,6 +3256,11 @@
         🎙️ Mic
       </label>
       {#if micEnabled}
+        <div class="mic-level" title="Mic input level — tap the mic to check">
+          <div class="mic-level-bar" style="height:{Math.round(micLevel * 100)}%"
+               class:mic-level-hot={micLevel > 0.8}
+               class:mic-level-warm={micLevel > 0.3 && micLevel <= 0.8}></div>
+        </div>
         {#if micShowTrail}
           <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide voice trail">👁 Voice</button>
         {:else}
@@ -4327,6 +4349,36 @@
     background: #4fc3f7;
     cursor: pointer;
     border: none;
+  }
+
+  .mic-level {
+    display: inline-block;
+    width: 8px;
+    height: 20px;
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+    vertical-align: middle;
+  }
+
+  .mic-level-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #4caf50;
+    border-radius: 2px;
+    transition: height 0.05s linear;
+  }
+
+  .mic-level-warm {
+    background: #ff9800;
+  }
+
+  .mic-level-hot {
+    background: #f44336;
   }
 
   .mic-select {
