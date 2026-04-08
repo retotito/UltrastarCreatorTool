@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, saveEditorState } from '../services/api.js';
+  import { PitchDetector } from 'pitchy';
 
   // Canvas refs
   let canvasEl;
@@ -139,6 +140,20 @@
   let originalUrl = '';
   let hasVocalsAudio = true;
   let hasOriginalAudio = true;
+
+  // Mic sing-along
+  let micEnabled = false;
+  let micShowTrail = true;
+  let micStream = null;
+  let micAudioCtx = null;
+  let micAnalyser = null;
+  let micSourceNode = null;
+  let micDetector = null;
+  let micInputBuffer = null;
+  let micPitchTrail = [];    // array of { time, pitch, clarity }
+  let micDevices = [];       // available audio input devices
+  let micDeviceId = '';      // selected device (empty = default)
+  let micClarityThreshold = 0.8;
 
   // Text editor modal
   let showTextEditor = false;
@@ -875,6 +890,25 @@
           ctx.arc(x + width - dotR - 1, y - noteHeight / 2 + dotR + 1, dotR, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+    }
+
+    // ── Mic pitch trail ──
+    if (micShowTrail && micPitchTrail.length > 0) {
+      const visibleStartBeat = xToBeat(0);
+      const visibleEndBeat = xToBeat(w);
+      const dotRadius = 2.5;
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.7)';
+      for (let i = 0; i < micPitchTrail.length; i++) {
+        const s = micPitchTrail[i];
+        const beat = timeToBeat(s.time);
+        if (beat < visibleStartBeat - 1 || beat > visibleEndBeat + 1) continue;
+        const x = beatToX(beat);
+        const y = pitchToY(s.pitch);
+        if (y < wt || y > h - timeAxisHeight) continue;
+        ctx.beginPath();
+        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
@@ -2343,6 +2377,13 @@
       e.preventDefault();
       toggleLoop();
     }
+
+    // M: toggle mic sing-along
+    if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNote === null) {
+      e.preventDefault();
+      micEnabled = !micEnabled;
+      toggleMic();
+    }
     // Ctrl/Cmd+G: enter Grid Align mode
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyG') {
       e.preventDefault();
@@ -2450,6 +2491,7 @@
     draw();
     if (midiPlayback) updateMidiPlayback(playbackBeat);
     if (metronomeEnabled) updateMetronome(playbackBeat);
+    if (micEnabled && micAnalyser) sampleMicPitch(currentTimeSec);
     animFrame = requestAnimationFrame(updatePlayback);
   }
 
@@ -2573,6 +2615,105 @@
   function handleVolumeChange(e) {
     audioVolume = parseFloat(e.target.value);
     if (audioEl && !muteVocal) audioEl.volume = audioVolume;
+  }
+
+  // ──── Mic Sing-Along ────────────────────────────
+  async function loadMicDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      micDevices = devices.filter(d => d.kind === 'audioinput');
+      console.log('[Mic] Found', micDevices.length, 'input devices');
+    } catch (err) {
+      console.error('[Mic] Failed to enumerate devices:', err);
+    }
+  }
+
+  async function startMic() {
+    try {
+      const constraints = { audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true };
+      micStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      micSourceNode = micAudioCtx.createMediaStreamSource(micStream);
+
+      micAnalyser = micAudioCtx.createAnalyser();
+      micAnalyser.fftSize = 2048;
+      micAnalyser.smoothingTimeConstant = 0;
+      micSourceNode.connect(micAnalyser);
+
+      micInputBuffer = new Float32Array(micAnalyser.fftSize);
+      micDetector = PitchDetector.forFloat32Array(micAnalyser.fftSize);
+
+      // Load device list after permission is granted (labels become available)
+      await loadMicDevices();
+
+      console.log('[Mic] Started — sampleRate:', micAudioCtx.sampleRate);
+    } catch (err) {
+      console.error('[Mic] Failed to start:', err);
+      micEnabled = false;
+    }
+  }
+
+  function stopMic() {
+    if (micStream) {
+      micStream.getTracks().forEach(t => t.stop());
+      micStream = null;
+    }
+    if (micSourceNode) { micSourceNode.disconnect(); micSourceNode = null; }
+    if (micAudioCtx && micAudioCtx.state !== 'closed') {
+      micAudioCtx.close().catch(() => {});
+    }
+    micAudioCtx = null;
+    micAnalyser = null;
+    micDetector = null;
+    micInputBuffer = null;
+    console.log('[Mic] Stopped');
+  }
+
+  async function toggleMic() {
+    if (micEnabled) {
+      await startMic();
+    } else {
+      stopMic();
+    }
+  }
+
+  async function changeMicDevice(e) {
+    micDeviceId = e.target.value;
+    if (micEnabled) {
+      stopMic();
+      await startMic();
+    }
+  }
+
+  function sampleMicPitch(timeSec) {
+    if (!micAnalyser || !micDetector || !micInputBuffer) return;
+
+    micAnalyser.getFloatTimeDomainData(micInputBuffer);
+    const [frequency, clarity] = micDetector.findPitch(micInputBuffer, micAudioCtx.sampleRate);
+
+    if (clarity < micClarityThreshold || frequency < 60 || frequency > 2000) return;
+
+    // Convert frequency to MIDI pitch
+    const midiPitch = Math.round(12 * Math.log2(frequency / 440) + 69);
+
+    // Clear-ahead: remove old samples in a 200ms window ahead of current position
+    const clearAhead = 0.2;
+    micPitchTrail = micPitchTrail.filter(s =>
+      s.time < timeSec - 0.01 || s.time > timeSec + clearAhead
+    );
+
+    micPitchTrail.push({ time: timeSec, pitch: midiPitch, clarity });
+
+    // Cap buffer at 30000 samples (~8 min at 60fps)
+    if (micPitchTrail.length > 30000) {
+      micPitchTrail = micPitchTrail.slice(-25000);
+    }
+  }
+
+  function clearMicTrail() {
+    micPitchTrail = [];
+    draw();
   }
 
   // ──── Grain Scrub ────────────────────────────
@@ -2804,6 +2945,7 @@
     window.removeEventListener('keydown', handleKeydownSave);
     window.removeEventListener('resize', resizeCanvas);
     window.removeEventListener('click', handleGlobalClick);
+    stopMic();
   });
 
   // Reload when we enter this step (one-shot per session)
@@ -2862,6 +3004,27 @@
       </label>
       {#if loopStartBeat !== null && loopEndBeat !== null}
         <button class="tool-btn sm" on:click={clearLoop} title="Clear loop region (Esc)">✕ Loop</button>
+      {/if}
+      <label title="Microphone sing-along (M)">
+        <input type="checkbox" bind:checked={micEnabled} on:change={toggleMic} />
+        🎙️ Mic
+      </label>
+      {#if micEnabled}
+        {#if micShowTrail}
+          <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide voice trail">👁 Voice</button>
+        {:else}
+          <button class="tool-btn sm" on:click={() => { micShowTrail = true; draw(); }} title="Show voice trail">👁 Voice</button>
+        {/if}
+        {#if micPitchTrail.length > 0}
+          <button class="tool-btn sm" on:click={clearMicTrail} title="Clear voice trail">🗑</button>
+        {/if}
+        {#if micDevices.length > 1}
+          <select class="mic-select" value={micDeviceId} on:change={changeMicDevice} title="Select microphone">
+            {#each micDevices as device}
+              <option value={device.deviceId}>{device.label || `Mic ${micDevices.indexOf(device) + 1}`}</option>
+            {/each}
+          </select>
+        {/if}
       {/if}
     </div>
 
@@ -3883,6 +4046,21 @@
     background: #4fc3f7;
     cursor: pointer;
     border: none;
+  }
+
+  .mic-select {
+    background: #222;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 0.7rem;
+    max-width: 120px;
+    cursor: pointer;
+  }
+
+  .mic-select:focus {
+    outline: 1px solid #4fc3f7;
   }
 
   .tool-btn.disabled-audio {
