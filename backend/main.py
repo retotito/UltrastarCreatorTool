@@ -1636,6 +1636,41 @@ async def get_reference_notes(session_id: str):
 # ────────────────────────────────────────────────────────────
 # Startup
 # ────────────────────────────────────────────────────────────
+
+
+@app.post("/api/save-mic-trail/{session_id}")
+async def save_mic_trail(session_id: str, request: Request):
+    """Save a mic pitch trail recording to the session's downloads folder.
+    
+    Keeps only the last 5 recordings, auto-deleting the oldest.
+    """
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    body = await request.json()
+    
+    # Save to downloads folder with timestamp
+    import glob as glob_mod
+    timestamp = int(time.time())
+    filename = f"mic_trail_{session_id[:8]}_{timestamp}.json"
+    filepath = os.path.join(DOWNLOADS_DIR, filename)
+    
+    with open(filepath, "w") as f:
+        json.dump(body, f, indent=2)
+    
+    # Keep only last 5 mic trail files for this session
+    pattern = os.path.join(DOWNLOADS_DIR, f"mic_trail_{session_id[:8]}_*.json")
+    existing = sorted(glob_mod.glob(pattern))
+    while len(existing) > 5:
+        oldest = existing.pop(0)
+        os.remove(oldest)
+        log_step("MIC", f"Removed old mic trail: {os.path.basename(oldest)}")
+    
+    log_step("MIC", f"Saved mic trail: {filename} ({len(body.get('samples', []))} samples)")
+    return {"status": "ok", "filename": filename, "count": len(existing)}
+
+
 if __name__ == "__main__":
     import uvicorn
     

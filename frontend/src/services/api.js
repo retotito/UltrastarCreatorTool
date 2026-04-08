@@ -159,4 +159,8 @@ export function getDownloadUrl(sessionId, fileType) {
   return `${BASE}/download/${sessionId}/${fileType}`;
 }
 
+export async function saveMicTrail(sessionId, trailData) {
+  return request('POST', `/save-mic-trail/${sessionId}`, trailData);
+}
+
 

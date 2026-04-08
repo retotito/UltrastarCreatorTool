@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep } from '../stores/appStore.js';
-  import { getEditorData, getAudioUrl, saveEditorState } from '../services/api.js';
+  import { getEditorData, getAudioUrl, saveEditorState, saveMicTrail } from '../services/api.js';
   import { PitchDetector } from 'pitchy';
 
   // Canvas refs
@@ -2859,7 +2859,7 @@
     draw();
   }
 
-  function exportMicTrail() {
+  async function exportMicTrail() {
     const data = {
       exported: new Date().toISOString(),
       settings: { smoothing: micSmoothing, octaveCorrect: micOctaveCorrect, clarityThreshold: micClarityThreshold },
@@ -2875,14 +2875,12 @@
         confidence: s.confidence ?? null
       }))
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mic-trail-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    console.log(`[Mic] Exported ${micPitchTrail.length} samples`);
+    try {
+      const result = await saveMicTrail($sessionId, data);
+      console.log(`[Mic] Saved ${micPitchTrail.length} samples to server: ${result.filename}`);
+    } catch (err) {
+      console.error('[Mic] Failed to save trail to server:', err);
+    }
   }
 
   // ──── Grain Scrub ────────────────────────────
