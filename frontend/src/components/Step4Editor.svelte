@@ -211,8 +211,14 @@
     if (pitchNotes.length === 0) return;
     
     const pitches = pitchNotes.map(n => n.pitch);
-    minPitch = Math.max(24, Math.min(...pitches) - 6);
-    maxPitch = Math.min(108, Math.max(...pitches) + 6);
+    minPitch = Math.min(...pitches) - 6;
+    maxPitch = Math.max(...pitches) + 6;
+    // Ensure at least 12 semitones visible (one octave)
+    if (maxPitch - minPitch < 12) {
+      const mid = (minPitch + maxPitch) / 2;
+      minPitch = Math.floor(mid - 6);
+      maxPitch = Math.ceil(mid + 6);
+    }
   }
 
   // Beat to X pixel
@@ -251,7 +257,7 @@
   // Note name helper
   function noteName(midi) {
     const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    return `${names[midi % 12]}${Math.floor(midi / 12) - 1}`;
+    return `${names[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
   }
 
   // Beat to time (seconds) conversion
@@ -626,7 +632,7 @@
     for (let p = minPitch; p <= maxPitch; p++) {
       const y = pitchToY(p);
       if (y > pianoH) continue; // don't draw into time axis
-      const isC = p % 12 === 0;
+      const isC = ((p % 12) + 12) % 12 === 0;
       
       ctx.strokeStyle = isC ? '#333' : '#1a1a2e';
       ctx.lineWidth = isC ? 1 : 0.5;
