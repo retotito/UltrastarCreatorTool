@@ -899,7 +899,7 @@
     }
 
     // ── Mic pitch trail ──
-    if (micShowTrail && micPitchTrail.length > 0) {
+    if (micEnabled && micShowTrail && micPitchTrail.length > 0) {
       const visibleStartBeat = xToBeat(0);
       const visibleEndBeat = xToBeat(w);
       const barHeight = noteHeight * 0.8;
