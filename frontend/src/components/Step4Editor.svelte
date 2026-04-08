@@ -156,6 +156,7 @@
   let micClarityThreshold = 0.8;
   let micSmoothing = 'smooth'; // 'raw' | 'smooth' | 'snap'
   let micOctaveCorrect = true;
+  let micStarting = false; // true while mic is initializing
   // Sticky prediction state for smoothing
   let micLastPitch = -1;
   let micPitchConfidence = 0;
@@ -2711,7 +2712,9 @@
     // Redraw immediately so trail visibility responds instantly
     draw();
     if (micEnabled) {
+      micStarting = true;
       await startMic();
+      micStarting = false;
     } else {
       stopMic();
     }
@@ -3228,6 +3231,13 @@
       on:wheel|nonpassive={handleWheel}
       on:contextmenu={handleContextMenu}
     ></canvas>
+    {#if micStarting}
+      <div class="mic-starting-overlay">
+        <div class="mic-starting-box">
+          🎙️ Starting microphone…
+        </div>
+      </div>
+    {/if}
   </div>
 
   <!-- Grid Align mode overlay bar -->
@@ -3685,6 +3695,7 @@
   }
 
   .canvas-container {
+    position: relative;
     border: 1px solid #333;
     border-top: none;
     overflow: hidden;
@@ -3694,6 +3705,34 @@
   canvas {
     display: block;
     width: 100%;
+  }
+
+  .mic-starting-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .mic-starting-box {
+    background: rgba(13, 17, 23, 0.85);
+    border: 1px solid #4fc3f7;
+    border-radius: 8px;
+    padding: 12px 24px;
+    color: #ccc;
+    font-size: 0.9rem;
+    animation: mic-pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes mic-pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
   }
 
   .scrollbar-container {
