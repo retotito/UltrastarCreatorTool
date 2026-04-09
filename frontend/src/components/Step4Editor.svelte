@@ -541,6 +541,7 @@
   function confirmGridAlign() {
     const newGapMs = gridAlignOriginalGapMs + gridAlignOffsetMs;
     console.log(`[GridAlign] Confirm: offset=${gridAlignOffsetMs}ms, newGap=${newGapMs}ms`);
+    pushUndo();
     gapMs = newGapMs;
     gridAlignMode = false;
     gridAlignOffsetMs = 0;
@@ -1163,6 +1164,7 @@
       const newGapSec = beatToTime(setGapHoverBeat);
       const newGapMs = Math.round(newGapSec * 1000);
       console.log(`[SetGAP] Setting GAP to ${newGapMs}ms (beat ${setGapHoverBeat} → time ${newGapSec.toFixed(3)}s)`);
+      pushUndo();
       gapMs = newGapMs;
       cancelSetGapMode();
       handleBpmGapChange();
