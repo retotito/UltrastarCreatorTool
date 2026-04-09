@@ -1830,8 +1830,8 @@
   // ──── Context Menu ──────────────────────────
   function handleContextMenu(event) {
     event.preventDefault();
-    // No context menu during playback
-    if (isPlaying) return;
+    // No context menu during playback or grid align
+    if (isPlaying || gridAlignMode) return;
     const rect = canvasEl.getBoundingClientRect();
     const mx = event.clientX - rect.left;
     const my = event.clientY - rect.top;
