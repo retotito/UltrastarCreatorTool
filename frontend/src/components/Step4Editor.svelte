@@ -1414,7 +1414,8 @@
       const hoverTimeSec = beatToTime(hoverBeat);
       const maxGapSec = getMaxGapSec();
       // Only allow if this position is at or before the first note's raw start time
-      if (hoverTimeSec <= maxGapSec) {
+      // Use 1ms tolerance to avoid float rounding rejecting the exact same position
+      if (hoverTimeSec <= maxGapSec + 0.001) {
         setGapHoverBeat = hoverBeat;
       } else {
         setGapHoverBeat = null;
