@@ -2544,6 +2544,17 @@
         playbackBeat = loopStartBeat;
         // Stop all midi notes so they retrigger cleanly
         if (midiPlayback) stopAllMidiNotes();
+        // Clear sung blocks for notes in the loop region so each pass starts fresh
+        if (micEnabled && micNoteHits.size > 0) {
+          for (const note of notes) {
+            if (note.type === 'break') continue;
+            const noteEnd = note.startBeat + note.duration;
+            // Clear if note overlaps the loop region
+            if (noteEnd > loopStartBeat && note.startBeat < loopEndBeat) {
+              micNoteHits.delete(note.id);
+            }
+          }
+        }
         console.log(`[Loop] Wrapped to beat ${loopStartBeat}`);
       }
     }
