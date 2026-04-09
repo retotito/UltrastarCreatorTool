@@ -112,8 +112,10 @@
 
   {#if $generationResult}
     {#if missingInfo}
+      {@const previewArtist = ($lyricsData?.artist || '').trim() || 'Unknown'}
+      {@const previewTitle = ($lyricsData?.title || '').trim() || 'Unknown'}
       <div class="info-banner">
-        <span>⚠️ {!hasArtist && !hasTitle ? 'Artist and title are' : !hasArtist ? 'Artist is' : 'Title is'} missing — filenames will use "{getBaseFilename()}"</span>
+        <span>⚠️ {!hasArtist && !hasTitle ? 'Artist and title are' : !hasArtist ? 'Artist is' : 'Title is'} missing — filenames will use "{previewArtist} - {previewTitle}"</span>
         <button class="link-btn" on:click={openEditPopup}>✏️ Add now</button>
       </div>
     {/if}
