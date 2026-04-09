@@ -2439,6 +2439,15 @@
 
     console.log(`[Key] ${e.code} shift=${e.shiftKey} ctrl=${e.ctrlKey} meta=${e.metaKey}`);
 
+    // ── Grid Align mode: only allow Enter (confirm), Escape (cancel), Ctrl+G (cancel) ──
+    if (gridAlignMode) {
+      if (e.code === 'Enter') { e.preventDefault(); confirmGridAlign(); return; }
+      if (e.code === 'Escape') { e.preventDefault(); cancelGridAlign(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.code === 'KeyG') { e.preventDefault(); cancelGridAlign(); return; }
+      e.preventDefault();
+      return;
+    }
+
     // ── No editing shortcuts during playback ──
     // Allow: Space (play/pause), arrows (seek), L (loop), M (mic), Escape, speed
     // Block: undo/redo, clipboard, note editing
@@ -2499,7 +2508,7 @@
     // Spacebar: toggle play/pause
     if (e.code === 'Space') {
       e.preventDefault();
-      if (!gridAlignMode && !setGapMode) togglePlayback();
+      if (!setGapMode) togglePlayback();
     }
     // Left arrow: move cursor (seek) — 5s or 1s with Shift
     if (e.code === 'ArrowLeft') {
@@ -2527,27 +2536,14 @@
     // Ctrl/Cmd+G: enter Grid Align mode
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyG') {
       e.preventDefault();
-      if (gridAlignMode) {
-        cancelGridAlign();
-      } else {
-        enterGridAlignMode();
-      }
+      enterGridAlignMode();
       return;
     }
 
-    // Enter: confirm grid align
-    if (e.code === 'Enter' && gridAlignMode) {
-      e.preventDefault();
-      confirmGridAlign();
-      return;
-    }
-
-    // Escape: cancel gridAlign, setGap mode, paste mode, clear loop, or deselect
+    // Escape: cancel setGap mode, paste mode, clear loop, or deselect
     if (e.code === 'Escape') {
       e.preventDefault();
-      if (gridAlignMode) {
-        cancelGridAlign();
-      } else if (setGapMode) {
+      if (setGapMode) {
         cancelSetGapMode();
       } else if (pasteMode) {
         cancelPaste();
