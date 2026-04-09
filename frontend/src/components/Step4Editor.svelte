@@ -2559,11 +2559,26 @@
       }
     }
 
-    // Scroll logic — disable auto-scroll when looping
+    // Scroll logic
     const canvasWidth = canvasEl?.width || 800;
     const minScrollX = getMinBeat() * zoom;
-    if (loopEnabled && loopStartBeat !== null) {
-      // No auto-scroll during loop — let user freely edit
+    if (loopEnabled && loopStartBeat !== null && loopEndBeat !== null) {
+      // During loop: auto-scroll but clamp to loop boundaries
+      const loopWidthPx = (loopEndBeat - loopStartBeat) * zoom;
+      if (loopWidthPx > canvasWidth) {
+        // Loop wider than viewport — scroll with playback, clamped to loop region
+        const loopMinScroll = loopStartBeat * zoom - canvasWidth * 0.1;
+        const loopMaxScroll = loopEndBeat * zoom - canvasWidth * 0.9;
+        if (scrollMode) {
+          scrollX = Math.max(loopMinScroll, Math.min(loopMaxScroll, playbackBeat * zoom - canvasWidth * 0.3));
+        } else {
+          const cursorX = beatToX(playbackBeat);
+          if (cursorX > canvasWidth * 0.7 || cursorX < canvasWidth * 0.1) {
+            scrollX = Math.max(loopMinScroll, Math.min(loopMaxScroll, playbackBeat * zoom - canvasWidth * 0.3));
+          }
+        }
+      }
+      // If loop fits in viewport, no scrolling needed — user can see everything
     } else if (scrollMode) {
       // Fixed cursor: cursor stays at 30%, notes scroll
       scrollX = Math.max(minScrollX, playbackBeat * zoom - canvasWidth * 0.3);
