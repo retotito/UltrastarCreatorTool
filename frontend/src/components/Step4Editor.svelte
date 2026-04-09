@@ -2805,6 +2805,17 @@
       const devices = await navigator.mediaDevices.enumerateDevices();
       micDevices = devices.filter(d => d.kind === 'audioinput');
       console.log('[Mic] Found', micDevices.length, 'input devices');
+      // Set dropdown to the active mic (from stream) or first device
+      if (!micDeviceId && micStream) {
+        const activeTrack = micStream.getAudioTracks()[0];
+        if (activeTrack) {
+          const settings = activeTrack.getSettings();
+          micDeviceId = settings.deviceId || (micDevices[0]?.deviceId ?? '');
+        }
+      }
+      if (!micDeviceId && micDevices.length > 0) {
+        micDeviceId = micDevices[0].deviceId;
+      }
     } catch (err) {
       console.error('[Mic] Failed to enumerate devices:', err);
     }
