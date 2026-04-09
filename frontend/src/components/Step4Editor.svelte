@@ -1211,8 +1211,8 @@
     }
 
     if (my >= pianoH) {
-      if (event.shiftKey) {
-        // Shift+click on ruler → start loop drag
+      if (event.metaKey || event.ctrlKey) {
+        // Ctrl/Cmd+click on ruler → start loop drag
         isSettingLoop = true;
         loopDragStartBeat = Math.round(beat);
         loopStartBeat = loopDragStartBeat;
