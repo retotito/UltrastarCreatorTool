@@ -159,6 +159,10 @@ export function getDownloadUrl(sessionId, fileType) {
   return `${BASE}/download/${sessionId}/${fileType}`;
 }
 
+export function getDownloadZipUrl(sessionId) {
+  return `${BASE}/download-zip/${sessionId}`;
+}
+
 export async function updateMetadata(sessionId, artist, title) {
   const form = new FormData();
   form.append('artist', artist);

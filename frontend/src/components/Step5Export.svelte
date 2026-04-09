@@ -1,6 +1,6 @@
 <script>
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
-  import { getDownloadUrl, getAudioUrl, updateMetadata } from '../services/api.js';
+  import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl } from '../services/api.js';
   import { resetSession } from '../stores/appStore.js';
 
   let exported = false;
@@ -44,6 +44,17 @@
   function handleEditKeydown(e) {
     if (e.key === 'Enter') saveMetadata();
     if (e.key === 'Escape') showEditPopup = false;
+  }
+
+  function downloadZip() {
+    const url = getDownloadZipUrl($sessionId);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = getBaseFilename() + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    exported = true;
   }
 
   function downloadFile(type) {
@@ -135,9 +146,14 @@
     <div class="download-section">
       <div class="download-header">
         <h3>Download Files</h3>
-        <button class="btn btn-primary download-all" on:click={downloadAll}>
-          ⬇ Download All
-        </button>
+        <div class="download-header-buttons">
+          <button class="btn btn-primary download-all" on:click={downloadZip}>
+            📦 Download ZIP
+          </button>
+          <button class="btn btn-secondary download-all" on:click={downloadAll}>
+            ⬇ Individual
+          </button>
+        </div>
       </div>
 
       <div class="download-grid">
@@ -302,6 +318,11 @@
   .download-all {
     font-size: 0.9rem;
     padding: 0.5rem 1.25rem;
+  }
+
+  .download-header-buttons {
+    display: flex;
+    gap: 0.5rem;
   }
 
   .download-grid {

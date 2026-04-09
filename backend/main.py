@@ -1587,6 +1587,79 @@ async def download_file(session_id: str, file_type: str):
     return FileResponse(path, filename=download_name)
 
 
+@app.get("/api/download-zip/{session_id}")
+async def download_zip(session_id: str):
+    """Bundle all generated files into a single ZIP download."""
+    import zipfile
+    import io
+    from starlette.responses import Response
+
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    result = session.get("result")
+    if not result:
+        raise HTTPException(status_code=404, detail="No files generated yet")
+
+    # Build base name from artist/title
+    artist = session.get("artist", "").strip()
+    title_name = session.get("title", "").strip()
+    if artist and title_name:
+        base = f"{artist} - {title_name}"
+    elif title_name:
+        base = title_name
+    elif artist:
+        base = artist
+    else:
+        base = "Untitled Song"
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Ultrastar .txt
+        txt_file = result.get("corrected_txt_file", result.get("txt_file"))
+        if txt_file:
+            path = os.path.join(DOWNLOADS_DIR, txt_file)
+            if os.path.exists(path):
+                zf.write(path, f"{base}.txt")
+
+        # MIDI
+        midi_file = result.get("midi_file")
+        if midi_file:
+            path = os.path.join(DOWNLOADS_DIR, midi_file)
+            if os.path.exists(path):
+                zf.write(path, f"{base}.mid")
+
+        # Summary
+        summary_file = result.get("summary_file")
+        if summary_file:
+            path = os.path.join(DOWNLOADS_DIR, summary_file)
+            if os.path.exists(path):
+                zf.write(path, f"{base}_summary.txt")
+
+        # Vocals audio
+        vocal_path = session.get("vocal_audio")
+        if vocal_path and os.path.exists(vocal_path):
+            ext = os.path.splitext(vocal_path)[1]
+            zf.write(vocal_path, f"{base} [Vocals]{ext}")
+
+        # Original audio
+        original_path = session.get("original_audio")
+        if original_path and os.path.exists(original_path):
+            ext = os.path.splitext(original_path)[1]
+            zf.write(original_path, f"{base}{ext}")
+
+    buf.seek(0)
+    zip_name = f"{base}.zip"
+    log_step("EXPORT", f"ZIP download: {zip_name}")
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+    )
+
+
 # ────────────────────────────────────────────────────────────
 # Reference comparison (learning from verified Ultrastar files)
 # ────────────────────────────────────────────────────────────
