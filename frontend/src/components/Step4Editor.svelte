@@ -552,14 +552,11 @@
     // Snap the drag offset to the nearest 1/8-note beat boundary
     const shiftBeats = Math.round((gridAlignOffsetMs * bpm) / 15000);
     const shiftMs = Math.round(shiftBeats * 15000 / bpm);
-    console.log(`%c🎵 [GridAlign] Confirm: offset=${gridAlignOffsetMs.toFixed(1)}ms, shiftBeats=${shiftBeats}, shiftMs=${shiftMs}ms`, 'color: #ff69b4; font-weight: bold');
     pushUndo();
 
     // Only shift the downbeat offset — GAP and notes stay unchanged
     downbeatOffsetMs += shiftMs;
     downbeatFromHeader = true;
-    window._downbeatLogged = false;
-    console.log(`%c🎵 [Downbeat] Grid align → shifted by ${shiftMs}ms, new downbeatOffsetMs=${downbeatOffsetMs.toFixed(1)}ms`, 'color: #ff69b4; font-weight: bold');
 
     // Restore original GAP (drag preview may have changed it)
     gapMs = gridAlignOriginalGapMs;
@@ -717,10 +714,6 @@
     if (downbeatOffsetMs !== 0) {
       const exactBeat = (downbeatOffsetMs - gapMs) * bpm / 15000;
       downbeatBeat = Math.round(exactBeat);
-      if (!window._downbeatLogged) {
-        console.log(`%c🎵 [Downbeat] downbeatOffsetMs=${downbeatOffsetMs}, gapMs=${gapMs}, bpm=${bpm}, exactBeat=${exactBeat.toFixed(3)}, snapped=${downbeatBeat}`, 'color: #3399ff; font-weight: bold');
-        window._downbeatLogged = true;
-      }
     }
 
     for (let b = startBeat; b <= endBeat; b++) {
@@ -728,15 +721,10 @@
       // When we have a downbeat reference, all grid subdivisions align to it
       const rel = downbeatFromHeader ? b - downbeatBeat : b;
       const isMeasure = ((rel % beatsPerMeasure) + beatsPerMeasure) % beatsPerMeasure === 0;
-      const isDownbeat = (b === downbeatBeat);
       const isQuarter = ((rel % BEATS_PER_QUARTER) + BEATS_PER_QUARTER) % BEATS_PER_QUARTER === 0;
       const isEighth = ((rel % beatsPerEighth) + beatsPerEighth) % beatsPerEighth === 0;
       
-      if (isDownbeat) {
-        // Blue if from header, purple if auto-computed — this IS a measure line too
-        ctx.strokeStyle = downbeatFromHeader ? '#3399ff' : '#cc00ff';
-        ctx.lineWidth = 3;
-      } else if (isMeasure) {
+      if (isMeasure) {
         ctx.strokeStyle = '#7070cc';
         ctx.lineWidth = 2;
       } else if (isQuarter) {
@@ -2201,7 +2189,6 @@
     // Downbeat offset
     if (downbeatOffsetMs !== 0) {
       lines.push(`#DOWNBEATOFFSET:${Math.round(downbeatOffsetMs)}`);
-      console.log(`%c🎵 [Downbeat] addet to the header: ${Math.round(downbeatOffsetMs)}ms`, 'color: #ff69b4; font-weight: bold');
     }
     // Extra headers (YOUTUBE, COVER, LANGUAGE, etc.)
     const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP', 'DOWNBEATOFFSET']);
@@ -3283,7 +3270,6 @@
         const beatAtZero = (-data.gap_ms * data.bpm) / 15000;
         const firstBeat = Math.ceil(beatAtZero / beatsPerMeasure) * beatsPerMeasure;
         downbeatOffsetMs = data.gap_ms + (firstBeat * 15000 / data.bpm);
-        console.log(`%c🎵 [Downbeat] No header — auto-computed first downbeat: beat=${firstBeat}, audioTime=${downbeatOffsetMs.toFixed(1)}ms (purple)`, 'color: #ff69b4; font-weight: bold');
       } else {
         downbeatFromHeader = true;
       }
