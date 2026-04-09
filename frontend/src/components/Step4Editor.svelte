@@ -539,10 +539,17 @@
   }
 
   function confirmGridAlign() {
-    const newGapMs = gridAlignOriginalGapMs + gridAlignOffsetMs;
-    console.log(`[GridAlign] Confirm: offset=${gridAlignOffsetMs}ms, newGap=${newGapMs}ms`);
+    // Apply full offset to get the new grid origin
+    const rawNewGapMs = gridAlignOriginalGapMs + gridAlignOffsetMs;
+    const rawNewGapSec = rawNewGapMs / 1000;
+    // Snap original GAP to nearest beat of the new grid (same logic as notes in requantizeFromMs)
+    const originalGapSec = gridAlignOriginalGapMs / 1000;
+    const nearestBeat = Math.round(((originalGapSec - rawNewGapSec) * bpm) / 15);
+    // Final GAP = the new grid line closest to the original GAP position
+    const finalGapMs = Math.round((rawNewGapSec + nearestBeat * 15 / bpm) * 1000);
+    console.log(`[GridAlign] Confirm: offset=${gridAlignOffsetMs.toFixed(1)}ms, rawNewGap=${rawNewGapMs}ms, snappedGap=${finalGapMs}ms (beat ${nearestBeat})`);
     pushUndo();
-    gapMs = newGapMs;
+    gapMs = finalGapMs;
     gridAlignMode = false;
     gridAlignOffsetMs = 0;
     gridAlignDragging = false;
@@ -721,7 +728,7 @@
 
     // ── GAP marker (beat 0) — yellow dashed line ──
     {
-      const gapX = beatToX(0) + gridOffsetPx;
+      const gapX = beatToX(0); // No gridOffsetPx — GAP stays fixed during grid align
       if (gapX >= -1 && gapX <= w + 1) {
         ctx.save();
         ctx.strokeStyle = '#ffd700';
