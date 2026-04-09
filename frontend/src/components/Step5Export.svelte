@@ -151,7 +151,7 @@
             📦 Download ZIP
           </button>
           <button class="btn btn-secondary download-all" on:click={downloadAll}>
-            ⬇ Individual
+            ⬇ All Files Individual
           </button>
         </div>
       </div>
