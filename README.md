@@ -4,6 +4,8 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 
 **Goal**: Make it easy for anyone to create Ultrastar songs, so more people sing together. 🎤
 
+**New**: Sing along directly in the editor — use your microphone to test timing and pitch against the notes in real time, for a realistic editing experience.
+
 ## How it Works
 
 | Step | What you do | What the tool does |
@@ -32,6 +34,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 ![Step 4 - Editor Overview](docs/screenshots/ultrastarSongGenerator4.1.png)
 ![Step 4 - Editor Detail](docs/screenshots/ultrastarSongGenerator4.2.png)
 ![Step 4 - Editor Playback](docs/screenshots/ultrastarSongGenerator4.3.png)
+![Step 4 - Sing Along](docs/screenshots/ultrastarSongGenerator4.4.png)
 
 ### Step 5 — Export
 ![Step 5 - Export](docs/screenshots/ultrastarSongGenerator5.png)
@@ -52,12 +55,17 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 - **Grid alignment** (⌘G) — snap the entire beat grid to match the audio
 - **GAP adjustment** (⌘S) — click any grid line to set the GAP position
 - **Text editor** — edit raw Ultrastar content with live preview
-- **Undo/Redo** — full snapshot history (notes, BPM, GAP, headers)
+- **Select all** (⌘A) — select all notes for bulk move
+- **Undo/Redo** — full snapshot history (notes, BPM, GAP, downbeat offset, headers)
 - **Waveform display** — see the audio (full-mix or vocal-track) waveform by the the notes
+- **Downbeat alignment** — independent measure grid offset stored as `#DOWNBEATOFFSET` header
+- **Metronome** — accent clicks aligned to the downbeat for timing reference
 - **Extra headers** — YOUTUBE, COVER, GENRE and other Ultrastar tags
 - **Context menus** — right-click on notes or empty space for quick actions
 
 ### Playback & Audio
+- **Sing-along mode** — use your microphone to sing along with the song in real time, see your pitch trail overlaid on the notes for realistic editing
+- **Mic device selection** — choose from available microphones with volume gain control
 - **MIDI pitch playback** — hear synthesized pitches during playback (triangle wave)
 - **Vocal mute toggle** — isolate MIDI pitches or hear both
 - **Audio scrub** — drag the playhead to hear frozen audio grains at any position
