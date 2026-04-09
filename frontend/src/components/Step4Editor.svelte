@@ -426,6 +426,8 @@
       notes: JSON.parse(JSON.stringify(notes)),
       bpm,
       gapMs,
+      downbeatOffsetMs,
+      downbeatFromHeader,
       extraHeaders: JSON.parse(JSON.stringify(extraHeaders)),
     };
   }
@@ -434,6 +436,8 @@
     notes = snap.notes;
     if (snap.bpm !== undefined) bpm = snap.bpm;
     if (snap.gapMs !== undefined) gapMs = snap.gapMs;
+    if (snap.downbeatOffsetMs !== undefined) downbeatOffsetMs = snap.downbeatOffsetMs;
+    if (snap.downbeatFromHeader !== undefined) downbeatFromHeader = snap.downbeatFromHeader;
     if (snap.extraHeaders !== undefined) extraHeaders = snap.extraHeaders;
     selectedNote = null;
     selectedNotes = new Set();
