@@ -128,6 +128,11 @@
   let lastMetronomeBeat = -1; // tracks which quarter-note beat we last clicked
   let metronomeOffset = 0;    // offset in ultrastar beats (0 = on beat, 4 = half beat / 8th note off)
   const BEATS_PER_QUARTER = 8; // 8 ultrastar beats = 1 real quarter note (BPM is doubled, formula uses /15)
+  const BEATS_PER_MEASURE = BEATS_PER_QUARTER * 4; // 32 ultrastar beats = 1 measure (4/4 time)
+
+  // Downbeat offset: ms from audio 0s to first downbeat
+  let downbeatOffsetMs = 0;
+  let downbeatFromHeader = false; // true if loaded from #DOWNBEATOFFSET header
 
   // Waveform
   let waveformPeaks = [];   // pre-computed peaks array
@@ -479,7 +484,12 @@
         };
       });
 
-      const result = await saveEditorState($sessionId, noteData, bpm, gapMs, extraHeaders);
+      // Include downbeat offset in extra headers for persistence
+      const headersToSave = [...extraHeaders];
+      if (downbeatOffsetMs !== 0) {
+        headersToSave.push({ key: 'DOWNBEATOFFSET', value: String(Math.round(downbeatOffsetMs)) });
+      }
+      const result = await saveEditorState($sessionId, noteData, bpm, gapMs, headersToSave);
       editCount = result.edit_count || editCount + 1;
       lastSaveTime = new Date();
       hasUnsavedChanges = false;
@@ -698,14 +708,32 @@
     const endBeat = Math.ceil(xToBeat(w - gridOffsetPx));
     const beatsPerMeasure = BEATS_PER_QUARTER * 4; // 4/4 time = 4 quarter notes per measure
     const beatsPerEighth = BEATS_PER_QUARTER / 2;  // half a quarter note
-    
+
+    // Find the downbeat gridline beat (nearest 1/8-note grid)
+    let downbeatBeat = -99999;
+    if (downbeatOffsetMs !== 0) {
+      const exactBeat = (downbeatOffsetMs - gapMs) * bpm / 15000;
+      downbeatBeat = Math.round(exactBeat);
+      if (!window._downbeatLogged) {
+        console.log(`%c🎵 [Downbeat] testMs=${testMs}, gapMs=${gapMs}, bpm=${bpm}, exactBeat=${exactBeat.toFixed(3)}, snapped=${downbeatBeat}`, 'color: #3399ff; font-weight: bold');
+        window._downbeatLogged = true;
+      }
+    }
+
     for (let b = startBeat; b <= endBeat; b++) {
       const x = beatToX(b) + gridOffsetPx;
-      const isMeasure = b % beatsPerMeasure === 0;
-      const isQuarter = b % BEATS_PER_QUARTER === 0;
-      const isEighth = b % beatsPerEighth === 0;
+      // When we have a downbeat reference, all grid subdivisions align to it
+      const rel = downbeatFromHeader ? b - downbeatBeat : b;
+      const isMeasure = ((rel % beatsPerMeasure) + beatsPerMeasure) % beatsPerMeasure === 0;
+      const isDownbeat = (b === downbeatBeat);
+      const isQuarter = ((rel % BEATS_PER_QUARTER) + BEATS_PER_QUARTER) % BEATS_PER_QUARTER === 0;
+      const isEighth = ((rel % beatsPerEighth) + beatsPerEighth) % beatsPerEighth === 0;
       
-      if (isMeasure) {
+      if (isDownbeat) {
+        // Blue if from header, purple if auto-computed — this IS a measure line too
+        ctx.strokeStyle = downbeatFromHeader ? '#3399ff' : '#cc00ff';
+        ctx.lineWidth = 3;
+      } else if (isMeasure) {
         ctx.strokeStyle = '#7070cc';
         ctx.lineWidth = 2;
       } else if (isQuarter) {
@@ -2167,8 +2195,13 @@
     lines.push(`#ARTIST:${$lyricsData?.artist || 'Unknown'}`);
     lines.push(`#BPM:${bpm}`);
     lines.push(`#GAP:${gapMs}`);
+    // Downbeat offset
+    if (downbeatOffsetMs !== 0) {
+      lines.push(`#DOWNBEATOFFSET:${Math.round(downbeatOffsetMs)}`);
+      console.log(`%c🎵 [Downbeat] addet to the header: ${Math.round(downbeatOffsetMs)}ms`, 'color: #ff69b4; font-weight: bold');
+    }
     // Extra headers (YOUTUBE, COVER, LANGUAGE, etc.)
-    const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP']);
+    const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP', 'DOWNBEATOFFSET']);
     for (const h of extraHeaders) {
       if (!standardKeys.has(h.key.toUpperCase())) {
         lines.push(`#${h.key}:${h.value}`);
@@ -2711,13 +2744,22 @@
 
   function updateMetronome(currentBeat) {
     // Click on every quarter note (every BEATS_PER_QUARTER ultrastar beats)
-    // Apply offset to shift the click grid
-    const offsetBeat = currentBeat - metronomeOffset;
+    // When we have a downbeat reference, shift the click grid so a click falls on it
+    let clickOffset = metronomeOffset;
+    let accentPhase = 0;
+    if (downbeatFromHeader) {
+      const exactBeat = (downbeatOffsetMs - gapMs) * bpm / 15000;
+      const dbBeat = Math.round(exactBeat);
+      // Shift clicks so one lands exactly on dbBeat
+      clickOffset = dbBeat % BEATS_PER_QUARTER;
+      // Which quarter-note index the downbeat falls on (for accent every 4 quarters)
+      accentPhase = Math.floor((dbBeat - clickOffset) / BEATS_PER_QUARTER) % 4;
+    }
+    const offsetBeat = currentBeat - clickOffset;
     const quarterBeat = Math.floor(offsetBeat / BEATS_PER_QUARTER);
     if (quarterBeat !== lastMetronomeBeat) {
       lastMetronomeBeat = quarterBeat;
-      // Downbeat = first beat of measure (assuming 4/4 time, every 4 quarter notes)
-      const isDownbeat = quarterBeat % 4 === 0;
+      const isDownbeat = ((quarterBeat - accentPhase) % 4 + 4) % 4 === 0;
       playMetronomeClick(isDownbeat);
     }
   }
@@ -3205,13 +3247,24 @@
       console.log('[Step4] Parsed', notes.length, 'notes/breaks');
 
       // Parse extra headers from ultrastar content
-      const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP']);
+      const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP', 'DOWNBEATOFFSET']);
       extraHeaders = [];
+      let foundDownbeatOffset = false;
       for (const line of (data.ultrastar_content || '').split('\n')) {
         const m = line.match(/^#([\w]+):(.*)/);
-        if (m && !standardKeys.has(m[1].toUpperCase())) {
-          extraHeaders.push({ key: m[1], value: m[2] });
+        if (m) {
+          if (m[1].toUpperCase() === 'DOWNBEATOFFSET') {
+            downbeatOffsetMs = parseFloat(m[2]) || 0;
+            foundDownbeatOffset = true;
+          } else if (!standardKeys.has(m[1].toUpperCase())) {
+            extraHeaders.push({ key: m[1], value: m[2] });
+          }
         }
+      }
+      if (foundDownbeatOffset) {
+        console.log(`%c🎵 [Downbeat] Found in header: ${downbeatOffsetMs}ms`, 'color: #ff69b4; font-weight: bold');
+      } else {
+        console.log(`%c🎵 [Downbeat] No value in header`, 'color: #ff69b4; font-weight: bold');
       }
       if (extraHeaders.length > 0) {
         console.log('[Step4] Extra headers:', extraHeaders.map(h => h.key).join(', '));
@@ -3219,6 +3272,18 @@
 
       bpm = data.bpm;
       gapMs = data.gap_ms;
+
+      // Compute first downbeat once on load
+      if (!foundDownbeatOffset) {
+        downbeatFromHeader = false;
+        const beatsPerMeasure = BEATS_PER_QUARTER * 4;
+        const beatAtZero = (-data.gap_ms * data.bpm) / 15000;
+        const firstBeat = Math.ceil(beatAtZero / beatsPerMeasure) * beatsPerMeasure;
+        downbeatOffsetMs = data.gap_ms + (firstBeat * 15000 / data.bpm);
+        console.log(`%c🎵 [Downbeat] No header — auto-computed first downbeat: beat=${firstBeat}, audioTime=${downbeatOffsetMs.toFixed(1)}ms (purple)`, 'color: #ff69b4; font-weight: bold');
+      } else {
+        downbeatFromHeader = true;
+      }
 
       // Store initial values and raw timings for BPM re-quantization
       initialBpm = data.bpm;
