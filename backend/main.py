@@ -535,7 +535,21 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
         )
     
     # No range — return full file with accept-ranges header
-    return FileResponse(path, headers={'Accept-Ranges': 'bytes'})
+    # Build a user-friendly download name from artist/title
+    artist = session.get("artist", "").strip()
+    title_name = session.get("title", "").strip()
+    if artist and title_name:
+        base = f"{artist} - {title_name}"
+    elif title_name:
+        base = title_name
+    elif artist:
+        base = artist
+    else:
+        base = "Untitled Song"
+    suffix = " [Vocals]" if audio_type == "vocals" else ""
+    download_name = base + suffix + ext
+    
+    return FileResponse(path, filename=download_name, headers={'Accept-Ranges': 'bytes'})
 
 
 # ────────────────────────────────────────────────────────────
@@ -1518,7 +1532,22 @@ async def download_file(session_id: str, file_type: str):
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found on disk")
     
-    return FileResponse(path, filename=filename)
+    # Build a user-friendly download name from artist/title
+    artist = session.get("artist", "").strip()
+    title = session.get("title", "").strip()
+    if artist and title:
+        base = f"{artist} - {title}"
+    elif title:
+        base = title
+    elif artist:
+        base = artist
+    else:
+        base = "Untitled Song"
+    
+    ext_map = {"txt": ".txt", "midi": ".mid", "summary": "_summary.txt"}
+    download_name = base + ext_map.get(file_type, ".txt")
+    
+    return FileResponse(path, filename=download_name)
 
 
 # ────────────────────────────────────────────────────────────

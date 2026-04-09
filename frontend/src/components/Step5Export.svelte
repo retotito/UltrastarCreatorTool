@@ -1,16 +1,30 @@
 <script>
-  import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData } from '../stores/appStore.js';
+  import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
   import { getDownloadUrl, getAudioUrl } from '../services/api.js';
   import { resetSession } from '../stores/appStore.js';
 
   let exported = false;
 
+  $: hasArtist = !!($lyricsData?.artist?.trim());
+  $: hasTitle = !!($lyricsData?.title?.trim());
+  $: missingInfo = !hasArtist || !hasTitle;
+
+  function getBaseFilename() {
+    const artist = ($lyricsData?.artist || '').trim();
+    const title = ($lyricsData?.title || '').trim();
+    if (artist && title) return `${artist} - ${title}`;
+    if (title) return title;
+    if (artist) return artist;
+    return 'Untitled Song';
+  }
+
   function downloadFile(type) {
     const url = getDownloadUrl($sessionId, type);
-    console.log('[Step5] Download:', type, url);
+    const base = getBaseFilename();
+    const extMap = { txt: '.txt', midi: '.mid', summary: '_summary.txt' };
     const a = document.createElement('a');
     a.href = url;
-    a.download = '';
+    a.download = base + (extMap[type] || '.txt');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -18,10 +32,11 @@
 
   function downloadAudio(type) {
     const url = getAudioUrl($sessionId, type);
-    console.log('[Step5] Download audio:', type, url);
+    const base = getBaseFilename();
+    const suffix = type === 'vocals' ? ' [Vocals]' : '';
     const a = document.createElement('a');
     a.href = url;
-    a.download = '';
+    a.download = base + suffix;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -57,6 +72,13 @@
   <h2>Step 5: Export & Download</h2>
 
   {#if $generationResult}
+    {#if missingInfo}
+      <div class="info-banner">
+        <span>⚠️ {!hasArtist && !hasTitle ? 'Artist and title are' : !hasArtist ? 'Artist is' : 'Title is'} missing — filenames will use "{getBaseFilename()}"</span>
+        <button class="link-btn" on:click={() => currentStep.set(2)}>→ Go to Lyrics to add {!hasArtist && !hasTitle ? 'them' : 'it'}</button>
+      </div>
+    {/if}
+
     <div class="summary-card">
       <h3>Song Info</h3>
       <div class="summary-grid">
@@ -280,6 +302,36 @@
     color: #666;
     text-align: center;
     padding: 2rem;
+  }
+
+  .info-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    background: #2a2a1a;
+    border: 1px solid #f9a825;
+    border-radius: 8px;
+    padding: 0.65rem 1rem;
+    margin-bottom: 1rem;
+    color: #fdd835;
+    font-size: 0.85rem;
+  }
+
+  .link-btn {
+    background: none;
+    border: 1px solid #f9a825;
+    border-radius: 6px;
+    color: #fdd835;
+    cursor: pointer;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .link-btn:hover {
+    background: #3a3a2a;
+    border-color: #fdd835;
   }
 
   .error-bar {
