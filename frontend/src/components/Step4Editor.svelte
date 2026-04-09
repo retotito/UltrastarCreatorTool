@@ -698,8 +698,8 @@
       const isEighth = b % beatsPerEighth === 0;
       
       if (isMeasure) {
-        ctx.strokeStyle = '#5555a0';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#7070cc';
+        ctx.lineWidth = 2;
       } else if (isQuarter) {
         ctx.strokeStyle = '#404078';
         ctx.lineWidth = 1;
