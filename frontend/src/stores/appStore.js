@@ -4,10 +4,17 @@
 import { writable, derived } from 'svelte/store';
 
 // Current step (0 = launcher, 1-5 = wizard)
-export const currentStep = writable(0);
+const savedStep = parseInt(localStorage.getItem('currentStep')) || 0;
+export const currentStep = writable(savedStep);
+currentStep.subscribe(v => localStorage.setItem('currentStep', String(v)));
 
 // Session ID from backend
-export const sessionId = writable(null);
+const savedSession = localStorage.getItem('sessionId') || null;
+export const sessionId = writable(savedSession);
+sessionId.subscribe(v => {
+  if (v) localStorage.setItem('sessionId', v);
+  else localStorage.removeItem('sessionId');
+});
 
 // Step 1: Upload data
 export const uploadData = writable({
@@ -72,6 +79,8 @@ export const canGoToStep = derived(
 
 // Reset everything
 export function resetSession() {
+  localStorage.removeItem('currentStep');
+  localStorage.removeItem('sessionId');
   currentStep.set(0);
   sessionId.set(null);
   uploadData.set({ filename: null, hasVocals: false, hasOriginal: false, vocalUrl: null });

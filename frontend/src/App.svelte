@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { currentStep, resetSession } from './stores/appStore.js';
-  import { checkHealth } from './services/api.js';
+  import { currentStep, sessionId, uploadData, lyricsData, generationResult, resetSession } from './stores/appStore.js';
+  import { checkHealth, resumeSession, getAudioUrl } from './services/api.js';
   import StepNavigation from './components/StepNavigation.svelte';
   import ProjectLauncher from './components/ProjectLauncher.svelte';
   import Step1Upload from './components/Step1Upload.svelte';
@@ -18,6 +18,41 @@
       backendStatus = health.status;
     } catch (e) {
       backendStatus = 'offline';
+    }
+
+    // Auto-resume persisted session on refresh
+    const sid = $sessionId;
+    const step = $currentStep;
+    if (sid && step >= 2) {
+      try {
+        const data = await resumeSession(sid);
+        const hasVocals = data.has_vocals !== false;
+        const hasOriginal = data.has_original !== false;
+        uploadData.set({
+          filename: data.filename,
+          hasVocals,
+          hasOriginal,
+          vocalUrl: hasVocals ? getAudioUrl(sid, 'vocals') : (hasOriginal ? getAudioUrl(sid, 'original') : null),
+        });
+        if (data.has_lyrics) {
+          lyricsData.set({
+            text: data.lyrics || '',
+            artist: data.artist || '',
+            title: data.title || '',
+            language: data.language || 'en',
+            syllableCount: data.syllable_count || 0,
+            lineCount: data.line_count || 0,
+            preview: [],
+          });
+        }
+        if (data.has_result) {
+          generationResult.set(data.result || {});
+        }
+        console.log(`[App] Resumed session ${sid} at step ${step}`);
+      } catch (e) {
+        console.warn('[App] Failed to resume session, resetting:', e);
+        resetSession();
+      }
     }
   });
 
