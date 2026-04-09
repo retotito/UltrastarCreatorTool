@@ -2489,6 +2489,15 @@
       return;
     }
 
+    // ── Select All (Ctrl/Cmd+A) ──
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyA') {
+      e.preventDefault();
+      selectedNotes = new Set(notes.filter(n => n.type !== 'break').map(n => n.id));
+      if (selectedNotes.size > 0) selectedNote = [...selectedNotes][0];
+      draw();
+      return;
+    }
+
     // ── Clipboard shortcuts ──
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyX') {
       e.preventDefault();
