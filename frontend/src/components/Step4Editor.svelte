@@ -1232,6 +1232,13 @@
       return;
     }
 
+    // ── No note editing during playback ──
+    if (isPlaying) {
+      // Only allow seeking (handled above) — block note selection/dragging
+      seekToTime(beatToTime(beat));
+      return;
+    }
+
     // ── Paste mode: click to place ──
     if (pasteMode && clipboard) {
       finalizePaste(Math.round(beat));
@@ -1796,6 +1803,8 @@
   // ──── Context Menu ──────────────────────────
   function handleContextMenu(event) {
     event.preventDefault();
+    // No context menu during playback
+    if (isPlaying) return;
     const rect = canvasEl.getBoundingClientRect();
     const mx = event.clientX - rect.left;
     const my = event.clientY - rect.top;
@@ -2393,6 +2402,25 @@
     if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox' && !(e.target.type === 'range' && e.key === ' ')) return;
 
     console.log(`[Key] ${e.code} shift=${e.shiftKey} ctrl=${e.ctrlKey} meta=${e.metaKey}`);
+
+    // ── No editing shortcuts during playback ──
+    // Allow: Space (play/pause), arrows (seek), L (loop), M (mic), Escape, speed
+    // Block: undo/redo, clipboard, note editing
+    if (isPlaying) {
+      // Only allow playback-related keys
+      if (e.code === 'Space') { e.preventDefault(); togglePlayback(); return; }
+      if (e.code === 'ArrowLeft') { e.preventDefault(); seekPlayback(e.shiftKey ? -1 : -5); return; }
+      if (e.code === 'ArrowRight') { e.preventDefault(); seekPlayback(e.shiftKey ? 1 : 5); return; }
+      if (e.code === 'KeyL' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleLoop(); return; }
+      if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); micEnabled = !micEnabled; toggleMic(); return; }
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        if (loopStartBeat !== null) clearLoop();
+        return;
+      }
+      // Block everything else during playback
+      return;
+    }
 
     // Undo / Redo (Cmd+Z / Cmd+Shift+Z on Mac, Ctrl+Z / Ctrl+Shift+Z on others)
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ') {
