@@ -989,17 +989,17 @@
     }
 
     // ── Loop region overlay ──
-    if (loopStartBeat !== null && loopEndBeat !== null) {
+    if (loopEnabled && loopStartBeat !== null && loopEndBeat !== null) {
       const lx1 = beatToX(Math.min(loopStartBeat, loopEndBeat));
       const lx2 = beatToX(Math.max(loopStartBeat, loopEndBeat));
       const pianoBottom = h - timeAxisHeight;
 
       // Translucent blue fill
-      ctx.fillStyle = loopEnabled ? '#42a5f522' : '#42a5f511';
+      ctx.fillStyle = '#42a5f522';
       ctx.fillRect(lx1, 0, lx2 - lx1, pianoBottom);
 
       // Loop boundary lines
-      ctx.strokeStyle = loopEnabled ? '#42a5f5' : '#42a5f566';
+      ctx.strokeStyle = '#42a5f5';
       ctx.lineWidth = 2;
       ctx.setLineDash([]);
       ctx.beginPath();
@@ -1010,13 +1010,13 @@
       ctx.stroke();
 
       // Loop region on time axis
-      ctx.fillStyle = loopEnabled ? '#42a5f544' : '#42a5f522';
+      ctx.fillStyle = '#42a5f544';
       ctx.fillRect(lx1, pianoBottom, lx2 - lx1, timeAxisHeight);
 
       // Loop drag handles (triangles at top of boundary lines)
       const handleSize = 8;
       // Left handle (▶ pointing right)
-      ctx.fillStyle = loopEnabled ? '#42a5f5' : '#42a5f5aa';
+      ctx.fillStyle = '#42a5f5';
       ctx.beginPath();
       ctx.moveTo(lx1, 0);
       ctx.lineTo(lx1 + handleSize, handleSize);
@@ -1046,13 +1046,11 @@
       ctx.fill();
 
       // Loop label
-      if (loopEnabled) {
-        ctx.fillStyle = '#42a5f5';
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('LOOP', (lx1 + lx2) / 2, pianoBottom + 16);
-        ctx.textAlign = 'left';
-      }
+      ctx.fillStyle = '#42a5f5';
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('LOOP', (lx1 + lx2) / 2, pianoBottom + 16);
+      ctx.textAlign = 'left';
     }
 
     // Playback cursor — always visible so user can see position at time 0
@@ -1193,7 +1191,7 @@
     }
 
     // Check loop handle hit zones first (8px hit zone near boundary lines, full height)
-    if (loopStartBeat !== null && loopEndBeat !== null) {
+    if (loopEnabled && loopStartBeat !== null && loopEndBeat !== null) {
       const lsX = beatToX(loopStartBeat);
       const leX = beatToX(loopEndBeat);
       if (Math.abs(mx - lsX) <= 8) {
@@ -1430,7 +1428,7 @@
       }
 
       // Check loop handles
-      if (loopStartBeat !== null && loopEndBeat !== null) {
+      if (loopEnabled && loopStartBeat !== null && loopEndBeat !== null) {
         const lsX = beatToX(loopStartBeat);
         const leX = beatToX(loopEndBeat);
         if (Math.abs(mx - lsX) <= 8 || Math.abs(mx - leX) <= 8) {
