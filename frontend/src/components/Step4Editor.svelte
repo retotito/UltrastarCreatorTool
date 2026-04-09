@@ -439,6 +439,7 @@
     if (snap.downbeatOffsetMs !== undefined) downbeatOffsetMs = snap.downbeatOffsetMs;
     if (snap.downbeatFromHeader !== undefined) downbeatFromHeader = snap.downbeatFromHeader;
     if (snap.extraHeaders !== undefined) extraHeaders = snap.extraHeaders;
+
     selectedNote = null;
     selectedNotes = new Set();
     closeContextMenu();
