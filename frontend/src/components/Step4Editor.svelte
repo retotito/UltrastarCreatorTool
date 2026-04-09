@@ -3088,7 +3088,23 @@
   // ──── Loop Region ────────────────────────────
   function toggleLoop() {
     if (loopStartBeat === null || loopEndBeat === null) {
-      console.log('[Loop] No region set');
+      // No region set — create a default 1-beat loop near the playhead
+      const canvasWidth = canvasEl?.width || 800;
+      const visibleStartBeat = xToBeat(0);
+      const visibleEndBeat = xToBeat(canvasWidth);
+      let startBeat;
+      if (playbackBeat >= visibleStartBeat && playbackBeat <= visibleEndBeat) {
+        // Playhead is visible — snap to full beat just before playhead
+        startBeat = Math.floor(playbackBeat);
+      } else {
+        // Playhead not visible — use center of viewport
+        startBeat = Math.floor((visibleStartBeat + visibleEndBeat) / 2);
+      }
+      loopStartBeat = startBeat;
+      loopEndBeat = startBeat + BEATS_PER_QUARTER;
+      loopEnabled = true;
+      console.log(`[Loop] Created default loop: beat ${loopStartBeat} → ${loopEndBeat}`);
+      draw();
       return;
     }
     loopEnabled = !loopEnabled;
