@@ -2333,6 +2333,11 @@
       console.log(`[Play] Starting from ${currentTimeSec.toFixed(2)}s, beat=${playbackBeat.toFixed(1)}, rate=${playbackRate}`);
       audioEl.play();
       isPlaying = true;
+      // Initialize metronome to current beat so it doesn't click immediately
+      if (metronomeEnabled) {
+        const offsetBeat = playbackBeat - metronomeOffset;
+        lastMetronomeBeat = Math.floor(offsetBeat / BEATS_PER_QUARTER);
+      }
       if (midiPlayback) ensureMidiCtx();
       updatePlayback();
     }
