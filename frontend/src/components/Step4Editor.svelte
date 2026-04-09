@@ -549,13 +549,10 @@
   }
 
   function confirmGridAlign() {
-    // Snap the drag offset to the nearest 1/8-note beat boundary
-    const shiftBeats = Math.round((gridAlignOffsetMs * bpm) / 15000);
-    const shiftMs = Math.round(shiftBeats * 15000 / bpm);
     pushUndo();
 
-    // Only shift the downbeat offset — GAP and notes stay unchanged
-    downbeatOffsetMs += shiftMs;
+    // Shift downbeat by the exact drag amount — no snapping, grid stays where user placed it
+    downbeatOffsetMs += gridAlignOffsetMs;
     downbeatFromHeader = true;
 
     // Restore original GAP (drag preview may have changed it)
