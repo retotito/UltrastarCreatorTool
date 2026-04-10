@@ -460,6 +460,37 @@ async def upload_corrected_vocals(session_id: str, vocals: UploadFile = File(...
     return {"status": "ok", "session_id": session_id}
 
 
+@app.delete("/api/delete-audio/{session_id}/{audio_type}")
+async def delete_audio(session_id: str, audio_type: str):
+    """Delete an audio file (original or vocals) from a session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if audio_type == "original":
+        path = session.get("original_audio")
+        if path and os.path.exists(path):
+            os.remove(path)
+        session["original_audio"] = None
+        log_step("DELETE", f"Session {session_id}: deleted original audio")
+    elif audio_type == "vocals":
+        path = session.get("vocal_audio")
+        if path and os.path.exists(path):
+            os.remove(path)
+        session["vocal_audio"] = None
+        session["status"] = "uploaded" if session.get("original_audio") else "created"
+        log_step("DELETE", f"Session {session_id}: deleted vocals")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid audio type. Use 'original' or 'vocals'.")
+
+    save_session(session_id)
+    return {
+        "status": "ok",
+        "has_original": session.get("original_audio") is not None,
+        "has_vocals": session.get("vocal_audio") is not None,
+    }
+
+
 @app.get("/api/preview-audio/{session_id}/{audio_type}")
 async def preview_audio(session_id: str, audio_type: str, request: Request):
     """Stream audio for preview with range request support for seeking."""

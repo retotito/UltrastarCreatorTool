@@ -81,6 +81,10 @@ export async function uploadCorrectedVocals(sessionId, file) {
   return request('POST', `/upload-vocals/${sessionId}`, form, true);
 }
 
+export async function deleteAudio(sessionId, type) {
+  return request('DELETE', `/delete-audio/${sessionId}/${type}`);
+}
+
 export function getAudioUrl(sessionId, type) {
   const url = `${BASE}/preview-audio/${sessionId}/${type}`;
   console.log(`[API] Audio URL: ${url}`);

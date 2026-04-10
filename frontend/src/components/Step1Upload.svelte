@@ -1,9 +1,26 @@
 <script>
   import { sessionId, uploadData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
-  import { uploadAudio, extractVocals, uploadCorrectedVocals, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
+  import { uploadAudio, extractVocals, uploadCorrectedVocals, deleteAudio, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
 
   let dragOver = false;
   let audioPlayer;
+  let originalPlayer;
+
+  $: originalUrl = $sessionId && $uploadData.hasOriginal ? getAudioUrl($sessionId, 'original') : null;
+
+  async function handleDeleteAudio(type) {
+    errorMessage.set('');
+    try {
+      const result = await deleteAudio($sessionId, type);
+      if (type === 'original') {
+        uploadData.update(d => ({ ...d, hasOriginal: false }));
+      } else if (type === 'vocals') {
+        uploadData.update(d => ({ ...d, hasVocals: false, vocalUrl: null }));
+      }
+    } catch (err) {
+      errorMessage.set(err.message);
+    }
+  }
 
   async function handleFileSelect(event) {
     const file = event.target.files?.[0];
@@ -232,12 +249,20 @@
     <!-- File uploaded, but no vocals yet — offer extraction or upload -->
     <div class="uploaded-info">
       <p>✅ Uploaded: <strong>{$uploadData.filename}</strong></p>
+
       {#if $uploadData.hasOriginal}
-        <p class="hint">🎵 Full mix available</p>
+        <div class="audio-row">
+          <span class="audio-label">🎵 Full Mix</span>
+          <button class="btn-icon delete" on:click={() => handleDeleteAudio('original')} title="Delete full mix">🗑</button>
+        </div>
+        <div class="audio-preview">
+          <audio bind:this={originalPlayer} controls src={originalUrl}>
+            Your browser does not support the audio element.
+          </audio>
+        </div>
       {/if}
-      {#if !$uploadData.hasVocals}
-        <p class="hint" style="color: #ffa726">🎤 No vocals track yet</p>
-      {/if}
+
+      <p class="hint" style="color: #ffa726">🎤 No vocals track yet</p>
     </div>
 
     <div class="action-buttons">
@@ -256,18 +281,26 @@
   {:else}
     <!-- Vocals ready -->
     <div class="vocals-ready">
-      <div class="audio-status">
-        <p>🎤 Vocals: <strong style="color: #66bb6a">{$uploadData.filename}</strong></p>
-        {#if $uploadData.hasOriginal}
-          <p>🎵 Full mix: <strong style="color: #66bb6a">available</strong></p>
-        {:else}
-          <p>🎵 Full mix: <span style="color: #888">not uploaded</span></p>
-        {/if}
+      {#if $uploadData.hasOriginal}
+        <div class="audio-row">
+          <span class="audio-label">🎵 Full Mix</span>
+          <button class="btn-icon delete" on:click={() => handleDeleteAudio('original')} title="Delete full mix">🗑</button>
+        </div>
+        <div class="audio-preview">
+          <audio bind:this={originalPlayer} controls src={originalUrl}>
+            Your browser does not support the audio element.
+          </audio>
+        </div>
+      {:else}
+        <p>🎵 Full mix: <span style="color: #888">not uploaded</span></p>
+      {/if}
+
+      <div class="audio-row">
+        <span class="audio-label">🎤 Vocals</span>
+        <button class="btn-icon delete" on:click={() => handleDeleteAudio('vocals')} title="Delete vocals">🗑</button>
       </div>
-      
       {#if $uploadData.vocalUrl}
         <div class="audio-preview">
-          <p>Preview vocals:</p>
           <audio bind:this={audioPlayer} controls src={$uploadData.vocalUrl}>
             Your browser does not support the audio element.
           </audio>
@@ -410,6 +443,35 @@
   .audio-preview audio {
     width: 100%;
     margin-top: 0.5rem;
+  }
+
+  .audio-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+  }
+
+  .audio-label {
+    font-weight: 600;
+    color: #66bb6a;
+    font-size: 0.9rem;
+  }
+
+  .btn-icon {
+    background: none;
+    border: 1px solid #555;
+    border-radius: 6px;
+    color: #aaa;
+    cursor: pointer;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+  }
+  .btn-icon.delete:hover {
+    border-color: #c62828;
+    color: #ef5350;
+    background: #3e1a1a;
   }
 
   .status-bar {
