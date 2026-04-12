@@ -1479,7 +1479,8 @@ async def save_editor_state(session_id: str, request: Request):
                  "it": "Italian", "pt": "Portuguese", "nl": "Dutch", "ja": "Japanese",
                  "ko": "Korean", "zh": "Chinese"}.get(lang, lang.title())
     lines.append(f"#LANGUAGE:{lang_name}")
-    lines.append(f"#MP3:{os.path.basename(session.get('original_audio', 'song.mp3'))}")
+    _mp3_path = session.get('original_audio') or session.get('vocal_audio') or 'song.mp3'
+    lines.append(f"#MP3:{os.path.basename(_mp3_path)}")
 
     # Extra headers from the editor (e.g. YOUTUBE, COVER, etc.)
     standard_keys = {'TITLE', 'ARTIST', 'BPM', 'GAP', 'LANGUAGE', 'MP3'}
