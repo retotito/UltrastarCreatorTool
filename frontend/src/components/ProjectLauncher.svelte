@@ -6,6 +6,7 @@
   let sessions = [];
   let loading = true;
   let backendOnline = false;
+  let backendStarting = false;
   let importing = false;
   let importError = '';
   let showImportPanel = false;
@@ -26,8 +27,12 @@
         const health = await checkHealth();
         if (health.status === 'ok') { backendOnline = true; break; }
       } catch { /* not ready yet */ }
-      if (i < maxAttempts - 1) await new Promise(r => setTimeout(r, 1000));
+      if (i < maxAttempts - 1) {
+        backendStarting = true;
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
+    backendStarting = false;
     await loadSessions();
     loading = false;
   });
@@ -223,7 +228,11 @@
   <div class="hero">
     <h1>🎤 Ultrastar Song Creator</h1>
     <p class="subtitle">Create and edit Ultrastar karaoke songs with AI</p>
-    {#if !backendOnline && !loading}
+    {#if backendStarting}
+      <div class="backend-starting">
+        <span class="spinner"></span> Starting backend…
+      </div>
+    {:else if !backendOnline && !loading}
       <div class="backend-warning">⚠ Backend offline — start the backend server first</div>
     {/if}
   </div>
@@ -375,6 +384,33 @@
     border-radius: 8px;
     color: #ef9a9a;
     font-size: 0.85rem;
+  }
+
+  .backend-starting {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background: #1a2332;
+    border: 1px solid #1e88e5;
+    border-radius: 8px;
+    color: #90caf9;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #90caf9;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .cards {
