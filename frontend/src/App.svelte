@@ -56,10 +56,17 @@
     }
   });
 
+  let homeConfirm = false;
+
   function goHome() {
-    if (confirm('Return to the home screen? Unsaved changes will be lost.')) {
+    if (homeConfirm) {
       resetSession();
       currentStep.set(0);
+      homeConfirm = false;
+    } else {
+      homeConfirm = true;
+      // auto-cancel after 3 seconds if user does nothing
+      setTimeout(() => { homeConfirm = false; }, 3000);
     }
   }
 </script>
@@ -69,7 +76,9 @@
     <ProjectLauncher />
   {:else}
     <header>
-      <button class="home-btn" on:click={goHome} title="Back to Home">🏠</button>
+      <button class="home-btn" class:home-confirm={homeConfirm} on:click={goHome} title={homeConfirm ? 'Click again to confirm' : 'Back to Home'}>
+        {homeConfirm ? '❓' : '🏠'}
+      </button>
       <h1>🎤 Ultrastar Song Generator</h1>
       <div class="backend-status" class:online={backendStatus === 'ok'} class:offline={backendStatus === 'offline'}>
         {#if backendStatus === 'ok'}
@@ -166,6 +175,18 @@
   .home-btn:hover {
     background: #1a2a3e;
     border-color: #4fc3f7;
+  }
+
+  .home-btn.home-confirm {
+    border-color: #ef5350;
+    color: #ef5350;
+    animation: pulse 0.4s ease;
+  }
+
+  @keyframes pulse {
+    0% { transform: translateY(-50%) scale(1); }
+    50% { transform: translateY(-50%) scale(1.15); }
+    100% { transform: translateY(-50%) scale(1); }
   }
 
   h1 {
