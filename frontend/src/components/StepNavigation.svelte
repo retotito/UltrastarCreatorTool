@@ -28,6 +28,7 @@
   {/each}
 </nav>
 
+<!--
 <div class="step-actions">
   <button
     class="nav-btn prev"
@@ -45,6 +46,7 @@
     Next →
   </button>
 </div>
+-->
 
 <style>
   .step-nav {
