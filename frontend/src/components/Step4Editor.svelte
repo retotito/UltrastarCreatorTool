@@ -141,9 +141,9 @@
   let waveformHeight = 60; // px reserved at top of canvas for waveform (adjustable)
 
   // Beat Marker BPM Calibration
-  let beatMarkers = []; // sorted array of audio timestamps in seconds
+  // Each marker: { t: seconds, bar: integer (1-based bar number in the song) }
+  let beatMarkers = [];
   let beatMarkerMode = false;
-  let beatMarkerSpacing = 1; // bars between each marker click (e.g. 1 = every bar, 4 = every 4th bar)
   let bpmCalcResult = null; // { bpm, gapMs } computed from linear regression
 
   // Audio source toggle (vocals vs full mix)
@@ -665,24 +665,23 @@
     bpmCalcResult = null;
   }
 
-  // Linear regression on marker times
-  // t_i = a + b*(i*spacing)  where  b = 480/ultrastar_bpm  and  a = first-downbeat seconds
+  // Linear regression: time = a + b * barNumber
+  // b = seconds/bar → BPM = 480/b
+  // a = time of bar 0 (extrapolated) = Ultrastar GAP in seconds
   function calcBpmFromMarkers(markers) {
     if (markers.length < 2) return null;
     const n = markers.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-    for (let i = 0; i < n; i++) {
-      const xi = i * beatMarkerSpacing;
-      sumX += xi; sumY += markers[i];
-      sumXY += xi * markers[i]; sumX2 += xi * xi;
+    for (const m of markers) {
+      sumX += m.bar; sumY += m.t;
+      sumXY += m.bar * m.t; sumX2 += m.bar * m.bar;
     }
     const denom = n * sumX2 - sumX * sumX;
     if (denom === 0) return null;
-    const b = (n * sumXY - sumX * sumY) / denom; // seconds per measure
-    const a = (sumY - b * sumX) / n;             // first downbeat time (seconds)
-    const calcBpm = 480 / b;
-    const calcGapMs = a * 1000;
-    return { bpm: Math.round(calcBpm * 1000) / 1000, gapMs: Math.round(calcGapMs) };
+    const b = (n * sumXY - sumX * sumY) / denom; // seconds per bar
+    const a = (sumY - b * sumX) / n;             // time at bar 0 = GAP
+    if (b <= 0) return null;
+    return { bpm: Math.round(480 / b * 1000) / 1000, gapMs: Math.round(a * 1000) };
   }
 
   function applyBpmCalibration() {
@@ -765,8 +764,8 @@
 
       // Beat calibration markers (orange clicks)
       if (beatMarkers.length > 0) {
-        beatMarkers.forEach((t, i) => {
-          const x = beatToX(timeToBeat(t));
+        beatMarkers.forEach((m, i) => {
+          const x = beatToX(timeToBeat(m.t));
           if (x < -10 || x > w + 10) return;
           // Vertical line
           ctx.strokeStyle = i === 0 ? '#ff9f43' : '#ff6b35';
@@ -784,12 +783,12 @@
           ctx.lineTo(x - 7, 9);
           ctx.closePath();
           ctx.fill();
-          // Index number
+          // Bar number label
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 9px monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(String(i + 1), x, 9);
+          ctx.fillText(String(m.bar), x, 9);
           ctx.textBaseline = 'alphabetic';
         });
       }
@@ -1303,7 +1302,17 @@
     if (beatMarkerMode && showWaveform && my < waveTop()) {
       const t = beatToTime(xToBeat(mx));
       if (t >= 0) {
-        beatMarkers = [...beatMarkers, t].sort((a, b) => a - b);
+        // Auto-guess bar number from current BPM or existing regression
+        let guessedBar;
+        if (beatMarkers.length === 0) {
+          guessedBar = 1;
+        } else {
+          const refBpm = (bpmCalcResult ? bpmCalcResult.bpm : null) || bpm;
+          const secPerBar = 480 / refBpm;
+          const anchor = beatMarkers[0];
+          guessedBar = Math.round((t - anchor.t) / secPerBar) + anchor.bar;
+        }
+        beatMarkers = [...beatMarkers, { t, bar: guessedBar }].sort((a, b) => a.t - b.t);
         bpmCalcResult = calcBpmFromMarkers(beatMarkers);
         draw();
       }
@@ -1974,7 +1983,7 @@
     if (beatMarkerMode && showWaveform && my < waveTop()) {
       if (beatMarkers.length > 0) {
         const t = beatToTime(xToBeat(mx));
-        const nearest = beatMarkers.reduce((a, b) => Math.abs(a - t) < Math.abs(b - t) ? a : b);
+        const nearest = beatMarkers.reduce((a, b) => Math.abs(a.t - t) < Math.abs(b.t - t) ? a : b);
         beatMarkers = beatMarkers.filter(m => m !== nearest);
         bpmCalcResult = calcBpmFromMarkers(beatMarkers);
         draw();
@@ -3720,16 +3729,31 @@
   <!-- Beat Marker Calibration overlay bar -->
   {#if beatMarkerMode}
     <div class="beatcal-mode-bar">
-      <span class="beatcal-mode-text">
-        BPM CALIBRATION — Click downbeats on waveform • Right-click to remove • Esc to cancel
-      </span>
-      <label class="beatcal-spacing-label">every
-        <input type="number" class="beatcal-spacing-input" min="1" max="64" step="1"
-               bind:value={beatMarkerSpacing}
-               on:change={() => { bpmCalcResult = calcBpmFromMarkers(beatMarkers); }}
-               title="Bars between each marker" />
-        bar{beatMarkerSpacing !== 1 ? 's' : ''}
-      </label>
+      <span class="beatcal-mode-text">BPM CAL — click any downbeats on waveform • right-click removes • Esc cancels</span>
+      {#if beatMarkers.length > 0}
+        <div class="beatcal-marker-list">
+          {#each beatMarkers as m, i}
+            <span class="beatcal-marker-item">
+              bar <input class="beatcal-bar-input" type="number" min="1" step="1"
+                value={m.bar}
+                on:change={(e) => {
+                  const v = parseInt(e.target.value);
+                  if (!isNaN(v) && v >= 1) {
+                    beatMarkers[i] = { ...m, bar: v };
+                    beatMarkers = [...beatMarkers].sort((a, b) => a.t - b.t);
+                    bpmCalcResult = calcBpmFromMarkers(beatMarkers);
+                    draw();
+                  }
+                }} /><span class="beatcal-marker-time">@{m.t.toFixed(2)}s</span>
+              <button class="beatcal-rm-btn" on:click={() => {
+                beatMarkers = beatMarkers.filter((_, j) => j !== i);
+                bpmCalcResult = calcBpmFromMarkers(beatMarkers);
+                draw();
+              }}>×</button>
+            </span>
+          {/each}
+        </div>
+      {/if}
       {#if bpmCalcResult}
         <span class="beatcal-result">
           BPM: <strong>{bpmCalcResult.bpm.toFixed(3)}</strong>
@@ -3738,7 +3762,7 @@
         </span>
         <button class="beatcal-apply-btn" on:click={applyBpmCalibration}>✓ Apply</button>
       {:else}
-        <span class="beatcal-hint">Place at least 2 markers</span>
+        <span class="beatcal-hint">{beatMarkers.length < 2 ? 'Place ≥2 markers' : 'Check bar numbers'}</span>
       {/if}
       <button class="beatcal-cancel-btn" on:click={() => { exitBeatMarkerMode(); draw(); }}>✕ Cancel</button>
     </div>
@@ -4090,29 +4114,51 @@
     font-size: 0.8rem;
     font-style: italic;
   }
-  .beatcal-spacing-label {
-    color: #a5d6a7;
-    font-size: 0.8rem;
+  .beatcal-marker-list {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
     gap: 4px;
-    white-space: nowrap;
+    align-items: center;
+    max-width: 60vw;
   }
-  .beatcal-spacing-input {
-    width: 40px;
-    padding: 1px 4px;
+  .beatcal-marker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
     background: #1a2a1a;
     border: 1px solid #43a047;
-    border-radius: 3px;
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-size: 0.75rem;
+    color: #a5d6a7;
+    white-space: nowrap;
+  }
+  .beatcal-bar-input {
+    width: 36px;
+    padding: 0 2px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #69f0ae;
     color: #69f0ae;
     font-family: monospace;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     text-align: center;
     -moz-appearance: textfield;
     appearance: textfield;
   }
-  .beatcal-spacing-input::-webkit-inner-spin-button,
-  .beatcal-spacing-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .beatcal-bar-input::-webkit-inner-spin-button,
+  .beatcal-bar-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .beatcal-marker-time { color: #888; font-size: 0.72rem; }
+  .beatcal-rm-btn {
+    background: none;
+    border: none;
+    color: #ef9a9a;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+  .beatcal-rm-btn:hover { color: #ff5252; }
   .beatcal-apply-btn {
     background: #2e7d32;
     color: white;
