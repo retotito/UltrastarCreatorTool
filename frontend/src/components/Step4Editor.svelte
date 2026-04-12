@@ -141,8 +141,9 @@
   let waveformHeight = 60; // px reserved at top of canvas for waveform (adjustable)
 
   // Beat Marker BPM Calibration
-  let beatMarkers = []; // sorted array of audio timestamps in seconds (consecutive downbeats)
+  let beatMarkers = []; // sorted array of audio timestamps in seconds
   let beatMarkerMode = false;
+  let beatMarkerSpacing = 1; // bars between each marker click (e.g. 1 = every bar, 4 = every 4th bar)
   let bpmCalcResult = null; // { bpm, gapMs } computed from linear regression
 
   // Audio source toggle (vocals vs full mix)
@@ -664,15 +665,16 @@
     bpmCalcResult = null;
   }
 
-  // Linear regression on marker times (consecutive downbeats = 1 measure apart)
-  // t_i = a + b*i  where  b = 480/ultrastar_bpm  and  a = gapSeconds
+  // Linear regression on marker times
+  // t_i = a + b*(i*spacing)  where  b = 480/ultrastar_bpm  and  a = first-downbeat seconds
   function calcBpmFromMarkers(markers) {
     if (markers.length < 2) return null;
     const n = markers.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
     for (let i = 0; i < n; i++) {
-      sumX += i; sumY += markers[i];
-      sumXY += i * markers[i]; sumX2 += i * i;
+      const xi = i * beatMarkerSpacing;
+      sumX += xi; sumY += markers[i];
+      sumXY += xi * markers[i]; sumX2 += xi * xi;
     }
     const denom = n * sumX2 - sumX * sumX;
     if (denom === 0) return null;
@@ -3694,6 +3696,13 @@
       <span class="beatcal-mode-text">
         BPM CALIBRATION — Click downbeats on waveform • Right-click to remove • Esc to cancel
       </span>
+      <label class="beatcal-spacing-label">every
+        <input type="number" class="beatcal-spacing-input" min="1" max="64" step="1"
+               bind:value={beatMarkerSpacing}
+               on:change={() => { bpmCalcResult = calcBpmFromMarkers(beatMarkers); }}
+               title="Bars between each marker" />
+        bar{beatMarkerSpacing !== 1 ? 's' : ''}
+      </label>
       {#if bpmCalcResult}
         <span class="beatcal-result">
           BPM: <strong>{bpmCalcResult.bpm.toFixed(3)}</strong>
@@ -4054,6 +4063,29 @@
     font-size: 0.8rem;
     font-style: italic;
   }
+  .beatcal-spacing-label {
+    color: #a5d6a7;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .beatcal-spacing-input {
+    width: 40px;
+    padding: 1px 4px;
+    background: #1a2a1a;
+    border: 1px solid #43a047;
+    border-radius: 3px;
+    color: #69f0ae;
+    font-family: monospace;
+    font-size: 0.8rem;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  .beatcal-spacing-input::-webkit-inner-spin-button,
+  .beatcal-spacing-input::-webkit-outer-spin-button { -webkit-appearance: none; }
   .beatcal-apply-btn {
     background: #2e7d32;
     color: white;
