@@ -128,13 +128,15 @@ async def list_all_sessions():
     """List all sessions (for the launcher page)."""
     result = []
     for sid, s in sessions.items():
+        has_result = s.get("result") is not None
         result.append({
             "id": sid,
             "artist": s.get("artist", "Unknown"),
             "title": s.get("title", "Untitled"),
-            "status": s.get("status", "unknown"),
+            # If a result exists, always surface as generated regardless of raw status
+            "status": "generated" if has_result else s.get("status", "unknown"),
             "created_at": s.get("created_at", 0),
-            "has_result": s.get("result") is not None,
+            "has_result": has_result,
         })
     # Sort newest first
     result.sort(key=lambda x: x["created_at"], reverse=True)

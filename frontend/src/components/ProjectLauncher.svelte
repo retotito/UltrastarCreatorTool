@@ -46,7 +46,7 @@
       const data = await resumeSession(session.id, { silent: true });
       sessionId.set(data.session_id);
       const hasVocals = data.has_vocals !== false;
-      const hasOriginal = data.has_original !== false;
+      const hasOriginal = data.has_original === true;
       uploadData.set({
         filename: data.filename,
         hasVocals,
@@ -68,7 +68,7 @@
         generationResult.set(data.result || {});
         currentStep.set(4);
       } else if (data.has_lyrics) {
-        currentStep.set(3);
+        currentStep.set(2); // Step 3 is now a modal triggered from Step 2
       } else {
         currentStep.set(2);
       }
