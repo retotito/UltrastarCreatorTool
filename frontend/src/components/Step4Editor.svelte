@@ -641,6 +641,31 @@
   }
 
   // Handle BPM or GAP adjustment — re-quantize visually
+  /**
+   * Snap the current GAP to the nearest beat of the current BPM grid.
+   * Uses downbeatOffsetMs as the phase reference, same as confirmGridAlign.
+   */
+  function snapGapToGrid() {
+    const beatDuration = 15000 / bpm; // ms per 1/8-note beat
+    const gapRelToDownbeat = gapMs - downbeatOffsetMs;
+    const beatsFromDownbeat = gapRelToDownbeat / beatDuration;
+    const beatBefore = Math.floor(beatsFromDownbeat);
+    const beatAfter  = Math.ceil(beatsFromDownbeat);
+    const msBefore = downbeatOffsetMs + beatBefore * beatDuration;
+    const msAfter  = downbeatOffsetMs + beatAfter  * beatDuration;
+    const snapped = Math.round(
+      Math.abs(gapMs - msBefore) <= Math.abs(gapMs - msAfter) ? msBefore : msAfter
+    );
+    console.log(`[BpmChange] snapGapToGrid: gap ${gapMs}ms → ${snapped}ms (beatDur=${beatDuration.toFixed(2)}ms)`);
+    gapMs = snapped;
+  }
+
+  /** Called when only BPM changes — snaps GAP to nearest beat first, then requantizes. */
+  function handleBpmChange() {
+    snapGapToGrid();
+    handleBpmGapChange();
+  }
+
   function handleBpmGapChange() {
     console.log(`[BPM/GAP] bpm=${bpm} gap=${gapMs} (initial: bpm=${initialBpm} gap=${initialGap})`);
     bpmChanged = (bpm !== initialBpm || gapMs !== initialGap);
@@ -692,11 +717,12 @@
 
   function applyBpmCalibration() {
     if (!bpmCalcResult) return;
-    console.log(`[BpmCal] Applying: BPM ${bpm} → ${bpmCalcResult.bpm}, GAP ${gapMs}ms → ${bpmCalcResult.gapMs}ms`);
+    console.log(`[BpmCal] Applying: BPM ${bpm} → ${bpmCalcResult.bpm} (GAP stays at ${gapMs}ms, will snap to grid)`);
     pushUndo();
     bpm = bpmCalcResult.bpm;
-    gapMs = bpmCalcResult.gapMs;
-    handleBpmGapChange();
+    // Do NOT apply regression gapMs — GAP position is independent of beat detection.
+    // Instead snap existing GAP to the nearest beat of the new BPM.
+    handleBpmChange();
     markUnsaved();
     exitBeatMarkerMode();
   }
@@ -3656,13 +3682,13 @@
 
     <div class="bpm-controls">
       <span class="bpm-label">BPM</span>
-      <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); handleBpmGapChange(); }}>−</button>
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.1)) * 1000) / 1000; handleBpmGapChange(); }}>−.1</button>
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.01)) * 1000) / 1000; handleBpmGapChange(); }}>−.01</button>
-      <input type="number" class="bpm-input" bind:value={bpm} on:change={() => { console.log('[UI] bpm input', bpm); handleBpmGapChange(); }} step="0.001" min="10" max="1000" />
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmGapChange(); }}>.01+</button>
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmGapChange(); }}>.1+</button>
-      <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmGapChange(); }}>+</button>
+      <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); handleBpmChange(); }}>−</button>
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.1)) * 1000) / 1000; handleBpmChange(); }}>−.1</button>
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.01)) * 1000) / 1000; handleBpmChange(); }}>−.01</button>
+      <input type="number" class="bpm-input" bind:value={bpm} on:change={() => { console.log('[UI] bpm input', bpm); handleBpmChange(); }} step="0.001" min="10" max="1000" />
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmChange(); }}>.01+</button>
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmChange(); }}>.1+</button>
+      <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmChange(); }}>+</button>
 
       <span class="bpm-label gap-label">GAP</span>
       <button class="tool-btn sm" on:click={() => { gapMs = Math.max(0, gapMs - 100); console.log('[UI] gap-', gapMs); handleBpmGapChange(); }}>−</button>
