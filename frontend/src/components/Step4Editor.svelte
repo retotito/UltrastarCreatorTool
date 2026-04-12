@@ -736,7 +736,34 @@
       ctx.lineTo(w, wt);
       ctx.stroke();
 
-      // Beat calibration markers
+      // Predicted downbeats (red dots) — shown in calibration mode so user can verify grid alignment
+      if (beatMarkerMode && bpm > 0) {
+        const firstDownbeatSec = (downbeatOffsetMs || gapMs) / 1000;
+        const secPerMeasure = 480 / bpm;
+        // Find first visible bar index
+        const leftTimeSec = beatToTime(xToBeat(0));
+        const startN = Math.max(0, Math.floor((leftTimeSec - firstDownbeatSec) / secPerMeasure));
+        const rightTimeSec = beatToTime(xToBeat(w));
+        const endN = Math.ceil((rightTimeSec - firstDownbeatSec) / secPerMeasure);
+        for (let n = startN; n <= endN; n++) {
+          const t = firstDownbeatSec + n * secPerMeasure;
+          const x = beatToX(timeToBeat(t));
+          if (x < -6 || x > w + 6) continue;
+          // Red tick at the bottom edge of the waveform
+          ctx.fillStyle = '#ff4444';
+          ctx.beginPath();
+          ctx.arc(x, wt - 5, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          // Bar number label
+          ctx.fillStyle = '#ff8888';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText(String(n + 1), x, wt - 10);
+        }
+      }
+
+      // Beat calibration markers (orange clicks)
       if (beatMarkers.length > 0) {
         beatMarkers.forEach((t, i) => {
           const x = beatToX(timeToBeat(t));
