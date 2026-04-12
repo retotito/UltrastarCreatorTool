@@ -129,9 +129,11 @@
         <p>⚠️ No vocal track found.</p>
         <p class="hint">Please go back to <button class="link-btn" on:click={() => currentStep.set(1)}>Step 1</button> to extract or upload vocals before generating lyrics.</p>
       </div>
+      <!--
       <div class="back-btn-row">
         <button class="btn btn-secondary" on:click={() => currentStep.set(1)}>← Back to Step 1</button>
       </div>
+      -->
     {:else}
       <div class="audio-section">
         <audio controls src={audioSrc}>
