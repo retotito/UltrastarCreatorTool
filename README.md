@@ -1,43 +1,37 @@
 # Ultrastar Creator Tool
 
-A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you through 5 steps — from uploading audio to exporting a ready-to-play Ultrastar .txt file — using automatic vocal separation, pitch detection, and lyrics alignment to do the heavy lifting, while you fine-tune the result in a built-in piano roll editor.
+A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you through 4 steps — from uploading audio to exporting a ready-to-play Ultrastar .txt file — using automatic vocal separation, pitch detection, and lyrics alignment to do the heavy lifting, while you fine-tune the result in a built-in piano roll editor.
 
 **Goal**: Make it easy for anyone to create Ultrastar songs, so more people sing together. 🎤
-
-**New**: Sing along directly in the editor — use your microphone to test timing and pitch against the notes in real time, for a realistic editing experience.
 
 ## How it Works
 
 | Step | What you do | What the tool does |
 |------|-------------|-------------------|
 | **1. Upload** | Upload a song (full mix or vocals-only) | Optionally separates vocals using Demucs |
-| **2. Lyrics** | Transcribe lyrics | Auto-hyphenates syllables (e.g. `beau-ti-ful`) |
-| **3. Generate** | Click "Generate" | Detects BPM, analyzes pitch, aligns syllables to audio |
-| **4. Editor** | Review and adjust notes in the piano roll | Shows waveform, plays MIDI pitches, supports grid snap |
-| **5. Export** | Download your files | Exports Ultrastar .txt, MIDI, and a processing summary |
+| **2. Lyrics & Generate** | Review/edit lyrics, then click "Generate" | Auto-hyphenates syllables, detects BPM, analyzes pitch, aligns syllables to audio, produces Ultrastar file |
+| **3. Editor** | Review and adjust notes in the piano roll | Shows waveform, plays MIDI pitches, supports grid snap, BPM calibration |
+| **4. Export** | Download your files | Exports Ultrastar .txt, MIDI, and a processing summary |
 
 ## Screenshots
 
-### Project Launcher
-![Project Launcher](docs/screenshots/ultrastarSongGenerator0.png)
+### Home — Project Launcher
+![Project Launcher](docs/screenshots/Step0-Homescreen.png)
 
-### Step 1 — Upload
-![Step 1 - Upload](docs/screenshots/ultrastarSongGenerator1.png)
+### Step 1 — Upload Audio & Extract Vocals
+![Step 1 - Upload](docs/screenshots/Step1-upload%20audio%20and%20extract%20vocals.png)
 
-### Step 2 — Lyrics
-![Step 2 - Lyrics](docs/screenshots/ultrastarSongGenerator2.png)
+### Step 2 — Edit Lyrics & Generate Ultrastar File
+![Step 2 - Lyrics & Generate](docs/screenshots/Step2-extract%20and%20edit%20lyrics%20and%20generate%20ultrastar%20file.png)
 
-### Step 3 — Generate
-![Step 3 - Generate](docs/screenshots/ultrastarSongGenerator3.png)
+### Step 3 — Piano Roll Editor
+![Step 3 - Editor](docs/screenshots/Step3-Piano%20Roll%20Editor.png)
+![Step 3 - Edit Note](docs/screenshots/Step3-edit%20note.png)
+![Step 3 - Looping](docs/screenshots/Step3-Looping.png)
+![Step 3 - Sing Along](docs/screenshots/Step3-sing%20along%20inside%20editor.png)
 
-### Step 4 — Piano Roll Editor
-![Step 4 - Editor Overview](docs/screenshots/ultrastarSongGenerator4.1.png)
-![Step 4 - Editor Detail](docs/screenshots/ultrastarSongGenerator4.2.png)
-![Step 4 - Editor Playback](docs/screenshots/ultrastarSongGenerator4.3.png)
-![Step 4 - Sing Along](docs/screenshots/ultrastarSongGenerator4.4.png)
-
-### Step 5 — Export
-![Step 5 - Export](docs/screenshots/ultrastarSongGenerator5.png)
+### Step 4 — Export Files
+![Step 4 - Export](docs/screenshots/Step4-Export%20Files.png)
 
 ## Features
 
@@ -54,10 +48,11 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 - **Golden/Rap note types** — visual indicators (★ gold, orange rap)
 - **Grid alignment** (⌘G) — snap the entire beat grid to match the audio
 - **GAP adjustment** (⌘S) — click any grid line to set the GAP position
+- **BPM calibration tool** — manually place beat markers on the waveform; linear regression over all markers calculates the exact BPM; persistent grey reference markers survive across calibration sessions
 - **Text editor** — edit raw Ultrastar content with live preview
 - **Select all** (⌘A) — select all notes for bulk move
 - **Undo/Redo** — full snapshot history (notes, BPM, GAP, downbeat offset, headers)
-- **Waveform display** — see the audio (full-mix or vocal-track) waveform by the the notes
+- **Waveform display** — smooth high-resolution waveform (750 peaks/sec) showing full-mix or vocal track alongside notes
 - **Downbeat alignment** — independent measure grid offset stored as `#DOWNBEATOFFSET` header
 - **Metronome** — accent clicks aligned to the downbeat for timing reference
 - **Extra headers** — YOUTUBE, COVER, GENRE and other Ultrastar tags
@@ -88,7 +83,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 
 ## Architecture
 
-- **Frontend**: Svelte + Vite (port 5173) — 5-step wizard UI with project launcher
+- **Frontend**: Svelte + Vite (port 5173) — 4-step wizard UI with project launcher
 - **Backend**: Python FastAPI (port 8001) — service-based with isolated AI workers
 
 ## AI Models
@@ -172,7 +167,7 @@ Use the pre-configured tasks to start servers:
 ```
 frontend/           Svelte app
   src/
-    components/     Step1Upload, Step2Lyrics, Step3Generate, Step4Editor, Step5Export
+    components/     Step1Upload, Step2Lyrics, Step3Generate, Step4Editor, Step5Export, StepNavigation, ProjectLauncher
     stores/         Shared state (appStore.js)
     services/       API client (api.js)
 backend/            FastAPI server
