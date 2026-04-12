@@ -3369,6 +3369,7 @@
   });
 
   onDestroy(() => {
+    if (hasUnsavedChanges) handleSave(); // autosave on navigate away
     cancelAnimationFrame(animFrame);
     window.removeEventListener('keydown', handleKeydown);
     window.removeEventListener('keydown', handleKeydownSave);
