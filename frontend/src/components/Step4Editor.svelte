@@ -657,12 +657,14 @@
     beatMarkers = [];
     bpmCalcResult = null;
     beatMarkerMode = true;
+    console.log('[BpmCal] Entered calibration mode');
   }
 
   function exitBeatMarkerMode() {
     beatMarkerMode = false;
     beatMarkers = [];
     bpmCalcResult = null;
+    console.log('[BpmCal] Exited calibration mode');
   }
 
   // Linear regression: time = a + b * (barNumber - 1)
@@ -682,11 +684,15 @@
     const b = (n * sumXY - sumX * sumY) / denom; // seconds per bar
     const a = (sumY - b * sumX) / n;             // time of bar 1 = GAP
     if (b <= 0) return null;
-    return { bpm: Math.round(480 / b * 1000) / 1000, gapMs: Math.round(a * 1000) };
+    const result = { bpm: Math.round(480 / b * 1000) / 1000, gapMs: Math.round(a * 1000) };
+    console.log(`[BpmCal] Regression (${n} markers): slope=${b.toFixed(6)}s/bar → BPM=${result.bpm}, GAP=${result.gapMs}ms`);
+    console.log('[BpmCal] Markers:', markers.map(m => `bar${m.bar}@${m.t.toFixed(3)}s`).join(', '));
+    return result;
   }
 
   function applyBpmCalibration() {
     if (!bpmCalcResult) return;
+    console.log(`[BpmCal] Applying: BPM ${bpm} → ${bpmCalcResult.bpm}, GAP ${gapMs}ms → ${bpmCalcResult.gapMs}ms`);
     pushUndo();
     bpm = bpmCalcResult.bpm;
     gapMs = bpmCalcResult.gapMs;
@@ -1315,6 +1321,7 @@
         }
         beatMarkers = [...beatMarkers, { t, bar: guessedBar }].sort((a, b) => a.t - b.t);
         bpmCalcResult = calcBpmFromMarkers(beatMarkers);
+        console.log(`[BpmCal] Placed marker: bar=${guessedBar} t=${t.toFixed(3)}s (total: ${beatMarkers.length})`);
         draw();
       }
       return;
@@ -1985,6 +1992,7 @@
       if (beatMarkers.length > 0) {
         const t = beatToTime(xToBeat(mx));
         const nearest = beatMarkers.reduce((a, b) => Math.abs(a.t - t) < Math.abs(b.t - t) ? a : b);
+        console.log(`[BpmCal] Removed marker: bar=${nearest.bar} t=${nearest.t.toFixed(3)}s`);
         beatMarkers = beatMarkers.filter(m => m !== nearest);
         bpmCalcResult = calcBpmFromMarkers(beatMarkers);
         draw();
