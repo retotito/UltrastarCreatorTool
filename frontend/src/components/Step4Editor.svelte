@@ -138,7 +138,12 @@
   let waveformPeaks = [];   // pre-computed peaks array
   let waveformDuration = 0; // actual decoded audio duration (seconds)
   let showWaveform = true;
-  const waveformHeight = 60; // px reserved at top of canvas for waveform
+  let waveformHeight = 60; // px reserved at top of canvas for waveform (adjustable)
+
+  // Beat Marker BPM Calibration
+  let beatMarkers = []; // sorted array of audio timestamps in seconds (consecutive downbeats)
+  let beatMarkerMode = false;
+  let bpmCalcResult = null; // { bpm, gapMs } computed from linear regression
 
   // Audio source toggle (vocals vs full mix)
   let audioSource = 'vocals'; // 'vocals' | 'original'
@@ -646,6 +651,48 @@
     requantizeFromMs();
   }
 
+  // ──── Beat Marker / BPM Calibration ────────────────────────────────
+  function enterBeatMarkerMode() {
+    beatMarkers = [];
+    bpmCalcResult = null;
+    beatMarkerMode = true;
+  }
+
+  function exitBeatMarkerMode() {
+    beatMarkerMode = false;
+    beatMarkers = [];
+    bpmCalcResult = null;
+  }
+
+  // Linear regression on marker times (consecutive downbeats = 1 measure apart)
+  // t_i = a + b*i  where  b = 480/ultrastar_bpm  and  a = gapSeconds
+  function calcBpmFromMarkers(markers) {
+    if (markers.length < 2) return null;
+    const n = markers.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    for (let i = 0; i < n; i++) {
+      sumX += i; sumY += markers[i];
+      sumXY += i * markers[i]; sumX2 += i * i;
+    }
+    const denom = n * sumX2 - sumX * sumX;
+    if (denom === 0) return null;
+    const b = (n * sumXY - sumX * sumY) / denom; // seconds per measure
+    const a = (sumY - b * sumX) / n;             // first downbeat time (seconds)
+    const calcBpm = 480 / b;
+    const calcGapMs = a * 1000;
+    return { bpm: Math.round(calcBpm * 1000) / 1000, gapMs: Math.round(calcGapMs) };
+  }
+
+  function applyBpmCalibration() {
+    if (!bpmCalcResult) return;
+    pushUndo();
+    bpm = bpmCalcResult.bpm;
+    gapMs = bpmCalcResult.gapMs;
+    handleBpmGapChange();
+    markUnsaved();
+    exitBeatMarkerMode();
+  }
+
   // ──── Drawing ────────────────────────────────
   function draw() {
     if (!ctx || !canvasEl) return;
@@ -686,6 +733,37 @@
       ctx.moveTo(0, wt);
       ctx.lineTo(w, wt);
       ctx.stroke();
+
+      // Beat calibration markers
+      if (beatMarkers.length > 0) {
+        beatMarkers.forEach((t, i) => {
+          const x = beatToX(timeToBeat(t));
+          if (x < -10 || x > w + 10) return;
+          // Vertical line
+          ctx.strokeStyle = i === 0 ? '#ff9f43' : '#ff6b35';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, wt - 1);
+          ctx.stroke();
+          // Diamond handle at top
+          ctx.fillStyle = i === 0 ? '#ff9f43' : '#ff6b35';
+          ctx.beginPath();
+          ctx.moveTo(x, 1);
+          ctx.lineTo(x + 7, 9);
+          ctx.lineTo(x, 17);
+          ctx.lineTo(x - 7, 9);
+          ctx.closePath();
+          ctx.fill();
+          // Index number
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(i + 1), x, 9);
+          ctx.textBaseline = 'alphabetic';
+        });
+      }
     }
 
     // Reserve bottom strip for time axis
@@ -1191,6 +1269,17 @@
 
     // Ignore right-click — let contextmenu handler deal with it
     if (event.button === 2) return;
+
+    // ── Beat Marker mode: left-click on waveform places a marker ──
+    if (beatMarkerMode && showWaveform && my < waveTop()) {
+      const t = beatToTime(xToBeat(mx));
+      if (t >= 0) {
+        beatMarkers = [...beatMarkers, t].sort((a, b) => a - b);
+        bpmCalcResult = calcBpmFromMarkers(beatMarkers);
+        draw();
+      }
+      return;
+    }
 
     // ── Grid Align mode: start drag ──
     if (gridAlignMode) {
@@ -1851,6 +1940,18 @@
     const rect = canvasEl.getBoundingClientRect();
     const mx = event.clientX - rect.left;
     const my = event.clientY - rect.top;
+
+    // Beat marker mode: right-click on waveform removes nearest marker
+    if (beatMarkerMode && showWaveform && my < waveTop()) {
+      if (beatMarkers.length > 0) {
+        const t = beatToTime(xToBeat(mx));
+        const nearest = beatMarkers.reduce((a, b) => Math.abs(a - t) < Math.abs(b - t) ? a : b);
+        beatMarkers = beatMarkers.filter(m => m !== nearest);
+        bpmCalcResult = calcBpmFromMarkers(beatMarkers);
+        draw();
+      }
+      return;
+    }
 
     // Find note under cursor (regular notes first, then breaks)
     let found = null;
@@ -2568,7 +2669,10 @@
     // Escape: cancel setGap mode, paste mode, clear loop, or deselect
     if (e.code === 'Escape') {
       e.preventDefault();
-      if (setGapMode) {
+      if (beatMarkerMode) {
+        exitBeatMarkerMode();
+        draw();
+      } else if (setGapMode) {
         cancelSetGapMode();
       } else if (pasteMode) {
         cancelPaste();
@@ -3412,6 +3516,17 @@
         <input type="checkbox" bind:checked={showWaveform} on:change={() => { console.log('[UI] waveform', showWaveform); draw(); }} />
         Wave
       </label>
+      {#if showWaveform}
+        <input type="range" class="wave-height-slider" min="40" max="240" step="10"
+               bind:value={waveformHeight}
+               on:input={() => { resizeCanvas(); draw(); }}
+               title="Waveform height: {waveformHeight}px" />
+        <button class="tool-btn sm" class:active={beatMarkerMode}
+                on:click={() => beatMarkerMode ? (exitBeatMarkerMode(), draw()) : enterBeatMarkerMode()}
+                title="Calibrate BPM by clicking downbeats on the waveform">
+          ♪ Cal
+        </button>
+      {/if}
       <label title="Play MIDI pitch tones during playback">
         <input type="checkbox" checked={midiPlayback} on:change={toggleMidiPlayback} />
         🎹 MIDI
@@ -3485,9 +3600,13 @@
 
     <div class="bpm-controls">
       <span class="bpm-label">BPM</span>
-      <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); console.log('[UI] bpm-', bpm); handleBpmGapChange(); }}>−</button>
-      <input type="number" class="bpm-input" bind:value={bpm} on:change={() => { console.log('[UI] bpm input', bpm); handleBpmGapChange(); }} step="1" min="10" max="1000" />
-      <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; console.log('[UI] bpm+', bpm); handleBpmGapChange(); }}>+</button>
+      <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); handleBpmGapChange(); }}>−</button>
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.1)) * 1000) / 1000; handleBpmGapChange(); }}>−.1</button>
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.01)) * 1000) / 1000; handleBpmGapChange(); }}>−.01</button>
+      <input type="number" class="bpm-input" bind:value={bpm} on:change={() => { console.log('[UI] bpm input', bpm); handleBpmGapChange(); }} step="0.001" min="10" max="1000" />
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmGapChange(); }}>.01+</button>
+      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmGapChange(); }}>.1+</button>
+      <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmGapChange(); }}>+</button>
 
       <span class="bpm-label gap-label">GAP</span>
       <button class="tool-btn sm" on:click={() => { gapMs = Math.max(0, gapMs - 100); console.log('[UI] gap-', gapMs); handleBpmGapChange(); }}>−</button>
@@ -3566,6 +3685,26 @@
       </span>
       <button class="gridalign-confirm-btn" on:click={confirmGridAlign}>✓ Confirm</button>
       <button class="gridalign-cancel-btn" on:click={cancelGridAlign}>✕ Cancel</button>
+    </div>
+  {/if}
+
+  <!-- Beat Marker Calibration overlay bar -->
+  {#if beatMarkerMode}
+    <div class="beatcal-mode-bar">
+      <span class="beatcal-mode-text">
+        BPM CALIBRATION — Click downbeats on waveform • Right-click to remove • Esc to cancel
+      </span>
+      {#if bpmCalcResult}
+        <span class="beatcal-result">
+          BPM: <strong>{bpmCalcResult.bpm.toFixed(3)}</strong>
+          &nbsp;·&nbsp; GAP: <strong>{bpmCalcResult.gapMs}ms</strong>
+          &nbsp;({beatMarkers.length} markers)
+        </span>
+        <button class="beatcal-apply-btn" on:click={applyBpmCalibration}>✓ Apply</button>
+      {:else}
+        <span class="beatcal-hint">Place at least 2 markers</span>
+      {/if}
+      <button class="beatcal-cancel-btn" on:click={() => { exitBeatMarkerMode(); draw(); }}>✕ Cancel</button>
     </div>
   {/if}
 
@@ -3881,6 +4020,62 @@
     transition: background 0.2s;
   }
   .setgap-cancel-btn:hover { background: #e53935; }
+
+  /* ── Beat Marker Calibration bar ── */
+  .beatcal-mode-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: linear-gradient(90deg, #1a2a1a, #2a3a2a);
+    border: 1px solid #43a047;
+    border-radius: 6px;
+    padding: 6px 16px;
+    margin: 4px 0;
+    flex-wrap: wrap;
+    animation: beatcal-pulse 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes beatcal-pulse {
+    from { border-color: #43a047; }
+    to { border-color: #a5d6a7; box-shadow: 0 0 8px rgba(67,160,71,0.3); }
+  }
+  .beatcal-mode-text {
+    color: #c8e6c9;
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+  .beatcal-result {
+    color: #fff;
+    font-size: 0.85rem;
+    font-family: monospace;
+  }
+  .beatcal-result strong { color: #69f0ae; }
+  .beatcal-hint {
+    color: #81c784;
+    font-size: 0.8rem;
+    font-style: italic;
+  }
+  .beatcal-apply-btn {
+    background: #2e7d32;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .beatcal-apply-btn:hover { background: #43a047; }
+  .beatcal-cancel-btn {
+    background: #c62828;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .beatcal-cancel-btn:hover { background: #e53935; }
 
   /* ── Grid Align mode bar ── */
   .gridalign-mode-bar {
@@ -4212,7 +4407,7 @@
   }
 
   .bpm-input, .gap-input {
-    width: 60px;
+    width: 72px;
     padding: 0.25rem 0.3rem;
     background: #1a1a2e;
     border: 1px solid #444;
@@ -4246,6 +4441,22 @@
     padding: 0.2rem 0.4rem;
     font-size: 0.75rem;
     min-width: 22px;
+  }
+
+  .tool-btn.sm.nudge {
+    opacity: 0.75;
+    font-size: 0.68rem;
+    padding: 0.15rem 0.3rem;
+    min-width: 28px;
+  }
+  .tool-btn.sm.nudge:hover { opacity: 1; }
+
+  .wave-height-slider {
+    width: 64px;
+    height: 4px;
+    cursor: pointer;
+    accent-color: #4fc3f7;
+    vertical-align: middle;
   }
 
   .shortcut-bar {
