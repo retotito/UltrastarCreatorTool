@@ -213,12 +213,12 @@
 
     <div class="form-row">
       <div class="form-group half">
-        <label for="artist">Artist</label>
-        <input id="artist" type="text" bind:value={artist} placeholder="Artist name" />
+        <label for="artist">Artist <span class="required">*</span></label>
+        <input id="artist" type="text" bind:value={artist} placeholder="Artist name" class:input-missing={!artist.trim()} />
       </div>
       <div class="form-group half">
-        <label for="title">Title</label>
-        <input id="title" type="text" bind:value={title} placeholder="Song title" />
+        <label for="title">Title <span class="required">*</span></label>
+        <input id="title" type="text" bind:value={title} placeholder="Song title" class:input-missing={!title.trim()} />
       </div>
     </div>
 
@@ -239,10 +239,18 @@
       <button class="btn btn-hyphen small" on:click={handleAutoHyphenate} disabled={$isProcessing || !lyricsText.trim()}>
         ✂️ Auto-Hyphenate
       </button>
-      <button class="btn btn-primary" on:click={handleSubmit} disabled={$isProcessing || !lyricsText.trim() || !$sessionId}>
+    </div>
+    <div class="generate-row">
+      <button class="btn btn-primary btn-generate" on:click={handleSubmit} disabled={$isProcessing || !lyricsText.trim() || !artist.trim() || !title.trim() || !$sessionId}>
         🚀 Generate Ultrastar Files
       </button>
     </div>
+    {#if !$isProcessing}
+      {@const missing = [!artist.trim() && 'Artist', !title.trim() && 'Title', !lyricsText.trim() && 'Lyrics'].filter(Boolean)}
+      {#if missing.length > 0}
+        <p class="missing-hint">Required to generate: {missing.join(', ')}</p>
+      {/if}
+    {/if}
   {/if}
   <style>
     .lang-warning {
@@ -252,13 +260,7 @@
     }
   </style>
 
-  {#if hyphenationResult}
-    <div class="hyphenation-info">
-      <p>Auto-hyphenated with <strong>{hyphenationResult.method}</strong> ({hyphenationResult.language})</p>
-      <p class="hint">Review and correct the hyphens above, then click "Validate & Continue".</p>
-    </div>
-  {/if}
-  {#if $lyricsData.preview.length > 0}
+  {#if $lyricsData.preview.length > 0 && !$generationModalOpen}
     <div class="preview-section">
       <h3>Syllable Preview ({$lyricsData.syllableCount} syllables, {$lyricsData.lineCount} lines)</h3>
       <div class="preview-lines">
@@ -316,6 +318,23 @@
   .hint {
     color: #666;
     font-size: 0.75rem;
+  }
+
+  .required {
+    color: #e57373;
+    font-size: 0.8rem;
+  }
+
+  .input-missing {
+    border-color: #555 !important;
+    background: #1e1a1a !important;
+  }
+
+  .missing-hint {
+    font-size: 0.8rem;
+    color: #888;
+    margin: 0.3rem 0 0;
+    text-align: right;
   }
 
   input, select, textarea {
@@ -416,6 +435,17 @@
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
+  }
+
+  .generate-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.75rem;
+  }
+
+  .btn-generate {
+    padding: 0.9rem 2rem;
+    font-size: 1rem;
   }
 
   .btn {

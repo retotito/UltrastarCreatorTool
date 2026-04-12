@@ -1068,6 +1068,16 @@ async def load_test_session():
 # ────────────────────────────────────────────────────────────
 # Step 3: Generate Ultrastar Files
 # ────────────────────────────────────────────────────────────
+@app.post("/api/cancel/{session_id}")
+async def cancel_generation(session_id: str):
+    """Signal the generation pipeline to abort."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session["cancelled"] = True
+    return {"status": "ok", "message": "Cancellation requested"}
+
+
 @app.post("/api/generate/{session_id}")
 async def generate_ultrastar_files(session_id: str):
     """Run the full processing pipeline: BPM → Pitch → Alignment → Ultrastar."""
@@ -1087,8 +1097,14 @@ async def generate_ultrastar_files(session_id: str):
     language = session.get("language", "en")
     
     session["status"] = "generating"
+    session["cancelled"] = False
     generation_start = time.time()
-    
+
+    def check_cancelled():
+        if session.get("cancelled"):
+            session["status"] = "cancelled"
+            raise ServiceError("Generation cancelled", "Cancelled by user")
+
     try:
         # Step 3a: BPM Detection
         log_step("GENERATE", "Step 1/4: BPM detection")
@@ -1103,12 +1119,14 @@ async def generate_ultrastar_files(session_id: str):
         
         # Step 3b: Pitch Detection
         log_step("GENERATE", "Step 2/4: Pitch detection")
+        check_cancelled()
         from services.pitch_detection import detect_pitches
         
         pitch_data = detect_pitches(vocal_path)
         
         # Step 3c: Alignment
         log_step("GENERATE", "Step 3/4: Syllable alignment")
+        check_cancelled()
         whisper_words = session.get("whisper_words", [])
         whisper_chars = session.get("whisper_chars", [])
         whisper_method = session.get("whisper_method", "whisper")
@@ -1185,6 +1203,7 @@ async def generate_ultrastar_files(session_id: str):
         
         # Step 3d: Generate files
         log_step("GENERATE", "Step 4/4: Generating output files")
+        check_cancelled()
         from services.ultrastar import generate_ultrastar, generate_processing_summary
         from services.midi_export import generate_midi
         

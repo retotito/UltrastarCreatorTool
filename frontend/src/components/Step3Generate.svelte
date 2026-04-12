@@ -1,10 +1,27 @@
 <script>
-  import { sessionId, generationResult, currentStep, isProcessing, processingStatus, errorMessage, generationLog, generationShowPreview } from '../stores/appStore.js';
-  import { generateUltrastar } from '../services/api.js';
+  import { onMount } from 'svelte';
+  import { sessionId, generationResult, currentStep, isProcessing, processingStatus, errorMessage, generationLog, generationShowPreview, generationModalOpen } from '../stores/appStore.js';
+  import { generateUltrastar, cancelGeneration } from '../services/api.js';
 
-  // Use store-backed variables so data survives navigation
   $: logMessages = $generationLog;
   $: showPreview = $generationShowPreview;
+
+  let cancelled = false;
+  let abortController = null;
+
+  onMount(() => {
+    handleGenerate();
+  });
+
+  async function cancel() {
+    cancelled = true;
+    // Abort the in-flight fetch immediately
+    if (abortController) abortController.abort();
+    isProcessing.set(false);
+    generationModalOpen.set(false);
+    // Tell the backend to stop (fire-and-forget, don't block on it)
+    cancelGeneration($sessionId);
+  }
 
   async function handleGenerate() {
     console.log('[Step3] handleGenerate, session:', $sessionId);
@@ -12,6 +29,8 @@
     isProcessing.set(true);
     generationLog.set([]);
     generationShowPreview.set(false);
+    cancelled = false;
+    abortController = new AbortController();
 
     addLog('Starting generation pipeline...');
 
@@ -21,7 +40,7 @@
       addLog('Step 3/4: Aligning syllables to audio...');
       addLog('Step 4/4: Generating Ultrastar files...');
 
-      const result = await generateUltrastar($sessionId);
+      const result = await generateUltrastar($sessionId, abortController.signal);
       console.log('[Step3] Generation result:', result);
 
       generationResult.set(result);
@@ -32,11 +51,9 @@
       addLog(`   Pitch: ${result.pitch_method} | Alignment: ${result.alignment_method}`);
       addLog(`   Audio: ${result.audio_duration}s`);
 
-      showPreview = true;
       generationShowPreview.set(true);
       processingStatus.set('Generation complete!');
 
-      // Show ms-based timing comparison if returned from backend
       if (result.ms_comparison) {
         const mc = result.ms_comparison;
         addLog(`⏱️ Timing comparison (ms, BPM-independent):`);
@@ -45,7 +62,17 @@
         addLog(`   ≤200ms: ${mc.within_200ms} (${mc.pct_within_200ms}%) | ≤500ms: ${mc.within_500ms} (${mc.pct_within_500ms}%)`);
         addLog(`   Drift: ${mc.mean_drift_sec > 0 ? '+' : ''}${(mc.mean_drift_sec * 1000).toFixed(0)}ms | Max error: ${(mc.max_error_sec * 1000).toFixed(0)}ms`);
       }
+
+      // Auto-advance to editor (unless user cancelled)
+      if (!cancelled) {
+        generationModalOpen.set(false);
+        currentStep.set(4);
+      }
     } catch (err) {
+      if (cancelled || err.name === 'AbortError') {
+        // Silent — user cancelled intentionally
+        return;
+      }
       addLog(`❌ Error: ${err.message}`);
       errorMessage.set(err.message);
     } finally {
@@ -61,9 +88,14 @@
 <div class="modal-backdrop">
   <div class="modal-box">
     <div class="modal-header">
-      <h2>⚙️ Generating Ultrastar Files</h2>
+      <div class="modal-title">
+        {#if $isProcessing}
+          <span class="spinner"></span>
+        {/if}
+        <h2>{$isProcessing ? '⚙️ Generating Ultrastar Files…' : '✅ Generation Complete'}</h2>
+      </div>
       {#if !$isProcessing}
-        <button class="close-btn" on:click={cancel} title="Cancel">✕</button>
+        <button class="close-btn" on:click={cancel} title="Close">✕</button>
       {/if}
     </div>
 
@@ -166,11 +198,11 @@
     <div class="error-bar">❌ {$errorMessage}</div>
   {/if}
 
-  {#if !$isProcessing}
-    <div class="modal-footer">
-      <button class="btn btn-cancel" on:click={cancel}>← Back to Lyrics</button>
-    </div>
-  {/if}
+  <div class="modal-footer">
+    <button class="btn btn-cancel" on:click={cancel}>
+      {$isProcessing ? '✕ Cancel' : '← Close'}
+    </button>
+  </div>
   </div>
 </div>
 
@@ -203,6 +235,26 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+  }
+
+  .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid #333;
+    border-top-color: #4fc3f7;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .modal-footer {

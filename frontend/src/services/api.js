@@ -7,9 +7,10 @@
 
 const BASE = '/api';
 
-async function request(method, path, body = null, isFormData = false, silent = false) {
+async function request(method, path, body = null, isFormData = false, silent = false, signal = null) {
   const url = `${BASE}${path}`;
   const options = { method };
+  if (signal) options.signal = signal;
 
   if (body) {
     if (isFormData) {
@@ -134,8 +135,12 @@ export async function resumeLastSession() {
 }
 
 // ─── Step 3: Generate ──────────────────────────
-export async function generateUltrastar(sessionId) {
-  return request('POST', `/generate/${sessionId}`);
+export async function generateUltrastar(sessionId, signal = null) {
+  return request('POST', `/generate/${sessionId}`, null, false, false, signal);
+}
+
+export async function cancelGeneration(sessionId) {
+  return request('POST', `/cancel/${sessionId}`, null, false, false, null).catch(() => {});
 }
 
 export async function getGenerationResult(sessionId) {
