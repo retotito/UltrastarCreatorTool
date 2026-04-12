@@ -3,6 +3,11 @@
 Thin route layer. All processing logic lives in services/.
 """
 
+import multiprocessing
+# Must be called before any other code when frozen with PyInstaller on macOS.
+# Prevents child processes (e.g. Demucs workers) from re-executing the full app.
+multiprocessing.freeze_support()
+
 import os
 import sys
 import time
