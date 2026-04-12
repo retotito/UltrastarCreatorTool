@@ -665,21 +665,22 @@
     bpmCalcResult = null;
   }
 
-  // Linear regression: time = a + b * barNumber
+  // Linear regression: time = a + b * (barNumber - 1)
   // b = seconds/bar → BPM = 480/b
-  // a = time of bar 0 (extrapolated) = Ultrastar GAP in seconds
+  // a = time of bar 1 = Ultrastar GAP (first beat of the song)
   function calcBpmFromMarkers(markers) {
     if (markers.length < 2) return null;
     const n = markers.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
     for (const m of markers) {
-      sumX += m.bar; sumY += m.t;
-      sumXY += m.bar * m.t; sumX2 += m.bar * m.bar;
+      const xi = m.bar - 1; // bar 1 → x=0, bar 2 → x=1, etc.
+      sumX += xi; sumY += m.t;
+      sumXY += xi * m.t; sumX2 += xi * xi;
     }
     const denom = n * sumX2 - sumX * sumX;
     if (denom === 0) return null;
     const b = (n * sumXY - sumX * sumY) / denom; // seconds per bar
-    const a = (sumY - b * sumX) / n;             // time at bar 0 = GAP
+    const a = (sumY - b * sumX) / n;             // time of bar 1 = GAP
     if (b <= 0) return null;
     return { bpm: Math.round(480 / b * 1000) / 1000, gapMs: Math.round(a * 1000) };
   }
