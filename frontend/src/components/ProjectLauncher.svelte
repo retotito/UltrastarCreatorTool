@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { currentStep, sessionId, uploadData, lyricsData, generationResult, resetSession } from '../stores/appStore.js';
   import { checkHealth, listSessions, deleteSession, importUltrastar, resumeSession, getAudioUrl } from '../services/api.js';
+  import { showConfirm } from '../stores/dialogStore.js';
 
   let sessions = [];
   let loading = true;
@@ -108,7 +109,8 @@
 
   async function removeSession(e, session) {
     e.stopPropagation();
-    if (!confirm(`Delete "${session.title || session.id}"?`)) return;
+    const ok = await showConfirm(`Delete "${session.title || session.id}"?`, { confirmLabel: 'Delete', danger: true });
+    if (!ok) return;
     try {
       await deleteSession(session.id);
       sessions = sessions.filter(s => s.id !== session.id);

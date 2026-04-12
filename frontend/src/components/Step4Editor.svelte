@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, saveEditorState } from '../services/api.js';
+  import { showConfirm, showAlert } from '../stores/dialogStore.js';
   import { PitchDetector } from 'pitchy';
 
   // Canvas refs
@@ -517,7 +518,10 @@
 
   // Reload editor data from backend (discard unsaved changes)
   async function handleReload() {
-    if (hasUnsavedChanges && !confirm('Discard unsaved changes and reload from last save?')) return;
+    if (hasUnsavedChanges) {
+      const ok = await showConfirm('Discard unsaved changes and reload from last save?', { confirmLabel: 'Discard', danger: true });
+      if (!ok) return;
+    }
     dataLoadedSession = null; // Force re-load
     await loadData();
     hasUnsavedChanges = false;
@@ -2415,15 +2419,13 @@
     console.log('[Step4] Audio source:', source, 'at', time.toFixed(2) + 's', wasPlaying ? '(resuming)' : '(paused)');
   }
 
-  function handleMissingAudio(type) {
+  async function handleMissingAudio(type) {
     if (type === 'vocals') {
-      if (confirm('No vocals track available.\n\nGo to Step 1 to extract vocals from the mix or upload a vocals file?')) {
-        currentStep.set(1);
-      }
+      const ok = await showConfirm('No vocals track available.\n\nGo to Step 1 to extract vocals from the mix or upload a vocals file?', { confirmLabel: 'Go to Step 1' });
+      if (ok) currentStep.set(1);
     } else {
-      if (confirm('No full mix audio available.\n\nGo to Step 1 to upload the full mix?')) {
-        currentStep.set(1);
-      }
+      const ok = await showConfirm('No full mix audio available.\n\nGo to Step 1 to upload the full mix?', { confirmLabel: 'Go to Step 1' });
+      if (ok) currentStep.set(1);
     }
   }
 
@@ -2468,7 +2470,7 @@
   function applyTextEditorContent() {
     const newNotes = parseUltrastar(textEditorContent);
     if (newNotes.length === 0) {
-      alert('No valid notes found in the text. Check the format.');
+      showAlert('No valid notes found in the text. Check the format.');
       return;
     }
     // Extract all headers from edited text

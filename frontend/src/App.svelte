@@ -9,6 +9,8 @@
   import Step3Generate from './components/Step3Generate.svelte';
   import Step4Editor from './components/Step4Editor.svelte';
   import Step5Export from './components/Step5Export.svelte';
+  import DialogModal from './components/DialogModal.svelte';
+  import { showConfirm } from './stores/dialogStore.js';
 
   let backendStatus = 'checking';
 
@@ -58,27 +60,27 @@
 
   let homeConfirm = false;
 
-  function goHome() {
-    if (homeConfirm) {
+  async function goHome() {
+    const ok = await showConfirm('Return to the home screen? Unsaved changes will be lost.', {
+      confirmLabel: 'Go Home',
+      cancelLabel: 'Stay',
+      danger: false,
+    });
+    if (ok) {
       resetSession();
       currentStep.set(0);
-      homeConfirm = false;
-    } else {
-      homeConfirm = true;
-      // auto-cancel after 3 seconds if user does nothing
-      setTimeout(() => { homeConfirm = false; }, 3000);
     }
   }
 </script>
+
+<DialogModal />
 
 <div class="app" class:full-width={$currentStep === 4}>
   {#if $currentStep === 0}
     <ProjectLauncher />
   {:else}
     <header>
-      <button class="home-btn" class:home-confirm={homeConfirm} on:click={goHome} title={homeConfirm ? 'Click again to confirm' : 'Back to Home'}>
-        {homeConfirm ? '❓' : '🏠'}
-      </button>
+      <button class="home-btn" on:click={goHome} title="Back to Home">🏠</button>
       <h1>🎤 Ultrastar Song Generator</h1>
       <div class="backend-status" class:online={backendStatus === 'ok'} class:offline={backendStatus === 'offline'}>
         {#if backendStatus === 'ok'}
@@ -175,18 +177,6 @@
   .home-btn:hover {
     background: #1a2a3e;
     border-color: #4fc3f7;
-  }
-
-  .home-btn.home-confirm {
-    border-color: #ef5350;
-    color: #ef5350;
-    animation: pulse 0.4s ease;
-  }
-
-  @keyframes pulse {
-    0% { transform: translateY(-50%) scale(1); }
-    50% { transform: translateY(-50%) scale(1.15); }
-    100% { transform: translateY(-50%) scale(1); }
   }
 
   h1 {
