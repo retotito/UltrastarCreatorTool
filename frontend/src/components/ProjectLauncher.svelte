@@ -43,7 +43,7 @@
 
   async function openSession(session) {
     try {
-      const data = await resumeSession(session.id);
+      const data = await resumeSession(session.id, { silent: true });
       sessionId.set(data.session_id);
       const hasVocals = data.has_vocals !== false;
       const hasOriginal = data.has_original !== false;
@@ -73,7 +73,26 @@
         currentStep.set(2);
       }
     } catch (e) {
-      console.error('Failed to open session:', e);
+      const msg = e?.message || '';
+      const isAudioMissing = msg.includes('404') || msg.toLowerCase().includes('audio') || msg.toLowerCase().includes('no longer');
+      if (isAudioMissing) {
+        // Audio files deleted — load what we know from the session list and go to Step 1
+        console.log('[Session] Audio missing — opening at Step 1:', session.id);
+        sessionId.set(session.id);
+        uploadData.set({ filename: null, hasVocals: false, hasOriginal: false, vocalUrl: null });
+        lyricsData.set({
+          text: '',
+          artist: session.artist || '',
+          title: session.title || '',
+          language: 'en',
+          syllableCount: 0,
+          lineCount: 0,
+          preview: [],
+        });
+        currentStep.set(1);
+      } else {
+        console.error('Failed to open session:', e);
+      }
     }
   }
 

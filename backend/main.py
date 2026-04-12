@@ -460,6 +460,30 @@ async def upload_corrected_vocals(session_id: str, vocals: UploadFile = File(...
     return {"status": "ok", "session_id": session_id}
 
 
+@app.post("/api/upload-mix/{session_id}")
+async def upload_mix_audio(session_id: str, audio: UploadFile = File(...)):
+    """Upload or replace the full mix audio for an existing session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session_dir = os.path.join(UPLOAD_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+    file_path = os.path.join(session_dir, audio.filename)
+
+    with open(file_path, "wb") as f:
+        content = await audio.read()
+        f.write(content)
+
+    session["original_audio"] = file_path
+    session["filename"] = audio.filename
+
+    log_step("UPLOAD", f"Session {session_id}: replaced mix audio with {audio.filename} ({len(content)} bytes)")
+    save_session(session_id)
+
+    return {"status": "ok", "session_id": session_id, "filename": audio.filename}
+
+
 @app.delete("/api/delete-audio/{session_id}/{audio_type}")
 async def delete_audio(session_id: str, audio_type: str):
     """Delete an audio file (original or vocals) from a session."""

@@ -1,10 +1,34 @@
 <script>
-  import { currentStep, steps, canGoToStep } from '../stores/appStore.js';
+  import { currentStep, steps, canGoToStep, uploadData } from '../stores/appStore.js';
+
+  let showNoAudioWarning = false;
+  let pendingStep = null;
 
   function goToStep(num) {
-    if ($canGoToStep(num)) {
-      currentStep.set(num);
+    if (!$canGoToStep(num)) return;
+
+    // Warn before entering Step 4 if no audio files are present
+    if (num === 4 && !$uploadData.hasVocals && !$uploadData.hasOriginal) {
+      pendingStep = num;
+      showNoAudioWarning = true;
+      return;
     }
+
+    currentStep.set(num);
+  }
+
+  function confirmGoToStep() {
+    showNoAudioWarning = false;
+    if (pendingStep !== null) {
+      currentStep.set(pendingStep);
+      pendingStep = null;
+    }
+  }
+
+  function goToStep1() {
+    showNoAudioWarning = false;
+    pendingStep = null;
+    currentStep.set(1);
   }
 </script>
 
@@ -47,6 +71,23 @@
   </button>
 </div>
 -->
+
+{#if showNoAudioWarning}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
+  <div class="modal-overlay" on:click={() => showNoAudioWarning = false} role="dialog" aria-label="No audio warning" tabindex="-1">
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
+    <div class="modal-box" on:click|stopPropagation role="document">
+      <div class="modal-icon">⚠️</div>
+      <h3>No Audio Files Found</h3>
+      <p>
+        The Piano Roll Editor requires an audio file to play back.
+      </p>
+      <div class="modal-actions">
+        <button class="btn-secondary" on:click={goToStep1}>← Go to Step 1</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .step-nav {
@@ -153,4 +194,90 @@
     color: #888;
     font-size: 0.85rem;
   }
+
+  /* ── No audio warning modal ── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+
+  .modal-box {
+    background: #161b22;
+    border: 1px solid #f57c00;
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 420px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+  }
+
+  .modal-icon {
+    font-size: 2.5rem;
+  }
+
+  .modal-box h3 {
+    color: #ffa726;
+    margin: 0;
+    font-size: 1.2rem;
+  }
+
+  .modal-box p {
+    color: #ccc;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .modal-hint {
+    color: #aaa !important;
+    font-size: 0.82rem !important;
+  }
+
+  .modal-hint strong {
+    color: #4fc3f7;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .btn-secondary {
+    padding: 0.5rem 1.2rem;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    color: #ccc;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-secondary:hover { background: #30363d; }
+
+  .btn-primary {
+    padding: 0.5rem 1.2rem;
+    background: #7a3e00;
+    border: 1px solid #f57c00;
+    border-radius: 8px;
+    color: #ffa726;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .btn-primary:hover { background: #a35200; }
 </style>

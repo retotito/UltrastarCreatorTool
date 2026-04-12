@@ -7,7 +7,7 @@
 
 const BASE = '/api';
 
-async function request(method, path, body = null, isFormData = false) {
+async function request(method, path, body = null, isFormData = false, silent = false) {
   const url = `${BASE}${path}`;
   const options = { method };
 
@@ -20,7 +20,7 @@ async function request(method, path, body = null, isFormData = false) {
     }
   }
 
-  console.log(`[API] ${method} ${url}`);
+  if (!silent) console.log(`[API] ${method} ${url}`);
   const response = await fetch(url, options);
   
   if (!response.ok) {
@@ -31,7 +31,7 @@ async function request(method, path, body = null, isFormData = false) {
     } catch {
       errorDetail = response.statusText;
     }
-    console.error(`[API] ❌ ${method} ${url} → ${response.status}: ${errorDetail}`);
+    if (!silent) console.error(`[API] ❌ ${method} ${url} → ${response.status}: ${errorDetail}`);
     throw new Error(`API error ${response.status}: ${errorDetail}`);
   }
 
@@ -53,8 +53,8 @@ export async function deleteSession(sessionId) {
   return request('DELETE', `/sessions/${sessionId}`);
 }
 
-export async function resumeSession(sessionId) {
-  return request('POST', `/resume/${sessionId}`);
+export async function resumeSession(sessionId, { silent = false } = {}) {
+  return request('POST', `/resume/${sessionId}`, null, false, silent);
 }
 
 export async function importUltrastar(txtFile, audioFile, vocalFile) {
@@ -79,6 +79,12 @@ export async function uploadCorrectedVocals(sessionId, file) {
   const form = new FormData();
   form.append('vocals', file);
   return request('POST', `/upload-vocals/${sessionId}`, form, true);
+}
+
+export async function uploadMixAudio(sessionId, file) {
+  const form = new FormData();
+  form.append('audio', file);
+  return request('POST', `/upload-mix/${sessionId}`, form, true);
 }
 
 export async function deleteAudio(sessionId, type) {
