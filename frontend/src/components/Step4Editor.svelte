@@ -143,6 +143,7 @@
   // Beat Marker BPM Calibration
   // Each marker: { t: seconds, bar: integer (1-based bar number in the song) }
   let beatMarkers = [];
+  let savedBeatMarkers = []; // persists across cal sessions as grey reference dots
   let beatMarkerMode = false;
   let bpmCalcResult = null; // { bpm, gapMs } computed from linear regression
 
@@ -679,13 +680,16 @@
 
   // ──── Beat Marker / BPM Calibration ────────────────────────────────
   function enterBeatMarkerMode() {
-    beatMarkers = [];
-    bpmCalcResult = null;
+    // Reload markers from last session so user can verify / continue
+    beatMarkers = savedBeatMarkers.length > 0 ? [...savedBeatMarkers] : [];
+    bpmCalcResult = calcBpmFromMarkers(beatMarkers);
     beatMarkerMode = true;
-    console.log('[BpmCal] Entered calibration mode');
+    console.log(`[BpmCal] Entered calibration mode (loaded ${beatMarkers.length} saved markers)`);
   }
 
   function exitBeatMarkerMode() {
+    // Save markers as grey reference before clearing
+    if (beatMarkers.length > 0) savedBeatMarkers = [...beatMarkers];
     beatMarkerMode = false;
     beatMarkers = [];
     bpmCalcResult = null;
@@ -795,7 +799,7 @@
         }
       }
 
-      // Beat calibration markers (orange clicks)
+      // Beat calibration markers (orange clicks, active session)
       if (beatMarkers.length > 0) {
         beatMarkers.forEach((m, i) => {
           const x = beatToX(timeToBeat(m.t));
@@ -822,6 +826,34 @@
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(String(m.bar), x, 9);
+          ctx.textBaseline = 'alphabetic';
+        });
+      }
+
+      // Saved beat markers (grey reference) — always visible outside cal mode
+      if (!beatMarkerMode && savedBeatMarkers.length > 0) {
+        savedBeatMarkers.forEach(m => {
+          const x = beatToX(timeToBeat(m.t));
+          if (x < -10 || x > w + 10) return;
+          ctx.strokeStyle = 'rgba(180,180,180,0.35)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, wt - 1);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(180,180,180,0.5)';
+          ctx.beginPath();
+          ctx.moveTo(x, 1);
+          ctx.lineTo(x + 5, 7);
+          ctx.lineTo(x, 13);
+          ctx.lineTo(x - 5, 7);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          ctx.font = 'bold 8px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(m.bar), x, 7);
           ctx.textBaseline = 'alphabetic';
         });
       }
