@@ -1309,15 +1309,24 @@
     if (beatMarkerMode && showWaveform && my < waveTop()) {
       const t = beatToTime(xToBeat(mx));
       if (t >= 0) {
-        // Auto-guess bar number from current BPM or existing regression
+        // Auto-guess bar number from regression line (most accurate) or fallback to closest anchor
         let guessedBar;
         if (beatMarkers.length === 0) {
           guessedBar = 1;
+        } else if (bpmCalcResult) {
+          // Use full regression line: bar = 1 + (t - gapSec) / secPerBar
+          const secPerBar = 480 / bpmCalcResult.bpm;
+          const gapSec = bpmCalcResult.gapMs / 1000;
+          const rawBar = (t - gapSec) / secPerBar + 1;
+          guessedBar = Math.round(rawBar);
+          console.log(`[BpmCal] Bar guess via regression: rawBar=${rawBar.toFixed(3)} → ${guessedBar}`);
         } else {
-          const refBpm = (bpmCalcResult ? bpmCalcResult.bpm : null) || bpm;
-          const secPerBar = 480 / refBpm;
+          // Only 1 marker so far — anchor off it using current BPM
+          const secPerBar = 480 / bpm;
           const anchor = beatMarkers[0];
-          guessedBar = Math.round((t - anchor.t) / secPerBar) + anchor.bar;
+          const rawBar = (t - anchor.t) / secPerBar + anchor.bar;
+          guessedBar = Math.round(rawBar);
+          console.log(`[BpmCal] Bar guess via anchor bar${anchor.bar}@${anchor.t.toFixed(3)}s: rawBar=${rawBar.toFixed(3)} → ${guessedBar}`);
         }
         beatMarkers = [...beatMarkers, { t, bar: guessedBar }].sort((a, b) => a.t - b.t);
         bpmCalcResult = calcBpmFromMarkers(beatMarkers);
