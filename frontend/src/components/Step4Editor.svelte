@@ -2703,6 +2703,8 @@
       console.log(`[Play] Starting from ${currentTimeSec.toFixed(2)}s, beat=${playbackBeat.toFixed(1)}, rate=${playbackRate}`);
       audioEl.play();
       isPlaying = true;
+      // Auto-show vocal trace when recording starts
+      if (vocalTraceEnabled) vocalTraceVisible = true;
       // Initialize metronome to current beat so it doesn't click immediately
       if (metronomeEnabled) {
         const offsetBeat = playbackBeat - metronomeOffset;
@@ -3479,13 +3481,15 @@
   }
 
   async function toggleVocalTrace() {
-    draw();
     if (vocalTraceEnabled) {
       // Mutual exclusion: disable mic if active
       if (micEnabled) { micEnabled = false; stopMic(); }
+      vocalTraceVisible = true; // always show when activating
+      draw();
       await startVocalTrace();
     } else {
       stopVocalTrace();
+      draw();
     }
   }
 
@@ -3538,15 +3542,27 @@
 
     const currentBeat = timeToBeat(timeSec);
 
-    // Clear-ahead on rewind
-    if (vocalTraceFrames.length > 0 && vocalTraceFrames[vocalTraceFrames.length - 1].beat >= currentBeat) {
-      let cutIdx = vocalTraceFrames.length;
-      for (let j = 0; j < vocalTraceFrames.length; j++) {
-        if (vocalTraceFrames[j].beat >= currentBeat - 0.01) { cutIdx = j; break; }
+    // In-place overwrite on re-record: replace the existing frame nearest currentBeat
+    // rather than bulk-clearing ahead (which would wipe frames the playhead hasn't reached yet).
+    const lastFrame = vocalTraceFrames.length > 0 ? vocalTraceFrames[vocalTraceFrames.length - 1] : null;
+    if (lastFrame && lastFrame.beat > currentBeat + 0.5) {
+      // Playhead is behind the last frame — re-recording a section.
+      // Binary search for the frame nearest currentBeat and replace it.
+      let lo = 0, hi = vocalTraceFrames.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (vocalTraceFrames[mid].beat < currentBeat) lo = mid + 1;
+        else hi = mid;
       }
-      vocalTraceFrames.length = cutIdx;
+      if (Math.abs(vocalTraceFrames[lo].beat - currentBeat) < 1) {
+        vocalTraceFrames[lo] = { beat: currentBeat, pitch: midiPitch };
+      } else {
+        vocalTraceFrames.splice(lo, 0, { beat: currentBeat, pitch: midiPitch });
+      }
+    } else {
+      // Normal forward play — append.
+      vocalTraceFrames.push({ beat: currentBeat, pitch: midiPitch });
     }
-    vocalTraceFrames.push({ beat: currentBeat, pitch: midiPitch });
   }
 
   async function exportMicTrail() {
