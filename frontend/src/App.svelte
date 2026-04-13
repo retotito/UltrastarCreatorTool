@@ -79,21 +79,7 @@
   {#if $currentStep === 0}
     <ProjectLauncher />
   {:else}
-    <header>
-      <button class="home-btn" on:click={goHome} title="Back to Home">🏠</button>
-      <h1>🎤 Ultrastar Song Generator</h1>
-      <div class="backend-status" class:online={backendStatus === 'ok'} class:offline={backendStatus === 'offline'}>
-        {#if backendStatus === 'ok'}
-          ● Backend online
-        {:else if backendStatus === 'offline'}
-          ● Backend offline — start the backend server
-        {:else}
-          ● Checking backend...
-        {/if}
-      </div>
-    </header>
-
-    <StepNavigation />
+    <StepNavigation {backendStatus} {goHome} />
 
     <main>
       {#if $currentStep === 1}
@@ -154,53 +140,7 @@
     padding: 0.5rem;
   }
 
-  header {
-    text-align: center;
-    margin-bottom: 0.5rem;
-    position: relative;
-  }
-
-  .home-btn {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: 1px solid #333;
-    border-radius: 8px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    padding: 0.3rem 0.6rem;
-    transition: all 0.2s;
-  }
-
-  .home-btn:hover {
-    background: #1a2a3e;
-    border-color: #4fc3f7;
-  }
-
-  h1 {
-    font-size: 1.8rem;
-    font-weight: 300;
-    color: #4fc3f7;
-    margin: 0.5rem 0;
-  }
-
-  .backend-status {
-    font-size: 0.75rem;
-    color: #666;
-    margin-bottom: 0.5rem;
-  }
-
-  .backend-status.online {
-    color: #66bb6a;
-  }
-
-  .backend-status.offline {
-    color: #ef5350;
-  }
-
   main {
-    margin-top: 1rem;
+    margin-top: 0.5rem;
   }
 </style>
