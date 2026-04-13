@@ -658,6 +658,12 @@
     return snapped;
   }
 
+  /** Snap a beat value to the nearest visible grid line */
+  function snapBeatValue(beat) {
+    const snapResolution = zoom >= 4 ? 1 : BEATS_PER_QUARTER / 2;
+    return Math.round(beat / snapResolution) * snapResolution;
+  }
+
   // Handle BPM or GAP adjustment — re-quantize visually
   /**
    * Snap the current GAP to the nearest beat of the current BPM grid.
@@ -2227,9 +2233,9 @@
           while (segStart > 0 && vocalTraceFrames[segStart - 1].pitch === segPitch) segStart--;
           while (segEnd + 1 < vocalTraceFrames.length && vocalTraceFrames[segEnd + 1].pitch === segPitch) segEnd++;
           const beatGap = 0.3;
-          const segStartBeat = vocalTraceFrames[segStart].beat;
-          const segEndBeat = vocalTraceFrames[segEnd].beat + beatGap;
-          traceFrame = { beat: segStartBeat, pitch: segPitch, duration: Math.max(1, Math.round(segEndBeat - segStartBeat)) };
+          const segStartBeat = snapBeatValue(vocalTraceFrames[segStart].beat);
+          const segEndBeat = snapBeatValue(vocalTraceFrames[segEnd].beat + beatGap);
+          traceFrame = { beat: segStartBeat, pitch: segPitch, duration: Math.max(1, segEndBeat - segStartBeat) };
         }
       }
       contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: true, beat, pitch, traceFrame };
