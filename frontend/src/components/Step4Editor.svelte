@@ -77,7 +77,7 @@
   let dragLastPitch = null;
 
   // Context menu
-  let contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0 };
+  let contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0, traceFrame: null };
   let editingSyllable = '';
   let contextMenuEl;
 
@@ -1171,7 +1171,7 @@
     if (vocalTraceVisible && vocalTraceFrames.length > 0) {
       const visibleStartBeat = xToBeat(0);
       const visibleEndBeat = xToBeat(w);
-      const traceColor = 'rgba(80, 200, 240, 0.5)';
+      const traceColor = 'rgba(255, 80, 180, 0.55)';
       ctx.fillStyle = traceColor;
       let i = 0;
       while (i < vocalTraceFrames.length) {
@@ -1633,7 +1633,28 @@
         }
       }
     } else {
-      // No hit — start rubber-band selection or seek
+      // No note hit — check if a vocal trace frame is near the click
+      if (vocalTraceVisible && vocalTraceFrames.length > 0 && !isMultiKey) {
+        const clickBeat = xToBeat(mx);
+        const clickPitch = yToPitch(my);
+        // Find the closest frame within ±1 beat and ±1 semitone
+        let closest = null;
+        let closestDist = Infinity;
+        for (const frame of vocalTraceFrames) {
+          const db = Math.abs(frame.beat - clickBeat);
+          const dp = Math.abs(frame.pitch - clickPitch);
+          if (db <= 1 && dp <= 1) {
+            const dist = db + dp * 0.5;
+            if (dist < closestDist) { closestDist = dist; closest = frame; }
+          }
+        }
+        if (closest) {
+          playMidiPitch(closest.pitch, 0.5);
+          draw();
+          return;
+        }
+      }
+      // No trace hit either — start rubber-band selection or seek
       if (isMultiKey) {
         // Ctrl/Cmd + drag empty space → rubber-band box selection
         isBoxSelecting = true;
@@ -2184,12 +2205,39 @@
       const posX = Math.min(event.clientX, window.innerWidth - menuW - 10);
       const posY = Math.min(event.clientY, window.innerHeight - menuH - 10);
       selectedNote = null;
-      contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: true, beat, pitch };
+      // Find nearest vocal trace frame to the right-click position
+      let traceFrame = null;
+      if (vocalTraceVisible && vocalTraceFrames.length > 0) {
+        let closestDist = Infinity;
+        let closestIdx = -1;
+        for (let fi = 0; fi < vocalTraceFrames.length; fi++) {
+          const frame = vocalTraceFrames[fi];
+          const db = Math.abs(frame.beat - beat);
+          const dp = Math.abs(frame.pitch - yToPitch(my));
+          if (db <= 2 && dp <= 1.5) {
+            const dist = db + dp * 0.5;
+            if (dist < closestDist) { closestDist = dist; traceFrame = frame; closestIdx = fi; }
+          }
+        }
+        if (closestIdx !== -1) {
+          // Expand to full segment (consecutive same-pitch frames)
+          const segPitch = traceFrame.pitch;
+          let segStart = closestIdx;
+          let segEnd = closestIdx;
+          while (segStart > 0 && vocalTraceFrames[segStart - 1].pitch === segPitch) segStart--;
+          while (segEnd + 1 < vocalTraceFrames.length && vocalTraceFrames[segEnd + 1].pitch === segPitch) segEnd++;
+          const beatGap = 0.3;
+          const segStartBeat = vocalTraceFrames[segStart].beat;
+          const segEndBeat = vocalTraceFrames[segEnd].beat + beatGap;
+          traceFrame = { beat: segStartBeat, pitch: segPitch, duration: Math.max(1, Math.round(segEndBeat - segStartBeat)) };
+        }
+      }
+      contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: true, beat, pitch, traceFrame };
     }
   }
 
   function closeContextMenu() {
-    contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0 };
+    contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0, traceFrame: null };
   }
 
   function handleGlobalClick(e) {
@@ -2311,10 +2359,9 @@
     draw();
   }
 
-  function addNoteAt(beat, pitch) {
+  function addNoteAt(beat, pitch, duration = 4) {
     pushUndo();
     const maxId = Math.max(0, ...notes.map(n => n.id)) + 1;
-    const duration = 4; // default 4 beats
     const newNote = {
       id: maxId,
       startBeat: Math.max(0, beat),
@@ -2559,29 +2606,26 @@
     if (id === null) return;
     const note = notes.find(n => n.id === id);
     if (!note || note.type === 'break') return;
+    playMidiPitch(note.pitch, Math.min(2, (note.duration * 15) / bpm));
+    closeContextMenu();
+  }
 
-    // Synthesize a tone at the note's MIDI pitch using Web Audio API
+  function playMidiPitch(midiPitch, durationSec = 0.5) {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-
-    const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
+    const freq = 440 * Math.pow(2, (midiPitch - 69) / 12);
     osc.frequency.value = freq;
     osc.type = 'triangle';
     gain.gain.value = 0.35;
-
-    // Sustain at steady volume, then fade out gently at the end
-    const durationSec = Math.min(2, (note.duration * 15) / bpm);
     const fadeTime = Math.min(0.15, durationSec * 0.3);
     osc.start();
     gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
     gain.gain.setValueAtTime(0.35, audioCtx.currentTime + durationSec - fadeTime);
     gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + durationSec);
     osc.stop(audioCtx.currentTime + durationSec + 0.05);
-
-    closeContextMenu();
   }
 
   function handleWheel(event) {
@@ -4178,6 +4222,11 @@
           <span class="ctx-location-label">Beat {contextMenu.beat} · {noteName(contextMenu.pitch)}</span>
         </div>
         <div class="ctx-divider"></div>
+        {#if contextMenu.traceFrame}
+          <button class="ctx-item ctx-item-trace" on:click={() => addNoteAt(contextMenu.traceFrame.beat, contextMenu.traceFrame.pitch, contextMenu.traceFrame.duration)}>
+            🎵 Add note on <span class="ctx-trace-swatch"></span> <span class="ctx-trace-label">{noteName(contextMenu.traceFrame.pitch)}</span>
+          </button>
+        {/if}
         <button class="ctx-item" on:click={() => addNoteAt(contextMenu.beat, contextMenu.pitch)}>
           🎵 Add Note
         </button>
@@ -5077,6 +5126,24 @@
     color: #aaa;
     font-family: monospace;
     font-size: 0.8rem;
+  }
+
+  .ctx-trace-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: rgba(255, 80, 180, 0.75);
+    border-radius: 2px;
+    vertical-align: middle;
+    margin: 0 2px;
+  }
+  .ctx-trace-label {
+    font-family: monospace;
+    font-size: 0.85em;
+    color: rgba(255, 80, 180, 0.9);
+  }
+  .ctx-item-trace {
+    font-weight: 500;
   }
 
   /* Audio source toggle */
