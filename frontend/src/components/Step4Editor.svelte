@@ -75,9 +75,10 @@
   let dragGain = null;
   let dragAudioCtx = null;
   let dragLastPitch = null;
+  let dragOscStopTimer = null;
 
   // Context menu
-  let contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0 };
+  let contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0, traceFrame: null };
   let editingSyllable = '';
   let contextMenuEl;
 
@@ -183,6 +184,19 @@
   // USDX-style sung note tracking: Map<noteId, [{beat, sungPitch, isHit}]>
   let micNoteHits = new Map();
   let micShowRawTrail = false; // optional raw pitch trail for debugging
+
+  // Vocal trace (simulated mic from vocal audio file)
+  let vocalTraceEnabled = false;
+  let vocalTraceLoading = false;
+  let vocalTraceVisible = true;         // show/hide toggle (data kept when false)
+  let vocalTraceDecodedBuffer = null;   // decoded AudioBuffer of the vocal file
+  let vocalTraceSampleBuf = null;       // reused Float32Array(2048) for pitch detection
+  let vocalTraceDetector = null;        // PitchDetector instance
+  let vocalTraceFrames = [];            // [{beat, pitch}] — all voiced frames, flat
+  // Smoothing state (parallel to mic)
+  let vocalTraceLastPitch = -1;
+  let vocalTracePitchConfidence = 0;
+  let vocalTraceRecentPitches = [];
 
   // Text editor modal
   let showTextEditor = false;
@@ -645,6 +659,12 @@
     return snapped;
   }
 
+  /** Snap a beat value to the nearest visible grid line */
+  function snapBeatValue(beat) {
+    const snapResolution = zoom >= 4 ? 1 : BEATS_PER_QUARTER / 2;
+    return Math.round(beat / snapResolution) * snapResolution;
+  }
+
   // Handle BPM or GAP adjustment — re-quantize visually
   /**
    * Snap the current GAP to the nearest beat of the current BPM grid.
@@ -1103,8 +1123,8 @@
       // Cut notes are semi-transparent
       const cutAlpha = isCut ? '44' : '';
 
-      // When mic is enabled, notes become hollow (faint fill + clear border) — USDX style
-      const micHollow = micEnabled && micShowTrail;
+      // When mic or vocal trace is enabled, notes become hollow (faint fill + clear border) — USDX style
+      const micHollow = (micEnabled && micShowTrail) || vocalTraceEnabled;
 
       if (note.isGolden) {
         ctx.fillStyle = micHollow ? (isSelected ? '#ffd70033' : '#ffd70012') : (isSelected ? '#ffd70088' : (isCut ? '#ffd70022' : '#ffd70044'));
@@ -1151,6 +1171,31 @@
           ctx.arc(x + width - dotR - 1, y - noteHeight / 2 + dotR + 1, dotR, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+    }
+
+    // ── Vocal trace: draw cyan at actual sung pitch for every voiced frame (behind notes) ──
+    if (vocalTraceVisible && vocalTraceFrames.length > 0) {
+      const visibleStartBeat = xToBeat(0);
+      const visibleEndBeat = xToBeat(w);
+      const traceColor = 'rgba(255, 80, 180, 0.55)';
+      ctx.fillStyle = traceColor;
+      let i = 0;
+      while (i < vocalTraceFrames.length) {
+        const sample = vocalTraceFrames[i];
+        if (sample.beat < visibleStartBeat - 1 || sample.beat > visibleEndBeat + 1) { i++; continue; }
+        const pitch = sample.pitch;
+        let endBeat = sample.beat;
+        while (i + 1 < vocalTraceFrames.length && vocalTraceFrames[i + 1].pitch === pitch) {
+          i++;
+          endBeat = vocalTraceFrames[i].beat;
+        }
+        const beatGap = 0.3;
+        const y = pitchToY(pitch);
+        const xStart = beatToX(sample.beat);
+        const xEnd = beatToX(endBeat + beatGap);
+        ctx.fillRect(xStart, y - noteHeight / 2, Math.max(xEnd - xStart, 2), noteHeight);
+        i++;
       }
     }
 
@@ -1595,7 +1640,28 @@
         }
       }
     } else {
-      // No hit — start rubber-band selection or seek
+      // No note hit — check if a vocal trace frame is near the click
+      if (vocalTraceVisible && vocalTraceFrames.length > 0 && !isMultiKey) {
+        const clickBeat = xToBeat(mx);
+        const clickPitch = yToPitch(my);
+        // Find the closest frame within ±1 beat and ±1 semitone
+        let closest = null;
+        let closestDist = Infinity;
+        for (const frame of vocalTraceFrames) {
+          const db = Math.abs(frame.beat - clickBeat);
+          const dp = Math.abs(frame.pitch - clickPitch);
+          if (db <= 1 && dp <= 1) {
+            const dist = db + dp * 0.5;
+            if (dist < closestDist) { closestDist = dist; closest = frame; }
+          }
+        }
+        if (closest) {
+          startDragOsc(closest.pitch);
+          draw();
+          return;
+        }
+      }
+      // No trace hit either — start rubber-band selection or seek
       if (isMultiKey) {
         // Ctrl/Cmd + drag empty space → rubber-band box selection
         isBoxSelecting = true;
@@ -1910,8 +1976,8 @@
 
     if (isDragging) {
       console.log('[Mouse] mouseUp, drag ended');
-      stopDragOsc();
     }
+    stopDragOsc();
     isDragging = false;
     dragMode = null;
   }
@@ -2146,12 +2212,39 @@
       const posX = Math.min(event.clientX, window.innerWidth - menuW - 10);
       const posY = Math.min(event.clientY, window.innerHeight - menuH - 10);
       selectedNote = null;
-      contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: true, beat, pitch };
+      // Find nearest vocal trace frame to the right-click position
+      let traceFrame = null;
+      if (vocalTraceVisible && vocalTraceFrames.length > 0) {
+        let closestDist = Infinity;
+        let closestIdx = -1;
+        for (let fi = 0; fi < vocalTraceFrames.length; fi++) {
+          const frame = vocalTraceFrames[fi];
+          const db = Math.abs(frame.beat - beat);
+          const dp = Math.abs(frame.pitch - yToPitch(my));
+          if (db <= 2 && dp <= 1.5) {
+            const dist = db + dp * 0.5;
+            if (dist < closestDist) { closestDist = dist; traceFrame = frame; closestIdx = fi; }
+          }
+        }
+        if (closestIdx !== -1) {
+          // Expand to full segment (consecutive same-pitch frames)
+          const segPitch = traceFrame.pitch;
+          let segStart = closestIdx;
+          let segEnd = closestIdx;
+          while (segStart > 0 && vocalTraceFrames[segStart - 1].pitch === segPitch) segStart--;
+          while (segEnd + 1 < vocalTraceFrames.length && vocalTraceFrames[segEnd + 1].pitch === segPitch) segEnd++;
+          const beatGap = 0.3;
+          const segStartBeat = snapBeatValue(vocalTraceFrames[segStart].beat);
+          const segEndBeat = snapBeatValue(vocalTraceFrames[segEnd].beat + beatGap);
+          traceFrame = { beat: segStartBeat, pitch: segPitch, duration: Math.max(1, segEndBeat - segStartBeat) };
+        }
+      }
+      contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: true, beat, pitch, traceFrame };
     }
   }
 
   function closeContextMenu() {
-    contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0 };
+    contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0, traceFrame: null };
   }
 
   function handleGlobalClick(e) {
@@ -2273,10 +2366,9 @@
     draw();
   }
 
-  function addNoteAt(beat, pitch) {
+  function addNoteAt(beat, pitch, duration = 4) {
     pushUndo();
     const maxId = Math.max(0, ...notes.map(n => n.id)) + 1;
-    const duration = 4; // default 4 beats
     const newNote = {
       id: maxId,
       startBeat: Math.max(0, beat),
@@ -2521,29 +2613,26 @@
     if (id === null) return;
     const note = notes.find(n => n.id === id);
     if (!note || note.type === 'break') return;
+    playMidiPitch(note.pitch, Math.min(2, (note.duration * 15) / bpm));
+    closeContextMenu();
+  }
 
-    // Synthesize a tone at the note's MIDI pitch using Web Audio API
+  function playMidiPitch(midiPitch, durationSec = 0.5) {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(audioCtx.destination);
-
-    const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
+    const freq = 440 * Math.pow(2, (midiPitch - 69) / 12);
     osc.frequency.value = freq;
     osc.type = 'triangle';
     gain.gain.value = 0.35;
-
-    // Sustain at steady volume, then fade out gently at the end
-    const durationSec = Math.min(2, (note.duration * 15) / bpm);
     const fadeTime = Math.min(0.15, durationSec * 0.3);
     osc.start();
     gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
     gain.gain.setValueAtTime(0.35, audioCtx.currentTime + durationSec - fadeTime);
     gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + durationSec);
     osc.stop(audioCtx.currentTime + durationSec + 0.05);
-
-    closeContextMenu();
   }
 
   function handleWheel(event) {
@@ -2614,6 +2703,9 @@
       console.log(`[Play] Starting from ${currentTimeSec.toFixed(2)}s, beat=${playbackBeat.toFixed(1)}, rate=${playbackRate}`);
       audioEl.play();
       isPlaying = true;
+      // Auto-show trails when recording starts
+      if (vocalTraceEnabled) vocalTraceVisible = true;
+      if (micEnabled) micShowTrail = true;
       // Initialize metronome to current beat so it doesn't click immediately
       if (metronomeEnabled) {
         const offsetBeat = playbackBeat - metronomeOffset;
@@ -2714,7 +2806,8 @@
       if (e.code === 'ArrowLeft') { e.preventDefault(); seekPlayback(e.shiftKey ? -1 : -5); return; }
       if (e.code === 'ArrowRight') { e.preventDefault(); seekPlayback(e.shiftKey ? 1 : 5); return; }
       if (e.code === 'KeyL' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleLoop(); return; }
-      if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); micEnabled = !micEnabled; toggleMic(); return; }
+      if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); micEnabled = !micEnabled; if (micEnabled && vocalTraceEnabled) { vocalTraceEnabled = false; stopVocalTrace(); } toggleMic(); return; }
+      if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && hasVocalsAudio) { e.preventDefault(); vocalTraceEnabled = !vocalTraceEnabled; if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); } toggleVocalTrace(); return; }
       if (e.code === 'Escape') {
         e.preventDefault();
         if (loopStartBeat !== null) clearLoop();
@@ -2781,6 +2874,25 @@
     const hasSelection = selectedNotes.size > 0 || selectedNote !== null;
     if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
       e.preventDefault();
+
+      // Ctrl+Left/Right (single note only): resize duration from right edge
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.code === 'ArrowLeft' || e.code === 'ArrowRight') &&
+          selectedNotes.size === 0 && selectedNote !== null) {
+        const snap = snapBeatValue(1); // one grid unit
+        const delta = e.code === 'ArrowRight' ? snap : -snap;
+        const note = notes.find(n => n.id === selectedNote);
+        if (note && note.type !== 'break') {
+          const newDur = Math.max(snap, note.duration + delta);
+          if (newDur !== note.duration) {
+            pushUndo();
+            notes = notes.map(n => n.id === selectedNote ? { ...n, duration: newDur } : n);
+            markUnsaved();
+            draw();
+          }
+        }
+        return;
+      }
+
       if (hasSelection) {
         const ids = selectedNotes.size > 0 ? selectedNotes : new Set([selectedNote]);
         pushUndo();
@@ -2792,6 +2904,16 @@
           if (e.code === 'ArrowDown')  return { ...n, pitch: n.pitch - (e.shiftKey ? 12 : 1) };
           return n;
         });
+        // Play pitch preview on up/down
+        if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+          const previewId = selectedNotes.size === 0 ? selectedNote : [...selectedNotes][0];
+          const movedNote = notes.find(n => n.id === previewId);
+          if (movedNote) {
+            if (dragOscStopTimer) { clearTimeout(dragOscStopTimer); dragOscStopTimer = null; }
+            startDragOsc(movedNote.pitch);
+            dragOscStopTimer = setTimeout(() => { stopDragOsc(); dragOscStopTimer = null; }, 400);
+          }
+        }
         markUnsaved();
         draw();
       } else {
@@ -2808,10 +2930,19 @@
     }
 
     // M: toggle mic sing-along
-    if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNote === null) {
+    if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible) {
       e.preventDefault();
       micEnabled = !micEnabled;
+      if (micEnabled && vocalTraceEnabled) { vocalTraceEnabled = false; stopVocalTrace(); }
       toggleMic();
+    }
+
+    // V: toggle vocal trace
+    if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible && hasVocalsAudio) {
+      e.preventDefault();
+      vocalTraceEnabled = !vocalTraceEnabled;
+      if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); }
+      toggleVocalTrace();
     }
     // Ctrl/Cmd+G: enter Grid Align mode
     if ((e.metaKey || e.ctrlKey) && e.code === 'KeyG') {
@@ -2859,11 +2990,11 @@
           deleteNote(selectedNote);
         }
       }
-      if (e.code === 'KeyS' && !e.shiftKey) {
+      if (e.code === 'KeyS' && !e.shiftKey && contextMenu.visible) {
         e.preventDefault();
         splitNote(selectedNote);
       }
-      if (e.code === 'KeyM') {
+      if (e.code === 'KeyM' && contextMenu.visible) {
         e.preventDefault();
         mergeWithNext(selectedNote);
       }
@@ -2937,6 +3068,7 @@
     if (midiPlayback) updateMidiPlayback(playbackBeat);
     if (metronomeEnabled) updateMetronome(playbackBeat);
     if (micEnabled && micAnalyser) sampleMicPitch(currentTimeSec);
+    if (vocalTraceEnabled && vocalTraceDecodedBuffer) sampleVocalTrace(currentTimeSec);
     animFrame = requestAnimationFrame(updatePlayback);
   }
 
@@ -3186,14 +3318,15 @@
   }
 
   async function toggleMic() {
-    // Redraw immediately so trail visibility responds instantly
-    draw();
     if (micEnabled) {
+      micShowTrail = true; // always show when activating
+      draw();
       micStarting = true;
       await startMic();
       micStarting = false;
     } else {
       stopMic();
+      draw();
     }
   }
 
@@ -3306,6 +3439,132 @@
     micPitchConfidence = 0;
     micRecentPitches = [];
     draw();
+  }
+
+  // ── Vocal trace (simulated mic from vocal audio) ──
+
+  async function startVocalTrace() {
+    vocalTraceLoading = true;
+    try {
+      const response = await fetch(vocalUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+      vocalTraceDecodedBuffer = await tmpCtx.decodeAudioData(arrayBuffer);
+      tmpCtx.close();
+      vocalTraceSampleBuf = new Float32Array(2048);
+      vocalTraceDetector = PitchDetector.forFloat32Array(2048);
+      // Only reset frames on first load — keep existing data when re-enabling
+      if (vocalTraceFrames.length === 0) {
+        vocalTraceLastPitch = -1;
+        vocalTracePitchConfidence = 0;
+        vocalTraceRecentPitches = [];
+      }
+      console.log('[VocalTrace] Loaded, duration:', vocalTraceDecodedBuffer.duration);
+    } catch (err) {
+      console.error('[VocalTrace] Failed to load:', err);
+      vocalTraceEnabled = false;
+    }
+    vocalTraceLoading = false;
+  }
+
+  function stopVocalTrace() {
+    // Keep note/between data so it stays visible after unchecking
+    vocalTraceDecodedBuffer = null;
+    vocalTraceSampleBuf = null;
+    vocalTraceDetector = null;
+    vocalTraceLastPitch = -1;
+    vocalTracePitchConfidence = 0;
+    vocalTraceRecentPitches = [];
+  }
+
+  function clearVocalTrace() {
+    vocalTraceFrames = [];
+    draw();
+  }
+
+  async function toggleVocalTrace() {
+    if (vocalTraceEnabled) {
+      // Mutual exclusion: disable mic if active
+      if (micEnabled) { micEnabled = false; stopMic(); }
+      vocalTraceVisible = true; // always show when activating
+      draw();
+      await startVocalTrace();
+    } else {
+      stopVocalTrace();
+      draw();
+    }
+  }
+
+  function sampleVocalTrace(timeSec) {
+    if (!vocalTraceDecodedBuffer || !vocalTraceDetector || !vocalTraceSampleBuf) return;
+
+    const sampleRate = vocalTraceDecodedBuffer.sampleRate;
+    const channelData = vocalTraceDecodedBuffer.getChannelData(0);
+    const startSample = Math.floor(timeSec * sampleRate);
+    const fftSize = 2048;
+
+    if (startSample + fftSize > channelData.length) return;
+    for (let i = 0; i < fftSize; i++) vocalTraceSampleBuf[i] = channelData[startSample + i];
+
+    const [frequency, clarity] = vocalTraceDetector.findPitch(vocalTraceSampleBuf, sampleRate);
+
+    if (clarity < micClarityThreshold || frequency < 60 || frequency > 2000) {
+      if (vocalTracePitchConfidence > 0) vocalTracePitchConfidence--;
+      if (vocalTracePitchConfidence === 0) { vocalTraceLastPitch = -1; vocalTraceRecentPitches = []; }
+      return;
+    }
+
+    let midiPitch = Math.round(12 * Math.log2(frequency / 440) + 69);
+
+    // Rolling median smoothing
+    vocalTraceRecentPitches.push(midiPitch);
+    if (vocalTraceRecentPitches.length > 5) vocalTraceRecentPitches.shift();
+    const sorted = [...vocalTraceRecentPitches].sort((a, b) => a - b);
+    midiPitch = sorted[Math.floor(sorted.length / 2)];
+
+    // Sticky prediction
+    if (vocalTraceLastPitch > 0) {
+      const drift = Math.abs(midiPitch - vocalTraceLastPitch);
+      if (drift === 0) {
+        vocalTracePitchConfidence = Math.min(8, vocalTracePitchConfidence + 1);
+      } else if (drift <= 2 && vocalTracePitchConfidence >= 4) {
+        midiPitch = vocalTraceLastPitch;
+        vocalTracePitchConfidence--;
+      } else {
+        vocalTracePitchConfidence = 1;
+      }
+    } else {
+      vocalTracePitchConfidence = 1;
+    }
+    vocalTraceLastPitch = midiPitch;
+
+    // Clamp to vocal range
+    if (midiPitch < 36) midiPitch += 12;
+    if (midiPitch > 84) midiPitch -= 12;
+
+    const currentBeat = timeToBeat(timeSec);
+
+    // In-place overwrite on re-record: replace the existing frame nearest currentBeat
+    // rather than bulk-clearing ahead (which would wipe frames the playhead hasn't reached yet).
+    const lastFrame = vocalTraceFrames.length > 0 ? vocalTraceFrames[vocalTraceFrames.length - 1] : null;
+    if (lastFrame && lastFrame.beat > currentBeat + 0.5) {
+      // Playhead is behind the last frame — re-recording a section.
+      // Binary search for the frame nearest currentBeat and replace it.
+      let lo = 0, hi = vocalTraceFrames.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (vocalTraceFrames[mid].beat < currentBeat) lo = mid + 1;
+        else hi = mid;
+      }
+      if (Math.abs(vocalTraceFrames[lo].beat - currentBeat) < 1) {
+        vocalTraceFrames[lo] = { beat: currentBeat, pitch: midiPitch };
+      } else {
+        vocalTraceFrames.splice(lo, 0, { beat: currentBeat, pitch: midiPitch });
+      }
+    } else {
+      // Normal forward play — append.
+      vocalTraceFrames.push({ beat: currentBeat, pitch: midiPitch });
+    }
   }
 
   async function exportMicTrail() {
@@ -3703,7 +3962,10 @@
       </label>
 
       <label title="Microphone sing-along (M)">
-        <input type="checkbox" bind:checked={micEnabled} on:change={toggleMic} />
+        <input type="checkbox" bind:checked={micEnabled} on:change={() => {
+          if (micEnabled && vocalTraceEnabled) { vocalTraceEnabled = false; stopVocalTrace(); }
+          toggleMic();
+        }} />
         🎙️ Mic
       </label>
       {#if micEnabled}
@@ -3716,14 +3978,6 @@
                value={Math.round(micGain * 100)}
                on:input={(e) => { micGain = parseInt(e.target.value) / 100; if (micGainNode) micGainNode.gain.value = micGain; }}
                title="Mic volume: {Math.round(micGain * 100)}%" />
-        {#if micShowTrail}
-          <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide sung blocks">👁 Sing</button>
-        {:else}
-          <button class="tool-btn sm" on:click={() => { micShowTrail = true; draw(); }} title="Show sung blocks">👁 Sing</button>
-        {/if}
-        {#if micNoteHits.size > 0 || micPitchTrail.length > 0}
-          <button class="tool-btn sm" on:click={clearMicTrail} title="Clear sung blocks">🗑</button>
-        {/if}
         <label class="mic-opt" title="Debug: show raw pitch dots + enable export">
           <input type="checkbox" bind:checked={micShowRawTrail} on:change={() => draw()} />
           Raw
@@ -3738,6 +3992,33 @@
             {/each}
           </select>
         {/if}
+      {/if}
+      {#if micNoteHits.size > 0 || micPitchTrail.length > 0}
+        {#if micShowTrail}
+          <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide sung blocks">👁 Sing</button>
+        {:else}
+          <button class="tool-btn sm" on:click={() => { micShowTrail = true; draw(); }} title="Show sung blocks">👁 Sing</button>
+        {/if}
+        <button class="tool-btn sm" on:click={clearMicTrail} title="Clear sung blocks">🗑</button>
+      {/if}
+
+      <label title="Vocal trace — plays the vocal audio through pitch detection, same as mic sing-along (cyan = off-pitch, green = on-pitch)" class:disabled-label={!hasVocalsAudio}>
+        <input type="checkbox" bind:checked={vocalTraceEnabled} disabled={!hasVocalsAudio} on:change={() => {
+          if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); }
+          toggleVocalTrace();
+        }} />
+        🎤 Vocal trace
+      </label>
+      {#if vocalTraceLoading}
+        <span class="mic-starting">⏳ Loading…</span>
+      {/if}
+      {#if vocalTraceFrames.length > 0}
+        {#if vocalTraceVisible}
+          <button class="tool-btn sm active" on:click={() => { vocalTraceVisible = false; draw(); }} title="Hide vocal trace">👁 Vocal</button>
+        {:else}
+          <button class="tool-btn sm" on:click={() => { vocalTraceVisible = true; draw(); }} title="Show vocal trace">👁 Vocal</button>
+        {/if}
+        <button class="tool-btn sm" on:click={clearVocalTrace} title="Clear vocal trace">🗑</button>
       {/if}
     </div>
 
@@ -3819,6 +4100,12 @@
       on:wheel|nonpassive={handleWheel}
       on:contextmenu={handleContextMenu}
     ></canvas>
+    {#if micEnabled || vocalTraceEnabled}
+      <div class="active-mode-badge" class:badge-mic={micEnabled} class:badge-vocal={vocalTraceEnabled}>
+        <span class="badge-dot"></span>
+        {micEnabled ? 'MIC' : 'VOCAL'}
+      </div>
+    {/if}
     {#if micStarting}
       <div class="mic-starting-overlay">
         <div class="mic-starting-box">
@@ -4007,6 +4294,11 @@
           <span class="ctx-location-label">Beat {contextMenu.beat} · {noteName(contextMenu.pitch)}</span>
         </div>
         <div class="ctx-divider"></div>
+        {#if contextMenu.traceFrame}
+          <button class="ctx-item ctx-item-trace" on:click={() => addNoteAt(contextMenu.traceFrame.beat, contextMenu.traceFrame.pitch, contextMenu.traceFrame.duration)}>
+            🎵 Add note on <span class="ctx-trace-swatch"></span> <span class="ctx-trace-label">{noteName(contextMenu.traceFrame.pitch)}</span>
+          </button>
+        {/if}
         <button class="ctx-item" on:click={() => addNoteAt(contextMenu.beat, contextMenu.pitch)}>
           🎵 Add Note
         </button>
@@ -4431,6 +4723,44 @@
     border-top: none;
     overflow: hidden;
     cursor: crosshair;
+  }
+
+  .active-mode-badge {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+    user-select: none;
+  }
+  .badge-mic {
+    background: rgba(220, 30, 30, 0.18);
+    color: #ff4444;
+    border: 1px solid rgba(220, 30, 30, 0.4);
+  }
+  .badge-vocal {
+    background: rgba(255, 80, 180, 0.18);
+    color: rgba(255, 80, 180, 1);
+    border: 1px solid rgba(255, 80, 180, 0.4);
+  }
+  .badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    animation: badge-pulse 1.2s ease-in-out infinite;
+  }
+  .badge-mic .badge-dot  { background: #ff4444; }
+  .badge-vocal .badge-dot { background: rgba(255, 80, 180, 1); }
+  @keyframes badge-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.7); }
   }
 
   canvas {
@@ -4908,6 +5238,24 @@
     font-size: 0.8rem;
   }
 
+  .ctx-trace-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: rgba(255, 80, 180, 0.75);
+    border-radius: 2px;
+    vertical-align: middle;
+    margin: 0 2px;
+  }
+  .ctx-trace-label {
+    font-family: monospace;
+    font-size: 0.85em;
+    color: rgba(255, 80, 180, 0.9);
+  }
+  .ctx-item-trace {
+    font-weight: 500;
+  }
+
   /* Audio source toggle */
   .audio-source-toggle {
     display: inline-flex;
@@ -5043,6 +5391,11 @@
   .tool-btn.disabled-audio:hover {
     opacity: 0.5;
     background: #3e2723;
+  }
+
+  label.disabled-label {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 
   /* Text editor modal */
