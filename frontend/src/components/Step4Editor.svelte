@@ -191,8 +191,7 @@
   let vocalTraceDecodedBuffer = null;   // decoded AudioBuffer of the vocal file
   let vocalTraceSampleBuf = null;       // reused Float32Array(2048) for pitch detection
   let vocalTraceDetector = null;        // PitchDetector instance
-  let vocalTraceNoteHits = new Map();   // same structure as micNoteHits (in-note)
-  let vocalTraceBetweenHits = [];       // [{beat, pitch}] for between-note frames
+  let vocalTraceFrames = [];            // [{beat, pitch}] — all voiced frames, flat
   // Smoothing state (parallel to mic)
   let vocalTraceLastPitch = -1;
   let vocalTracePitchConfidence = 0;
@@ -1168,76 +1167,28 @@
       }
     }
 
-    // ── Vocal trace: between-note blocks (drawn first, behind everything) ──
-    if (vocalTraceVisible && vocalTraceBetweenHits.length > 0) {
+    // ── Vocal trace: draw cyan at actual sung pitch for every voiced frame (behind notes) ──
+    if (vocalTraceVisible && vocalTraceFrames.length > 0) {
       const visibleStartBeat = xToBeat(0);
       const visibleEndBeat = xToBeat(w);
-      const betweenColor = 'rgba(80, 200, 240, 0.5)';
+      const traceColor = 'rgba(80, 200, 240, 0.5)';
+      ctx.fillStyle = traceColor;
       let i = 0;
-      while (i < vocalTraceBetweenHits.length) {
-        const sample = vocalTraceBetweenHits[i];
+      while (i < vocalTraceFrames.length) {
+        const sample = vocalTraceFrames[i];
         if (sample.beat < visibleStartBeat - 1 || sample.beat > visibleEndBeat + 1) { i++; continue; }
         const pitch = sample.pitch;
         let endBeat = sample.beat;
-        while (i + 1 < vocalTraceBetweenHits.length && vocalTraceBetweenHits[i + 1].pitch === pitch) {
+        while (i + 1 < vocalTraceFrames.length && vocalTraceFrames[i + 1].pitch === pitch) {
           i++;
-          endBeat = vocalTraceBetweenHits[i].beat;
+          endBeat = vocalTraceFrames[i].beat;
         }
         const beatGap = 0.3;
         const y = pitchToY(pitch);
         const xStart = beatToX(sample.beat);
         const xEnd = beatToX(endBeat + beatGap);
-        ctx.fillStyle = betweenColor;
         ctx.fillRect(xStart, y - noteHeight / 2, Math.max(xEnd - xStart, 2), noteHeight);
         i++;
-      }
-    }
-
-    // ── Vocal trace: in-note blocks (same rendering as mic trail but cyan for misses) ──
-    if (vocalTraceVisible && vocalTraceNoteHits.size > 0) {
-      const visibleStartBeat = xToBeat(0);
-      const visibleEndBeat = xToBeat(w);
-
-      for (const note of notes) {
-        if (note.type === 'break') continue;
-        const hits = vocalTraceNoteHits.get(note.id);
-        if (!hits || hits.length === 0) continue;
-
-        const noteEndBeat = note.startBeat + note.duration;
-        if (noteEndBeat < visibleStartBeat - 1 || note.startBeat > visibleEndBeat + 1) continue;
-
-        const noteY = pitchToY(note.pitch);
-        const hitColor = note.isGolden ? 'rgba(255, 215, 0, 0.65)'
-                       : note.isRap ? 'rgba(255, 152, 0, 0.65)'
-                       : 'rgba(102, 187, 106, 0.7)';
-        const missColor = 'rgba(80, 200, 240, 0.5)';
-        const beatGap = hits.length > 1 ? Math.abs(hits[1].beat - hits[0].beat) * 1.5 : 0.3;
-
-        let i = 0;
-        while (i < hits.length) {
-          const sample = hits[i];
-          if (sample.isHit) {
-            let endBeat = sample.beat;
-            while (i + 1 < hits.length && hits[i + 1].isHit) { i++; endBeat = hits[i].beat; }
-            const xStart = beatToX(Math.max(sample.beat, note.startBeat));
-            const xEnd = beatToX(Math.min(endBeat + beatGap, noteEndBeat));
-            ctx.fillStyle = hitColor;
-            ctx.fillRect(xStart, noteY - noteHeight / 2, Math.max(xEnd - xStart, 2), noteHeight);
-          } else {
-            const missPitch = sample.sungPitch;
-            let endBeat = sample.beat;
-            while (i + 1 < hits.length && !hits[i + 1].isHit && hits[i + 1].sungPitch === missPitch) {
-              i++;
-              endBeat = hits[i].beat;
-            }
-            const missY = pitchToY(missPitch);
-            const xStart = beatToX(sample.beat);
-            const xEnd = beatToX(endBeat + beatGap);
-            ctx.fillStyle = missColor;
-            ctx.fillRect(xStart, missY - noteHeight / 2, Math.max(xEnd - xStart, 2), noteHeight);
-          }
-          i++;
-        }
       }
     }
 
@@ -3408,8 +3359,7 @@
       tmpCtx.close();
       vocalTraceSampleBuf = new Float32Array(2048);
       vocalTraceDetector = PitchDetector.forFloat32Array(2048);
-      vocalTraceNoteHits = new Map();
-      vocalTraceBetweenHits = [];
+      vocalTraceFrames = [];
       vocalTraceLastPitch = -1;
       vocalTracePitchConfidence = 0;
       vocalTraceRecentPitches = [];
@@ -3432,8 +3382,7 @@
   }
 
   function clearVocalTrace() {
-    vocalTraceNoteHits = new Map();
-    vocalTraceBetweenHits = [];
+    vocalTraceFrames = [];
     draw();
   }
 
@@ -3469,16 +3418,6 @@
 
     let midiPitch = Math.round(12 * Math.log2(frequency / 440) + 69);
 
-    const currentBeat = timeToBeat(timeSec);
-    let targetNote = null;
-    for (const note of notes) {
-      if (note.type === 'break') continue;
-      if (currentBeat >= note.startBeat && currentBeat < note.startBeat + note.duration) {
-        targetNote = note;
-        break;
-      }
-    }
-
     // Rolling median smoothing
     vocalTraceRecentPitches.push(midiPitch);
     if (vocalTraceRecentPitches.length > 5) vocalTraceRecentPitches.shift();
@@ -3501,39 +3440,21 @@
     }
     vocalTraceLastPitch = midiPitch;
 
-    if (targetNote) {
-      // Octave correction toward target note (same as mic)
-      while (midiPitch - targetNote.pitch > 6) midiPitch -= 12;
-      while (midiPitch - targetNote.pitch < -6) midiPitch += 12;
-      if (midiPitch < 36) midiPitch += 12;
-      if (midiPitch > 84) midiPitch -= 12;
+    // Clamp to vocal range
+    if (midiPitch < 36) midiPitch += 12;
+    if (midiPitch > 84) midiPitch -= 12;
 
-      const isHit = Math.abs(midiPitch - targetNote.pitch) <= 2;
-      if (!vocalTraceNoteHits.has(targetNote.id)) vocalTraceNoteHits.set(targetNote.id, []);
-      const hits = vocalTraceNoteHits.get(targetNote.id);
-      // Clear-ahead on rewind
-      if (hits.length > 0 && hits[hits.length - 1].beat >= currentBeat) {
-        let cutIdx = hits.length;
-        for (let j = 0; j < hits.length; j++) {
-          if (hits[j].beat >= currentBeat - 0.01) { cutIdx = j; break; }
-        }
-        hits.length = cutIdx;
+    const currentBeat = timeToBeat(timeSec);
+
+    // Clear-ahead on rewind
+    if (vocalTraceFrames.length > 0 && vocalTraceFrames[vocalTraceFrames.length - 1].beat >= currentBeat) {
+      let cutIdx = vocalTraceFrames.length;
+      for (let j = 0; j < vocalTraceFrames.length; j++) {
+        if (vocalTraceFrames[j].beat >= currentBeat - 0.01) { cutIdx = j; break; }
       }
-      hits.push({ beat: currentBeat, sungPitch: midiPitch, isHit });
-    } else {
-      // Between notes: clamp to vocal range, no octave correction
-      if (midiPitch < 36) midiPitch += 12;
-      if (midiPitch > 84) midiPitch -= 12;
-      // Clear-ahead on rewind
-      if (vocalTraceBetweenHits.length > 0 && vocalTraceBetweenHits[vocalTraceBetweenHits.length - 1].beat >= currentBeat) {
-        let cutIdx = vocalTraceBetweenHits.length;
-        for (let j = 0; j < vocalTraceBetweenHits.length; j++) {
-          if (vocalTraceBetweenHits[j].beat >= currentBeat - 0.01) { cutIdx = j; break; }
-        }
-        vocalTraceBetweenHits.length = cutIdx;
-      }
-      vocalTraceBetweenHits.push({ beat: currentBeat, pitch: midiPitch });
+      vocalTraceFrames.length = cutIdx;
     }
+    vocalTraceFrames.push({ beat: currentBeat, pitch: midiPitch });
   }
 
   async function exportMicTrail() {
@@ -3981,7 +3902,7 @@
       {#if vocalTraceLoading}
         <span class="mic-starting">⏳ Loading…</span>
       {/if}
-      {#if vocalTraceNoteHits.size > 0 || vocalTraceBetweenHits.length > 0}
+      {#if vocalTraceFrames.length > 0}
         {#if vocalTraceVisible}
           <button class="tool-btn sm active" on:click={() => { vocalTraceVisible = false; draw(); }} title="Hide vocal trace">👁 Vocal</button>
         {:else}
