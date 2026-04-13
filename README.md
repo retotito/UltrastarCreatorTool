@@ -60,7 +60,9 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 
 ### Playback & Audio
 - **Sing-along mode** — use your microphone to sing along with the song in real time, see your pitch trail overlaid on the notes for realistic editing
+- **Vocal trace** — automatically runs the separated vocal audio through the same pitch detector as the mic; draws a pink trail behind the notes so you can see exactly where the vocals land and align notes by eye. Right-click a pink frame to insert a note at the exact position and pitch (snapped to grid). Toggle with **V**.
 - **Mic device selection** — choose from available microphones with volume gain control
+- **Active mode badge** — pulsing red MIC / pink VOCAL indicator on the canvas when recording
 - **MIDI pitch playback** — hear synthesized pitches during playback (triangle wave)
 - **Vocal mute toggle** — isolate MIDI pitches or hear both
 - **Audio scrub** — drag the playhead to hear frozen audio grains at any position
