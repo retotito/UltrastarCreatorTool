@@ -2927,7 +2927,7 @@
     }
 
     // M: toggle mic sing-along
-    if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNote === null) {
+    if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible) {
       e.preventDefault();
       micEnabled = !micEnabled;
       if (micEnabled && vocalTraceEnabled) { vocalTraceEnabled = false; stopVocalTrace(); }
@@ -2935,7 +2935,7 @@
     }
 
     // V: toggle vocal trace
-    if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNote === null && hasVocalsAudio) {
+    if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible && hasVocalsAudio) {
       e.preventDefault();
       vocalTraceEnabled = !vocalTraceEnabled;
       if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); }
@@ -2987,11 +2987,11 @@
           deleteNote(selectedNote);
         }
       }
-      if (e.code === 'KeyS' && !e.shiftKey) {
+      if (e.code === 'KeyS' && !e.shiftKey && contextMenu.visible) {
         e.preventDefault();
         splitNote(selectedNote);
       }
-      if (e.code === 'KeyM') {
+      if (e.code === 'KeyM' && contextMenu.visible) {
         e.preventDefault();
         mergeWithNext(selectedNote);
       }
@@ -3449,10 +3449,12 @@
       tmpCtx.close();
       vocalTraceSampleBuf = new Float32Array(2048);
       vocalTraceDetector = PitchDetector.forFloat32Array(2048);
-      vocalTraceFrames = [];
-      vocalTraceLastPitch = -1;
-      vocalTracePitchConfidence = 0;
-      vocalTraceRecentPitches = [];
+      // Only reset frames on first load — keep existing data when re-enabling
+      if (vocalTraceFrames.length === 0) {
+        vocalTraceLastPitch = -1;
+        vocalTracePitchConfidence = 0;
+        vocalTraceRecentPitches = [];
+      }
       console.log('[VocalTrace] Loaded, duration:', vocalTraceDecodedBuffer.duration);
     } catch (err) {
       console.error('[VocalTrace] Failed to load:', err);
@@ -3958,14 +3960,6 @@
                value={Math.round(micGain * 100)}
                on:input={(e) => { micGain = parseInt(e.target.value) / 100; if (micGainNode) micGainNode.gain.value = micGain; }}
                title="Mic volume: {Math.round(micGain * 100)}%" />
-        {#if micShowTrail}
-          <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide sung blocks">👁 Sing</button>
-        {:else}
-          <button class="tool-btn sm" on:click={() => { micShowTrail = true; draw(); }} title="Show sung blocks">👁 Sing</button>
-        {/if}
-        {#if micNoteHits.size > 0 || micPitchTrail.length > 0}
-          <button class="tool-btn sm" on:click={clearMicTrail} title="Clear sung blocks">🗑</button>
-        {/if}
         <label class="mic-opt" title="Debug: show raw pitch dots + enable export">
           <input type="checkbox" bind:checked={micShowRawTrail} on:change={() => draw()} />
           Raw
@@ -3980,6 +3974,14 @@
             {/each}
           </select>
         {/if}
+      {/if}
+      {#if micNoteHits.size > 0 || micPitchTrail.length > 0}
+        {#if micShowTrail}
+          <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide sung blocks">👁 Sing</button>
+        {:else}
+          <button class="tool-btn sm" on:click={() => { micShowTrail = true; draw(); }} title="Show sung blocks">👁 Sing</button>
+        {/if}
+        <button class="tool-btn sm" on:click={clearMicTrail} title="Clear sung blocks">🗑</button>
       {/if}
 
       <label title="Vocal trace — plays the vocal audio through pitch detection, same as mic sing-along (cyan = off-pitch, green = on-pitch)" class:disabled-label={!hasVocalsAudio}>
@@ -4080,6 +4082,12 @@
       on:wheel|nonpassive={handleWheel}
       on:contextmenu={handleContextMenu}
     ></canvas>
+    {#if micEnabled || vocalTraceEnabled}
+      <div class="active-mode-badge" class:badge-mic={micEnabled} class:badge-vocal={vocalTraceEnabled}>
+        <span class="badge-dot"></span>
+        {micEnabled ? 'MIC' : 'VOCAL'}
+      </div>
+    {/if}
     {#if micStarting}
       <div class="mic-starting-overlay">
         <div class="mic-starting-box">
@@ -4697,6 +4705,44 @@
     border-top: none;
     overflow: hidden;
     cursor: crosshair;
+  }
+
+  .active-mode-badge {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+    user-select: none;
+  }
+  .badge-mic {
+    background: rgba(220, 30, 30, 0.18);
+    color: #ff4444;
+    border: 1px solid rgba(220, 30, 30, 0.4);
+  }
+  .badge-vocal {
+    background: rgba(255, 80, 180, 0.18);
+    color: rgba(255, 80, 180, 1);
+    border: 1px solid rgba(255, 80, 180, 0.4);
+  }
+  .badge-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    animation: badge-pulse 1.2s ease-in-out infinite;
+  }
+  .badge-mic .badge-dot  { background: #ff4444; }
+  .badge-vocal .badge-dot { background: rgba(255, 80, 180, 1); }
+  @keyframes badge-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.7); }
   }
 
   canvas {
