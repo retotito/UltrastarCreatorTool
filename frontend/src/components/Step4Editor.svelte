@@ -3950,11 +3950,6 @@
         <input type="checkbox" bind:checked={showWaveform} on:change={() => { console.log('[UI] waveform', showWaveform); draw(); }} />
         Wave
       </label> -->
-        <button class="tool-btn sm" class:active={beatMarkerMode}
-                on:click={() => beatMarkerMode ? (exitBeatMarkerMode(), draw()) : enterBeatMarkerMode()}
-                title="Calibrate BPM by clicking downbeats on the waveform">
-          ♪ Cal
-        </button>
       
       <!-- {#if metronomeEnabled}
         <button class="tool-btn sm" class:active={metronomeOffset === 0} on:click={() => { metronomeOffset = 0; lastMetronomeBeat = -1; }} title="On beat">♩</button>
@@ -3976,12 +3971,6 @@
       <button class="tool-btn" on:click={handleReload} title="Reload from last save">
         🔄 Reload
       </button> -->
-      <button class="tool-btn" on:click={autoFixWordSpaces} title="Auto-add leading spaces for word boundaries">
-        🔤 Fix Spaces
-      </button>
-      <button class="tool-btn" on:click={openTextEditor} title="Edit raw Ultrastar .txt">
-        📝 Text
-      </button>
       
       <!-- {#if hasUnsavedChanges}
         <span class="unsaved-indicator">● unsaved</span>
@@ -4066,13 +4055,18 @@
       <div id="BPM-controls-wrapper">
         <div class="bpm-controls">
           <span class="bpm-label">BPM</span>
-          <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); handleBpmChange(); }}>−</button>
-          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.1)) * 1000) / 1000; handleBpmChange(); }}>−.1</button>
-          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.01)) * 1000) / 1000; handleBpmChange(); }}>−.01</button>
+          <!-- <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); handleBpmChange(); }}>−</button> -->
+          <!-- <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.1)) * 1000) / 1000; handleBpmChange(); }}>−.1</button>
+          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.01)) * 1000) / 1000; handleBpmChange(); }}>−.01</button> -->
           <input type="number" class="bpm-input" bind:value={bpm} on:change={() => { console.log('[UI] bpm input', bpm); handleBpmChange(); }} step="0.001" min="10" max="1000" />
-          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmChange(); }}>.01+</button>
-          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmChange(); }}>.1+</button>
-          <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmChange(); }}>+</button>
+          <!-- <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmChange(); }}>.01+</button>
+          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmChange(); }}>.1+</button> -->
+          <!-- <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmChange(); }}>+</button> -->
+          <button class="tool-btn" class:active={beatMarkerMode} style="margin-left: 4px;"
+                on:click={() => beatMarkerMode ? (exitBeatMarkerMode(), draw()) : enterBeatMarkerMode()}
+                title="Calibrate BPM by clicking downbeats on the waveform">
+            Cal
+          </button>
         </div>
         <div id="gap-controls" title="Click to set a new GAP position on the waveform (Ctrl+G)">
           <span class="bpm-label gap-label">GAP</span>
@@ -4083,6 +4077,14 @@
             {gapMs} ms
           </span>
         </div>
+      </div>
+      <div id="edit-controls-wrapper">
+        <button class="tool-btn" on:click={autoFixWordSpaces} title="Auto-add leading spaces for word boundaries">
+           Fix Spaces&nbsp;🔤
+        </button>
+        <button class="tool-btn" on:click={openTextEditor} title="Edit raw Ultrastar .txt">
+           Text&nbsp;📝 
+        </button>
       </div>
     </div>
     <div class="toolbar-toolset-wrapper">
@@ -4780,6 +4782,14 @@
     padding-left: 10px;
   }
 
+  #edit-controls-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-left: 1px solid #8c8c8c;
+    padding-left: 10px;
+  }
+
   #vocal_trace-controls-wrapper {
     display: flex;
     align-items: center;
@@ -5089,13 +5099,17 @@
     display: flex;
     align-items: center;
     gap: 0.2rem;
-    padding: 0 0.4rem;
-    border-left: 1px solid #333;
+    padding-left: 10px;
+    padding-right: 6px;
+    border-left: 1px solid #8c8c8c;
+    height: 28px;
   }
 
   #gap-controls {
-    border-left: 1px solid #8c8c8c;;
-    padding-left: 10opx
+    border-left: 1px solid #8c8c8c;
+    padding-left: 0px;
+    padding-top: 2px;
+    height: 28px;
   }
 
   .bpm-label {
