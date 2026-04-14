@@ -3913,14 +3913,7 @@
 
 <div class="step-content">
   <div class="toolbar">
-    <div class="playback-controls">
-      <button class="tool-btn" on:click={() => { console.log('[UI] jump to 0s'); seekToTime(0); }} title="Jump to 0s">⏮⏮</button>
-      <button class="tool-btn" on:click={() => { console.log('[UI] jump to GAP'); seekToTime(gapMs / 1000); }} title="Jump to GAP (beat 0)">⏮</button>
-      <button class="tool-btn" on:click={() => { console.log('[UI] togglePlayback'); togglePlayback(); }} title="Space">
-        {isPlaying ? '⏸ Pause' : '▶ Play'}
-      </button>
-      <span class="time-display">{formatTime(currentTimeSec)}</span>
-    </div>
+    
 
     <div class="zoom-controls">
       <button class="tool-btn" on:click={() => { zoom = Math.max(0.5, zoom - 1); console.log('[UI] zoom-', zoom); draw(); }}>−</button>
@@ -3948,18 +3941,7 @@
           ♪ Cal
         </button>
       {/if}
-      <label title="Play MIDI pitch tones during playback">
-        <input type="checkbox" checked={midiPlayback} on:change={toggleMidiPlayback} />
-        🎹 MIDI
-      </label>
-      <label title="Mute vocal track">
-        <input type="checkbox" checked={muteVocal} on:change={toggleMuteVocal} />
-        🔇 Mute
-      </label>
-      <label title="Metronome click on each beat">
-        <input type="checkbox" checked={metronomeEnabled} on:change={toggleMetronome} />
-        🥁 Metro
-      </label>
+      
       {#if metronomeEnabled}
         <button class="tool-btn sm" class:active={metronomeOffset === 0} on:click={() => { metronomeOffset = 0; lastMetronomeBeat = -1; }} title="On beat">♩</button>
         <button class="tool-btn sm" class:active={metronomeOffset === 4} on:click={() => { metronomeOffset = 4; lastMetronomeBeat = -1; }} title="Half beat offset (8th note)">♩½</button>
@@ -4030,16 +4012,7 @@
       {/if}
     </div>
 
-    <div class="speed-controls">
-      <span class="speed-label">Speed</span>
-      {#each [0.25, 0.5, 0.75, 1.0, 1.5, 2.0] as rate}
-        <button
-          class="tool-btn sm"
-          class:active={playbackRate === rate}
-          on:click={() => setPlaybackRate(rate)}
-        >{rate}x</button>
-      {/each}
-    </div>
+    
 
     <div class="bpm-controls">
       <span class="bpm-label">BPM</span>
@@ -4071,14 +4044,7 @@
       <button class="tool-btn" on:click={openTextEditor} title="Edit raw Ultrastar .txt">
         📝 Text
       </button>
-      <div class="audio-source-toggle" title="Audio source">
-        <button class="tool-btn sm" class:active={audioSource === 'vocals'} class:disabled-audio={!hasVocalsAudio} on:click={() => hasVocalsAudio ? switchAudioSource('vocals') : handleMissingAudio('vocals')} title={hasVocalsAudio ? 'Vocals' : 'No vocals — go to Step 1 to extract or upload'}>🎤</button>
-        <button class="tool-btn sm" class:active={audioSource === 'original'} class:disabled-audio={!hasOriginalAudio} on:click={() => hasOriginalAudio ? switchAudioSource('original') : handleMissingAudio('original')} title={hasOriginalAudio ? 'Full mix' : 'No full mix — go to Step 1 to upload'}>🎵</button>
-      </div>
-      <div class="volume-control" title="Audio volume">
-        <span class="volume-icon">{muteVocal ? '🔇' : audioVolume < 0.3 ? '🔈' : audioVolume < 0.7 ? '🔉' : '🔊'}</span>
-        <input type="range" min="0" max="1" step="0.05" value={audioVolume} on:input={handleVolumeChange} class="volume-slider" />
-      </div>
+      
       <!-- {#if hasUnsavedChanges}
         <span class="unsaved-indicator">● unsaved</span>
       {:else if lastSaveTime}
@@ -4090,11 +4056,53 @@
       {#if selectedNote !== null}
         {@const note = notes.find(n => n.id === selectedNote)}
         {#if note && note.type !== 'break'}
-          <span class="note-info">
+          <!-- <span class="note-info">
             {note.syllable.trim()} | Beat {note.startBeat} | Dur {note.duration} | {noteName(note.pitch)}
-          </span>
+          </span> -->
         {/if}
       {/if}
+    </div>
+    <div id="toolbar-playback-wrapper">
+      <div class="playback-controls">
+        <button class="tool-btn" on:click={() => { console.log('[UI] jump to 0s'); seekToTime(0); }} title="Jump to 0s">⏮⏮</button>
+        <button class="tool-btn" on:click={() => { console.log('[UI] jump to GAP'); seekToTime(gapMs / 1000); }} title="Jump to GAP (beat 0)">GAP⏮</button>
+        <button class="tool-btn" on:click={() => { console.log('[UI] togglePlayback'); togglePlayback(); }} title="Space">
+          {isPlaying ? '⏸ Pause' : '▶ Play'}
+        </button>
+        <span class="time-display">{formatTime(currentTimeSec)}</span>
+      </div>
+      <div class="speed-controls">
+        <span class="speed-label">Speed</span>
+        {#each [0.25, 0.5, 0.75, 1.0] as rate}
+          <button
+            class="tool-btn sm"
+            class:active={playbackRate === rate}
+            on:click={() => setPlaybackRate(rate)}
+          >{rate}x</button>
+        {/each}
+      </div>
+      <div id="audio-source-wrapper">
+        <div class="audio-source-toggle" title="Audio source">
+          <button class="tool-btn sm" class:active={audioSource === 'vocals'} class:disabled-audio={!hasVocalsAudio} on:click={() => hasVocalsAudio ? switchAudioSource('vocals') : handleMissingAudio('vocals')} title={hasVocalsAudio ? 'Vocals' : 'No vocals — go to Step 1 to extract or upload'}>🎤</button>
+          <button class="tool-btn sm" class:active={audioSource === 'original'} class:disabled-audio={!hasOriginalAudio} on:click={() => hasOriginalAudio ? switchAudioSource('original') : handleMissingAudio('original')} title={hasOriginalAudio ? 'Full mix' : 'No full mix — go to Step 1 to upload'}>🎵</button>
+        </div>
+        <!-- <label title="Mute vocal track">
+          <input type="checkbox" checked={muteVocal} on:change={toggleMuteVocal} />
+          🔇 Mute
+        </label> -->
+        <div class="volume-control" title="Audio volume">
+          <span class="volume-icon" on:click={toggleMuteVocal}>
+            {muteVocal ? '🔇' : audioVolume < 0.3 ? '🔈' : audioVolume < 0.7 ? '🔉' : '🔊'}
+          </span>
+          <input type="range" min="0" max="1" step="0.05" value={audioVolume} on:input={handleVolumeChange} class="volume-slider" />
+        </div>
+        <label title="Play MIDI pitch tones during playback" on:click={toggleMidiPlayback} style="cursor:pointer">
+          {midiPlayback ? '🔈':'🔇'} MIDI
+        </label>
+        <label title="Metronome click on each beat" on:click={toggleMetronome} style="cursor:pointer">
+          {metronomeEnabled ? '🔈':'🔇'} Metronome
+        </label>
+      </div>
     </div>
   </div>
 
@@ -4671,14 +4679,22 @@
   }
 
   .toolbar {
-    display: flex;
+    /* display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 1rem; */
+    display: brock;
     padding: 0.5rem;
     background: #1a1a2e;
     border: 1px solid #333;
     border-radius: 8px 8px 0 0;
-    flex-wrap: wrap;
+    /* flex-wrap: wrap; */
+  }
+
+  #toolbar-playback-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    margin-top: 0.5rem;
   }
 
   .playback-controls, .zoom-controls {
@@ -4688,7 +4704,7 @@
   }
 
   .time-display {
-    color: #aaa;
+    color: #4ade80;
     font-size: 0.8rem;
     font-family: monospace;
     min-width: 40px;
@@ -4929,7 +4945,7 @@
     display: flex;
     align-items: center;
     gap: 0.2rem;
-    border-left: 1px solid #333;
+    border-left: 1px solid #8c8c8c;
     padding-left: 0.5rem;
   }
 
@@ -5264,11 +5280,19 @@
     font-weight: 500;
   }
 
+  #audio-source-wrapper {
+    display: block;
+    padding: 1px 1px 1px 10px;
+    border-left: 1px solid #8c8c8c;
+  }
+
   /* Audio source toggle */
   .audio-source-toggle {
     display: inline-flex;
     gap: 2px;
     margin-left: 4px;
+    padding-left: 10px;
+    border-left: 1px solid #8c8c8c;
     background: #111;
     border-radius: 6px;
     padding: 1px;
