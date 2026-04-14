@@ -2817,7 +2817,7 @@
     if (gridAlignMode) {
       if (e.code === 'Enter') { e.preventDefault(); confirmGridAlign(); return; }
       if (e.code === 'Escape') { e.preventDefault(); cancelGridAlign(); return; }
-      if ((e.metaKey || e.ctrlKey) && e.code === 'KeyB') { e.preventDefault(); cancelGridAlign(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); cancelGridAlign(); return; }
       e.preventDefault();
       return;
     }
@@ -2830,9 +2830,9 @@
       if (e.code === 'Space') { e.preventDefault(); togglePlayback(); return; }
       if (e.code === 'ArrowLeft') { e.preventDefault(); seekPlayback(e.shiftKey ? -1 : -5); return; }
       if (e.code === 'ArrowRight') { e.preventDefault(); seekPlayback(e.shiftKey ? 1 : 5); return; }
-      if (e.code === 'KeyL' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleLoop(); return; }
-      if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); micEnabled = !micEnabled; if (micEnabled && vocalTraceEnabled) { vocalTraceEnabled = false; stopVocalTrace(); } toggleMic(); return; }
-      if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && hasVocalsAudio) { e.preventDefault(); vocalTraceEnabled = !vocalTraceEnabled; if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); } toggleVocalTrace(); return; }
+      if (e.key.toLowerCase() === 'l' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); toggleLoop(); return; }
+      if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); micEnabled = !micEnabled; if (micEnabled && vocalTraceEnabled) { vocalTraceEnabled = false; stopVocalTrace(); } toggleMic(); return; }
+      if (e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.metaKey && !e.altKey && hasVocalsAudio) { e.preventDefault(); vocalTraceEnabled = !vocalTraceEnabled; if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); } toggleVocalTrace(); return; }
       if (e.code === 'Escape') {
         e.preventDefault();
         if (loopStartBeat !== null) clearLoop();
@@ -2843,7 +2843,7 @@
     }
 
     // Undo / Redo (Cmd+Z / Cmd+Shift+Z on Mac, Ctrl+Z / Ctrl+Shift+Z on others)
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       if (e.shiftKey) {
         redo();
@@ -2854,7 +2854,7 @@
     }
 
     // ── Select All (Ctrl/Cmd+A) ──
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyA') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
       selectedNotes = new Set(notes.filter(n => n.type !== 'break').map(n => n.id));
       if (selectedNotes.size > 0) selectedNote = [...selectedNotes][0];
@@ -2863,17 +2863,17 @@
     }
 
     // ── Clipboard shortcuts ──
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyX') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'x') {
       e.preventDefault();
       clipboardCut();
       return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyC') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
       e.preventDefault();
       clipboardCopy();
       return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyV') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v') {
       e.preventDefault();
       if (clipboard) {
         // If already in paste mode, paste at playhead position
@@ -2949,13 +2949,13 @@
     }
 
     // L: toggle loop on/off
-    if (e.code === 'KeyL' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNote === null) {
+    if (e.key.toLowerCase() === 'l' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNote === null) {
       e.preventDefault();
       toggleLoop();
     }
 
     // M: toggle mic sing-along
-    if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible) {
+    if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible) {
       e.preventDefault();
       micEnabled = !micEnabled;
       if (micEnabled && vocalTraceEnabled) { vocalTraceEnabled = false; stopVocalTrace(); }
@@ -2963,21 +2963,21 @@
     }
 
     // V: toggle vocal trace
-    if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible && hasVocalsAudio) {
+    if (e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.metaKey && !e.altKey && !contextMenu.visible && hasVocalsAudio) {
       e.preventDefault();
       vocalTraceEnabled = !vocalTraceEnabled;
       if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); }
       toggleVocalTrace();
     }
     // Ctrl/Cmd+B: enter Grid Align mode (B = Beat) — blocked if Set GAP is active
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyB') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
       e.preventDefault();
       if (!setGapMode) enterGridAlignMode();
       return;
     }
 
     // Ctrl/Cmd+G: Set GAP mode — blocked if Grid Align is active
-    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyG') {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g') {
       e.preventDefault();
       if (!gridAlignMode) {
         if (setGapMode) {
@@ -3010,7 +3010,7 @@
 
     // Note action shortcuts (only when a note is selected and not in an input)
     if (selectedNote !== null && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      if (e.code === 'KeyP') {
+      if (e.key.toLowerCase() === 'p') {
         e.preventDefault();
         playNotePitch(selectedNote);
       }
@@ -3028,11 +3028,11 @@
           deleteNote(selectedNote);
         }
       }
-      if (e.code === 'KeyS' && !e.shiftKey && contextMenu.visible) {
+      if (e.key.toLowerCase() === 's' && !e.shiftKey && contextMenu.visible) {
         e.preventDefault();
         splitNote(selectedNote);
       }
-      if (e.code === 'KeyM' && contextMenu.visible) {
+      if (e.key.toLowerCase() === 'm' && contextMenu.visible) {
         e.preventDefault();
         mergeWithNext(selectedNote);
       }
