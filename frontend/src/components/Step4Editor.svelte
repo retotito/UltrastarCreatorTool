@@ -553,6 +553,18 @@
     }
   }
 
+  function enterSetGapMode() {
+    if (isPlaying || gridAlignMode) return;
+    setGapMode = true;
+    setGapHoverBeat = null;
+    if (canvasEl) canvasEl.style.cursor = 'crosshair';
+    // Scroll so the gap (beat 0) sits at 30% from the left edge
+    const cw = canvasEl?.width || 800;
+    const minScrollX = getMinBeat() * zoom;
+    scrollX = Math.max(minScrollX, -cw * 0.3);
+    draw();
+  }
+
   function cancelSetGapMode() {
     setGapMode = false;
     setGapHoverBeat = null;
@@ -2953,11 +2965,8 @@
       if (!gridAlignMode) {
         if (setGapMode) {
           cancelSetGapMode();
-        } else if (!isPlaying) {
-          setGapMode = true;
-          setGapHoverBeat = null;
-          if (canvasEl) canvasEl.style.cursor = 'crosshair';
-          draw();
+        } else {
+          enterSetGapMode();
         }
       }
       return;
@@ -3959,23 +3968,7 @@
 
     
 
-    <div class="bpm-controls">
-      <span class="bpm-label">BPM</span>
-      <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); handleBpmChange(); }}>−</button>
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.1)) * 1000) / 1000; handleBpmChange(); }}>−.1</button>
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.01)) * 1000) / 1000; handleBpmChange(); }}>−.01</button>
-      <input type="number" class="bpm-input" bind:value={bpm} on:change={() => { console.log('[UI] bpm input', bpm); handleBpmChange(); }} step="0.001" min="10" max="1000" />
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmChange(); }}>.01+</button>
-      <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmChange(); }}>.1+</button>
-      <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmChange(); }}>+</button>
-
-      <span class="bpm-label gap-label">GAP</span>
-      <button class="tool-btn sm" on:click={() => { gapMs = Math.max(0, gapMs - 100); console.log('[UI] gap-', gapMs); handleBpmGapChange(); }}>−</button>
-      <input type="number" class="gap-input" bind:value={gapMs} on:change={() => { console.log('[UI] gap input', gapMs); handleBpmGapChange(); }} step="100" min="0" />
-      <button class="tool-btn sm" on:click={() => { gapMs = gapMs + 100; console.log('[UI] gap+', gapMs); handleBpmGapChange(); }}>+</button>
-      <span class="bpm-label">ms</span>
-    </div>
-
+    
     <div class="save-controls">
       <!-- <button class="tool-btn save-btn" on:click={handleSave} disabled={isSaving} title="Save">
         {isSaving ? '⏳' : '💾'} Save
@@ -4070,6 +4063,27 @@
           {/if}
         </div>
       </div>
+      <div id="BPM-controls-wrapper">
+        <div class="bpm-controls">
+          <span class="bpm-label">BPM</span>
+          <button class="tool-btn sm" on:click={() => { bpm = Math.max(10, bpm - 1); handleBpmChange(); }}>−</button>
+          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.1)) * 1000) / 1000; handleBpmChange(); }}>−.1</button>
+          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((Math.max(10, bpm - 0.01)) * 1000) / 1000; handleBpmChange(); }}>−.01</button>
+          <input type="number" class="bpm-input" bind:value={bpm} on:change={() => { console.log('[UI] bpm input', bpm); handleBpmChange(); }} step="0.001" min="10" max="1000" />
+          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmChange(); }}>.01+</button>
+          <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmChange(); }}>.1+</button>
+          <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmChange(); }}>+</button>
+        </div>
+        <div id="gap-controls" title="Click to set a new GAP position on the waveform (Ctrl+G)">
+          <span class="bpm-label gap-label">GAP</span>
+          <span class="gap-input gap-display" role="button" tabindex="0"
+            on:click={enterSetGapMode}
+            on:keydown={(e) => e.key === 'Enter' && enterSetGapMode()}
+            title="Click to set GAP (Ctrl+G) — {gapMs}ms">
+            {gapMs} ms
+          </span>
+        </div>
+      </div>
     </div>
     <div class="toolbar-toolset-wrapper">
       <div class="playback-controls">
@@ -4102,8 +4116,8 @@
       </div>
       <div id="audio-source-wrapper">
         <div class="audio-source-toggle" title="Audio source">
-          <button class="tool-btn sm" class:active={audioSource === 'vocals'} class:disabled-audio={!hasVocalsAudio} on:click={() => hasVocalsAudio ? switchAudioSource('vocals') : handleMissingAudio('vocals')} title={hasVocalsAudio ? 'Vocals' : 'No vocals — go to Step 1 to extract or upload'}>🎤</button>
-          <button class="tool-btn sm" class:active={audioSource === 'original'} class:disabled-audio={!hasOriginalAudio} on:click={() => hasOriginalAudio ? switchAudioSource('original') : handleMissingAudio('original')} title={hasOriginalAudio ? 'Full mix' : 'No full mix — go to Step 1 to upload'}>🎵</button>
+          <button class="tool-btn sm" class:active={audioSource === 'vocals'} class:disabled-audio={!hasVocalsAudio} on:click={() => hasVocalsAudio ? switchAudioSource('vocals') : handleMissingAudio('vocals')} title={hasVocalsAudio ? 'Vocals' : 'No vocals — go to Step 1 to extract or upload'}>Vocals 🎤</button>
+          <button class="tool-btn sm" class:active={audioSource === 'original'} class:disabled-audio={!hasOriginalAudio} on:click={() => hasOriginalAudio ? switchAudioSource('original') : handleMissingAudio('original')} title={hasOriginalAudio ? 'Full mix' : 'No full mix — go to Step 1 to upload'}>Full Mix 🎵</button>
         </div>
         <div class="volume-control" title="Audio volume">
           <span class="volume-icon" on:click={toggleMuteVocal}>
@@ -5079,6 +5093,11 @@
     border-left: 1px solid #333;
   }
 
+  #gap-controls {
+    border-left: 1px solid #8c8c8c;;
+    padding-left: 10opx
+  }
+
   .bpm-label {
     color: #aaa;
     font-size: 0.75rem;
@@ -5106,6 +5125,16 @@
 
   .gap-input {
     width: 70px;
+  }
+
+  .gap-display {
+    cursor: pointer;
+    user-select: none;
+    display: inline-block;
+  }
+  .gap-display:hover {
+    color: #81d4fa;
+    border-color: #4fc3f7;
   }
 
   .bpm-input::-webkit-inner-spin-button,
