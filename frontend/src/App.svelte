@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { currentStep, sessionId, uploadData, lyricsData, generationResult, generationModalOpen, resetSession } from './stores/appStore.js';
   import { checkHealth, resumeSession, getAudioUrl } from './services/api.js';
   import StepNavigation from './components/StepNavigation.svelte';
@@ -13,14 +13,20 @@
   import { showConfirm } from './stores/dialogStore.js';
 
   let backendStatus = 'checking';
+  let healthPollInterval = null;
 
-  onMount(async () => {
+  async function pollHealth() {
     try {
       const health = await checkHealth();
       backendStatus = health.status;
     } catch (e) {
       backendStatus = 'offline';
     }
+  }
+
+  onMount(async () => {
+    await pollHealth();
+    healthPollInterval = setInterval(pollHealth, 15000);
 
     // Auto-resume persisted session on refresh
     const sid = $sessionId;
@@ -59,6 +65,10 @@
   });
 
   let homeConfirm = false;
+
+  onDestroy(() => {
+    if (healthPollInterval) clearInterval(healthPollInterval);
+  });
 
   async function goHome() {
     const ok = await showConfirm('Return to the home screen? Unsaved changes will be lost.', {

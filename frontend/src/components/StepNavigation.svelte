@@ -60,16 +60,16 @@
   </nav>
 
   <div class="topbar-right">
-    <div class="backend-status" class:online={backendStatus === 'ok'} class:offline={backendStatus === 'offline'}>
-      <span class="status-dot"></span>
-      {#if backendStatus === 'ok'}
-        Backend online
-      {:else if backendStatus === 'offline'}
-        Backend offline
-      {:else}
-        Checking…
-      {/if}
-    </div>
+    {#if backendStatus !== 'ok'}
+      <div class="backend-status" class:offline={backendStatus === 'offline'} class:checking={backendStatus === 'checking'}>
+        <span class="status-dot"></span>
+        {#if backendStatus === 'offline'}
+          Backend offline
+        {:else}
+          Checking…
+        {/if}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -234,8 +234,8 @@
     color: #475569;
     white-space: nowrap;
   }
-  .backend-status.online { color: #4ade80; }
   .backend-status.offline { color: #f87171; }
+  .backend-status.checking { color: #94a3b8; }
 
   .status-dot {
     width: 6px;
@@ -244,10 +244,10 @@
     background: currentColor;
     flex-shrink: 0;
   }
-  .backend-status.online .status-dot { animation: pulse-dot 2s ease-in-out infinite; }
+  .backend-status.offline .status-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
   @keyframes pulse-dot {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    50% { opacity: 0.3; }
   }
 
   /* ── No audio warning modal ── */
