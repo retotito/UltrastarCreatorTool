@@ -4458,29 +4458,40 @@
 
   <div class="shortcut-bar">
     <div class="shortcut-group">
+      <span class="shortcut-label">Playback</span>
+      <span class="shortcut"><kbd>Space</kbd> play/pause</span>
+      <span class="shortcut"><kbd>←→</kbd> seek ±5s</span>
+      <span class="shortcut"><kbd>⇧←→</kbd> ±1s</span>
+      <span class="shortcut"><kbd>L</kbd> loop</span>
+      <span class="shortcut"><kbd>M</kbd> mic</span>
+      <span class="shortcut"><kbd>V</kbd> vocal trace</span>
+    </div>
+    <div class="shortcut-group">
       <span class="shortcut-label">Navigate</span>
       <span class="shortcut"><kbd>Scroll</kbd> pan</span>
       <span class="shortcut"><kbd>⌃Scroll</kbd> zoom</span>
-      <span class="shortcut"><kbd>←→</kbd> seek ±5s</span>
-      <span class="shortcut"><kbd>⇧←→</kbd> ±1s</span>
-      <span class="shortcut"><kbd>Space</kbd> play/pause</span>
+    </div>
+    <div class="shortcut-group">
+      <span class="shortcut-label">Select</span>
+      <span class="shortcut"><kbd>Click</kbd> select</span>
+      <span class="shortcut"><kbd>⌃Click</kbd> multi</span>
+      <span class="shortcut"><kbd>⌃Drag</kbd> box select</span>
     </div>
     <div class="shortcut-group">
       <span class="shortcut-label">Edit</span>
-      <span class="shortcut"><kbd>Click</kbd> select</span>
       <span class="shortcut"><kbd>Drag</kbd> move</span>
       <span class="shortcut"><kbd>S</kbd> split</span>
-      <span class="shortcut"><kbd>M</kbd> merge</span>
       <span class="shortcut"><kbd>Del</kbd> delete</span>
       <span class="shortcut"><kbd>P</kbd> play pitch</span>
+      <span class="shortcut"><kbd>⌘X/C/V</kbd> cut/copy/paste</span>
     </div>
     <div class="shortcut-group">
       <span class="shortcut-label">Tools</span>
       <span class="shortcut"><kbd>⌘Z</kbd> undo</span>
       <span class="shortcut"><kbd>⇧⌘Z</kbd> redo</span>
-      <span class="shortcut"><kbd>⌘S</kbd> set GAP</span>
-      <span class="shortcut"><kbd>⌘G</kbd> grid align</span>
-      <span class="shortcut"><kbd>L</kbd> loop</span>
+      <span class="shortcut"><kbd>⌘S</kbd> save</span>
+      <span class="shortcut"><kbd>⌘G</kbd> set GAP</span>
+      <span class="shortcut"><kbd>⌘B</kbd> grid align</span>
     </div>
   </div>
 

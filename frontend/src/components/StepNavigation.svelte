@@ -1,4 +1,5 @@
 <script>
+  import { onMount, onDestroy } from 'svelte';
   import { currentStep, steps, canGoToStep, uploadData } from '../stores/appStore.js';
 
   export let backendStatus = 'checking';
@@ -6,6 +7,30 @@
 
   let showNoAudioWarning = false;
   let pendingStep = null;
+
+  // Smart sticky: hide on scroll down, reveal on scroll up
+  let topbarVisible = true;
+  let lastScrollY = 0;
+
+  function handleScroll() {
+    const y = window.scrollY;
+    if (y < 10) {
+      topbarVisible = true;
+    } else if (y > lastScrollY) {
+      topbarVisible = false; // scrolling down
+    } else {
+      topbarVisible = true;  // scrolling up
+    }
+    lastScrollY = y;
+  }
+
+  onMount(() => {
+    lastScrollY = window.scrollY;
+    window.addEventListener('scroll', handleScroll, { passive: true });
+  });
+  onDestroy(() => {
+    window.removeEventListener('scroll', handleScroll);
+  });
 
   function goToStep(num) {
     if (!$canGoToStep(num)) return;
@@ -35,7 +60,7 @@
   }
 </script>
 
-<div class="topbar">
+<div class="topbar" class:topbar-hidden={!topbarVisible}>
   <div class="topbar-left">
     <button class="home-btn" on:click={goHome} title="Back to Home">🏠</button>
   </div>
@@ -123,6 +148,12 @@
     position: sticky;
     top: 0;
     z-index: 100;
+    transform: translateY(0);
+    transition: transform 0.25s ease;
+  }
+
+  .topbar.topbar-hidden {
+    transform: translateY(-100%);
   }
 
   .topbar-left {
