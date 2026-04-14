@@ -1380,10 +1380,9 @@
 
     // ── Paste ghost preview ──
     if (pasteMode && clipboard && pastePreviewBeat !== null) {
-      const offset = pastePreviewBeat - clipboard.sourceBeat;
       ctx.globalAlpha = 0.4;
       for (const cn of clipboard.notes) {
-        const gx = beatToX(cn.startBeat + offset);
+        const gx = beatToX(pastePreviewBeat + cn.startBeat);
         const gy = pitchToY(cn.pitch);
         const gw = cn.duration * zoom;
         ctx.fillStyle = '#69f0ae';
@@ -1565,7 +1564,7 @@
 
     // ── Paste mode: click to place ──
     if (pasteMode && clipboard) {
-      finalizePaste(Math.round(beat));
+      finalizePaste(Math.max(0, Math.round(beat)));
       return;
     }
 
@@ -1821,7 +1820,7 @@
 
     // ── Paste preview tracking ──
     if (pasteMode && clipboard) {
-      pastePreviewBeat = Math.round(xToBeat(mx));
+      pastePreviewBeat = Math.max(0, Math.round(xToBeat(mx)));
       draw();
       return;
     }
