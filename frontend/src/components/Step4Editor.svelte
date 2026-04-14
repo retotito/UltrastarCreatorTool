@@ -2764,8 +2764,8 @@
       scrollX = Math.max(minScrollX, playbackBeat * zoom - canvasWidth * 0.3);
     } else {
       const cursorX = beatToX(playbackBeat);
-      if (cursorX < 0 || cursorX > canvasWidth) {
-        scrollX = Math.max(minScrollX, (playbackBeat * zoom) - canvasWidth * 0.3);
+      if (cursorX < 0 || cursorX >= canvasWidth) {
+        scrollX = Math.max(minScrollX, Math.floor(playbackBeat * zoom / canvasWidth) * canvasWidth);
       }
     }
     draw();
@@ -3055,8 +3055,8 @@
           scrollX = Math.max(loopMinScroll, Math.min(loopMaxScroll, playbackBeat * zoom - canvasWidth * 0.3));
         } else {
           const cursorX = beatToX(playbackBeat);
-          if (cursorX > canvasWidth * 0.7 || cursorX < canvasWidth * 0.1) {
-            scrollX = Math.max(loopMinScroll, Math.min(loopMaxScroll, playbackBeat * zoom - canvasWidth * 0.3));
+          if (cursorX >= canvasWidth || cursorX < 0) {
+            scrollX = Math.max(loopMinScroll, Math.min(loopMaxScroll, Math.floor(playbackBeat * zoom / canvasWidth) * canvasWidth));
           }
         }
       }
@@ -3065,10 +3065,10 @@
       // Fixed cursor: cursor stays at 30%, notes scroll
       scrollX = Math.max(minScrollX, playbackBeat * zoom - canvasWidth * 0.3);
     } else {
-      // Classic: auto-scroll when cursor reaches 70%
+      // Page mode: jump to next page only when cursor exits right edge
       const cursorX = beatToX(playbackBeat);
-      if (cursorX > canvasWidth * 0.7) {
-        scrollX = (playbackBeat * zoom) - canvasWidth * 0.3;
+      if (cursorX >= canvasWidth || cursorX < 0) {
+        scrollX = Math.max(minScrollX, Math.floor(playbackBeat * zoom / canvasWidth) * canvasWidth);
       }
     }
 
@@ -3922,10 +3922,10 @@
     </div> -->
 
     <div class="mode-controls">
-      <label>
+      <!-- <label>
         <input type="checkbox" bind:checked={scrollMode} on:change={() => console.log('[UI] scrollMode', scrollMode)} />
         Scroll
-      </label>
+      </label> -->
       <label>
         <input type="checkbox" bind:checked={showWaveform} on:change={() => { console.log('[UI] waveform', showWaveform); draw(); }} />
         Wave
@@ -4065,6 +4065,11 @@
         <button class="tool-btn" on:click={() => { console.log('[UI] togglePlayback'); togglePlayback(); }} title="Space">
           {isPlaying ? '⏸ Pause' : '▶ Play'}
         </button>
+        <button class="tool-btn" class:active={!scrollMode}
+          on:click={() => { scrollMode = !scrollMode; }}
+          title={scrollMode ? 'Following playhead — click to pin' : 'View pinned — click to follow'}>
+          {scrollMode ? 'Scroll' : 'Page'}
+        </button>
         <span class="time-display">{formatTime(currentTimeSec)}</span>
       </div>
       <div class="speed-controls">
@@ -4124,6 +4129,7 @@
              on:input={() => { resizeCanvas(); draw(); }}
              title="Waveform height: {waveformHeight}px" />
     {/if}
+    
     <input type="range" class="zoom-overlay-slider" min="5" max="60" step="0.5"
            bind:value={zoom}
            on:input={() => draw()}
@@ -4728,6 +4734,7 @@
     color: #ccc;
     cursor: pointer;
     font-size: 0.85rem;
+    outline: none;
   }
 
   .tool-btn:hover { background: #333; }
