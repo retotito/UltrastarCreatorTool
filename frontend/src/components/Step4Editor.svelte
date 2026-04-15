@@ -1908,6 +1908,17 @@
 
       // Check note hover (if no loop handle matched)
       if (!cursor) {
+        // Check flag hover
+        for (const flag of flags) {
+          if (Math.abs(beatToX(flag.beat) - mx) <= 8) {
+            cursor = 'col-resize';
+            break;
+          }
+        }
+      }
+
+      // Check note hover (if no flag matched)
+      if (!cursor) {
         for (const note of notes) {
           if (note.type === 'break') {
             const bx = beatToX(note.startBeat);
