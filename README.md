@@ -51,6 +51,8 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 - **BPM calibration tool** — manually place beat markers on the waveform; linear regression over all markers calculates the exact BPM; persistent grey reference markers survive across calibration sessions
 - **Text editor** — edit raw Ultrastar content with live preview
 - **Session notes** — jot down reminders while editing; saved automatically per session and restored next time you open the editor
+- **Flag markers** — place green marker lines anywhere on the canvas (right-click → Add Flag); drag, nudge ±1 beat, or delete via right-click; shown as green ticks on the scrollbar; persisted per session
+- **Custom scrollbar** — fully custom div-based slider; the handle tracks the canvas center beat so zooming in/out never moves it; playhead and flag ticks align perfectly with no browser-offset math
 - **Select all** (Ctrl+A) — select all notes for bulk move
 - **Undo/Redo** — full snapshot history (notes, BPM, GAP, downbeat offset, headers)
 - **Waveform display** — smooth high-resolution waveform (750 peaks/sec) showing full-mix or vocal track alongside notes
