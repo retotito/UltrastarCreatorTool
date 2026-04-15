@@ -49,7 +49,16 @@
   let dragMode = null;     // 'move' | 'resize-left' | 'resize-right'
   let dragStart = { x: 0, y: 0 };
   let isDragging = false;
-  let scrollBarEl;
+  // Custom scrollbar state (replaces native <input type="range">)
+  let scrollTrackEl;          // ref to the track div
+  let scrollHandleDragging = false;
+  let scrollDragStartX = 0;   // clientX at drag start
+  let scrollDragStartBeat = 0; // scrollX/zoom at drag start
+
+  // Computed: fraction 0–1 for both handle and playhead tick
+  $: scrollBeatRange   = Math.max(1, totalBeats - getMinBeat());
+  $: scrollHandlePct   = ((scrollX / zoom - getMinBeat()) / scrollBeatRange * 100).toFixed(3);
+  $: playheadPct       = ((playbackBeat  - getMinBeat()) / scrollBeatRange * 100).toFixed(3);
 
   // Rubber-band (box) selection
   let isBoxSelecting = false;
@@ -379,9 +388,7 @@
 
   // Update scrollbar from scrollX
   function syncScrollbar() {
-    if (scrollBarEl) {
-      scrollBarEl.value = scrollX / zoom;
-    }
+    // nothing to imperitively set — handle position is driven by reactive scrollHandlePct
   }
 
   // ──── BPM Re-quantization ────────────────────
@@ -2706,9 +2713,38 @@
 
   // Scrollbar input handler
   function handleScrollbar(event) {
-    const beat = parseFloat(event.target.value);
-    scrollX = beat * zoom;
+    // legacy — no longer used
+  }
+
+  function onScrollTrackPointerDown(e) {
+    if (!scrollTrackEl) return;
+    e.preventDefault();
+    const rect = scrollTrackEl.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    scrollX = Math.max(getMinBeat() * zoom, (getMinBeat() + frac * scrollBeatRange) * zoom);
     draw();
+    // Begin drag
+    scrollHandleDragging = true;
+    scrollDragStartX = e.clientX;
+    scrollDragStartBeat = scrollX / zoom;
+    window.addEventListener('pointermove', onScrollHandlePointerMove);
+    window.addEventListener('pointerup',   onScrollHandlePointerUp);
+  }
+
+  function onScrollHandlePointerMove(e) {
+    if (!scrollHandleDragging || !scrollTrackEl) return;
+    const rect = scrollTrackEl.getBoundingClientRect();
+    const deltaPx   = e.clientX - scrollDragStartX;
+    const deltaBeat = (deltaPx / rect.width) * scrollBeatRange;
+    const newBeat   = Math.min(totalBeats, Math.max(getMinBeat(), scrollDragStartBeat + deltaBeat));
+    scrollX = newBeat * zoom;
+    draw();
+  }
+
+  function onScrollHandlePointerUp() {
+    scrollHandleDragging = false;
+    window.removeEventListener('pointermove', onScrollHandlePointerMove);
+    window.removeEventListener('pointerup',   onScrollHandlePointerUp);
   }
 
   // ──── Playback ───────────────────────────────
@@ -4503,20 +4539,18 @@
     {/if}
   {/if}
 
-  <!-- Scrollbar -->
+  <!-- Custom scrollbar -->
   <div class="scrollbar-container">
-    <div class="scrollbar-inner" style="--playhead-pct: {((playbackBeat - getMinBeat()) / Math.max(1, totalBeats - getMinBeat()) * 100).toFixed(2)}%">
-      <input
-        type="range"
-        class="scroll-range"
-        bind:this={scrollBarEl}
-        min={getMinBeat()}
-        max={totalBeats}
-        step="1"
-        value={scrollX / zoom}
-        on:input={handleScrollbar}
-      />
-      {#if !isPlaying}<div class="scrollbar-playhead"></div>{/if}
+    <div class="scrollbar-track"
+      bind:this={scrollTrackEl}
+      on:pointerdown={onScrollTrackPointerDown}
+    >
+      <!-- playhead tick -->
+      {#if !isPlaying}
+        <div class="scrollbar-playhead" style="left: {playheadPct}%"></div>
+      {/if}
+      <!-- draggable handle -->
+      <div class="scrollbar-handle" style="left: {scrollHandlePct}%"></div>
     </div>
   </div>
 
@@ -5106,66 +5140,42 @@
     border-top: none;
   }
 
-  .scrollbar-inner {
+  .scrollbar-track {
     position: relative;
+    height: 18px;
+    cursor: pointer;
+    /* visible rail in the vertical center */
+    background: linear-gradient(
+      to bottom,
+      transparent 5px,
+      #1a1a2e      5px,
+      #1a1a2e      11px,
+      transparent  11px
+    );
+  }
+
+  .scrollbar-handle {
+    position: absolute;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    background: #4fc3f7;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    box-shadow: 0 0 4px rgba(79, 195, 247, 0.6);
+    pointer-events: none; /* track handles the pointer events */
   }
 
   .scrollbar-playhead {
     position: absolute;
     top: 0;
     bottom: 0;
-    left: var(--playhead-pct);
     width: 2px;
     background: #ff4444;
     pointer-events: none;
-    transform: translateX(calc(-50% - 12px));
+    transform: translateX(-50%);
     opacity: 0.85;
-  }
-
-  .scroll-range {
-    width: 100%;
-    height: 18px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-    cursor: pointer;
-    margin: 0;
-    display: block;
-    outline: none;
-  }
-
-  .scroll-range::-webkit-slider-runnable-track {
-    height: 6px;
-    background: #1a1a2e;
-    border-radius: 3px;
-  }
-
-  .scroll-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    background: #4fc3f7;
-    border-radius: 50%;
-    margin-top: -4px;
-    cursor: grab;
-    box-shadow: 0 0 4px rgba(79, 195, 247, 0.6);
-  }
-
-  .scroll-range::-moz-range-track {
-    height: 6px;
-    background: #1a1a2e;
-    border-radius: 3px;
-  }
-
-  .scroll-range::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #4fc3f7;
-    border: none;
-    cursor: grab;
-    box-shadow: 0 0 4px rgba(79, 195, 247, 0.6);
   }
 
   .legend {
