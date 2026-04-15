@@ -36,8 +36,8 @@
   let scrollX = 0;
   let zoom = 20;          // pixels per beat (default zoomed in)
   // viewHeight grows with waveformHeight so the note grid stays a fixed size
-  $: viewHeight = 400 + (showWaveform ? waveformHeight : 0);
-  let noteHeight = 8;
+  $: viewHeight = 533 + (showWaveform ? waveformHeight : 0);
+  let noteHeight = 11;
 
   // Pitch range (MIDI)
   let minPitch = 36;     // C2
