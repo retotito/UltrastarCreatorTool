@@ -93,8 +93,44 @@
   let dragLastPitch = null;
   let dragOscStopTimer = null;
 
+  // Flags — green marker lines persisted per session
+  let flags = [];
+  let flagIdCounter = 1;
+  let selectedFlag = null;
+
+  function loadFlags() {
+    if (!$sessionId) return;
+    try {
+      const raw = localStorage.getItem(`editor_flags_${$sessionId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        flags = parsed.flags || [];
+        flagIdCounter = (parsed.counter || 0) + 1;
+      }
+    } catch { /* ignore */ }
+  }
+
+  function saveFlags() {
+    if (!$sessionId) return;
+    localStorage.setItem(`editor_flags_${$sessionId}`, JSON.stringify({ flags, counter: flagIdCounter }));
+  }
+
+  function addFlagAt(beat) {
+    flags = [...flags, { id: flagIdCounter++, beat: Math.round(beat) }];
+    saveFlags();
+    closeContextMenu();
+    draw();
+  }
+
+  function deleteFlag(id) {
+    flags = flags.filter(f => f.id !== id);
+    if (selectedFlag === id) selectedFlag = null;
+    saveFlags();
+    draw();
+  }
+
   // Context menu
-  let contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0, traceFrame: null };
+  let contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, isFlag: false, flagId: null, beat: 0, pitch: 0, traceFrame: null };
   let editingSyllable = '';
   let contextMenuEl;
 
@@ -1449,6 +1485,39 @@
       ctx.setLineDash([]);
     }
 
+    // ── Draw flags ──────────────────────────────────────────────────────
+    for (const flag of flags) {
+      const fx = beatToX(flag.beat);
+      if (fx < -10 || fx > w + 10) continue;
+      const isFlagSelected = selectedFlag === flag.id;
+      ctx.strokeStyle = isFlagSelected ? '#4ade80' : '#4ade8066';
+      ctx.lineWidth = isFlagSelected ? 2 : 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(fx, wt);
+      ctx.lineTo(fx, pianoH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Diamond handle at vertical center
+      const ths = isFlagSelected ? 7 : 5;
+      const thy = (wt + pianoH) / 2;
+      ctx.fillStyle = isFlagSelected ? '#4ade80' : '#4ade80aa';
+      ctx.beginPath();
+      ctx.moveTo(fx, thy - ths);
+      ctx.lineTo(fx + ths, thy);
+      ctx.lineTo(fx, thy + ths);
+      ctx.lineTo(fx - ths, thy);
+      ctx.closePath();
+      ctx.fill();
+      if (isFlagSelected) {
+        ctx.fillStyle = '#4ade80';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`flag @${flag.beat}`, fx, thy - ths - 4);
+        ctx.textAlign = 'left';
+      }
+    }
+
     syncScrollbar();
   }
 
@@ -1629,6 +1698,22 @@
       }
     }
 
+    // Check flag hit (8px zone, before note handling)
+    if (!found) {
+      for (const flag of flags) {
+        const fx = beatToX(flag.beat);
+        if (Math.abs(mx - fx) <= 8) {
+          selectedFlag = flag.id;
+          selectedNote = null;
+          selectedNotes = new Set();
+          isDragging = true;
+          dragStart = { x: mx, y: my, beat: flag.beat };
+          draw();
+          return;
+        }
+      }
+    }
+
     if (found) {
       if (isMultiKey && found.type !== 'break') {
         // Ctrl/Cmd click: toggle note in multi-selection
@@ -1716,6 +1801,17 @@
     const rect = canvasEl.getBoundingClientRect();
     const mx = event.clientX - rect.left;
     const my = event.clientY - rect.top;
+
+    // Flag drag
+    if (isDragging && selectedFlag !== null) {
+      const flag = flags.find(f => f.id === selectedFlag);
+      if (flag) {
+        flag.beat = Math.round(xToBeat(mx));
+        flags = [...flags];
+        draw();
+      }
+      return;
+    }
 
     // Playhead drag (scrub)
     if (playheadDrag) {
@@ -1925,6 +2021,14 @@
   }
 
   function handleMouseUp() {
+    // Finish flag drag
+    if (isDragging && selectedFlag !== null) {
+      isDragging = false;
+      saveFlags();
+      draw();
+      return;
+    }
+
     // Finish grid align drag
     if (gridAlignDragging) {
       gridAlignDragging = false;
@@ -2235,7 +2339,7 @@
       const menuW = 220, menuH = isBreak ? 160 : 280;
       const posX = Math.min(event.clientX, window.innerWidth - menuW - 10);
       const posY = Math.min(event.clientY, window.innerHeight - menuH - 10);
-      contextMenu = { visible: true, x: posX, y: posY, noteId: found.id, isBreak, isEmpty: false, beat: clickBeat, pitch: 0 };
+      contextMenu = { visible: true, x: posX, y: posY, noteId: found.id, isBreak, isEmpty: false, isFlag: false, flagId: null, beat: clickBeat, pitch: 0, traceFrame: null };
       draw();
     } else {
       // Empty space — show canvas context menu
@@ -2272,12 +2376,22 @@
           traceFrame = { beat: segStartBeat, pitch: segPitch, duration: Math.max(1, segEndBeat - segStartBeat) };
         }
       }
-      contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: true, beat, pitch, traceFrame };
+      // Check flag right-click
+      let flagHit = null;
+      for (const flag of flags) {
+        const fx = beatToX(xToBeat(mx));
+        if (Math.abs(beatToX(flag.beat) - mx) <= 8) { flagHit = flag; break; }
+      }
+      if (flagHit) {
+        contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: false, isFlag: true, flagId: flagHit.id, beat: flagHit.beat, pitch: 0, traceFrame: null };
+      } else {
+        contextMenu = { visible: true, x: posX, y: posY, noteId: null, isBreak: false, isEmpty: true, isFlag: false, flagId: null, beat, pitch, traceFrame };
+      }
     }
   }
 
   function closeContextMenu() {
-    contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, beat: 0, pitch: 0, traceFrame: null };
+    contextMenu = { visible: false, x: 0, y: 0, noteId: null, isBreak: false, isEmpty: false, isFlag: false, flagId: null, beat: 0, pitch: 0, traceFrame: null };
   }
 
   function handleGlobalClick(e) {
@@ -3107,6 +3221,13 @@
         e.preventDefault();
         playNotePitch(selectedNote);
       }
+      // Delete selected flag
+      if ((e.code === 'Delete' || e.code === 'Backspace') && selectedFlag !== null) {
+        e.preventDefault();
+        deleteFlag(selectedFlag);
+        return;
+      }
+
       if (e.code === 'Delete' || e.code === 'Backspace') {
         e.preventDefault();
         if (selectedNotes.size > 1) {
@@ -4006,8 +4127,9 @@
         scrollX = Math.max(getMinBeat() * zoom, (playbackBeat * zoom) - canvasWidth * 0.1);
       }
 
-      // Restore session notes
+      // Restore session notes and flags
       loadSessionNotes();
+      loadFlags();
 
       // Load waveform
       if (vocalUrl) {
@@ -4044,6 +4166,7 @@
       localStorage.setItem(`editor_scroll_${$sessionId}`, JSON.stringify({ sx: scrollX, z: zoom }));
     }
     saveSessionNotes();
+    saveFlags();
     if (autosaveInterval) clearInterval(autosaveInterval);
     cancelAnimationFrame(animFrame);
     window.removeEventListener('keydown', handleKeydown);
@@ -4509,6 +4632,28 @@
           </button>
         {/if}
       </div>
+    {:else if contextMenu.isFlag}
+      <!-- Flag context menu -->
+      <div
+        class="context-menu"
+        bind:this={contextMenuEl}
+        style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+      >
+        <div class="ctx-header">
+          <span class="ctx-location-label">🚩 Flag @ beat {contextMenu.beat}</span>
+        </div>
+        <div class="ctx-divider"></div>
+        <button class="ctx-item" on:click={() => { const f = flags.find(fl => fl.id === contextMenu.flagId); if(f) { f.beat = f.beat - 1; flags = [...flags]; saveFlags(); draw(); closeContextMenu(); } }}>
+          ← Nudge Left <span class="ctx-shortcut">-1</span>
+        </button>
+        <button class="ctx-item" on:click={() => { const f = flags.find(fl => fl.id === contextMenu.flagId); if(f) { f.beat = f.beat + 1; flags = [...flags]; saveFlags(); draw(); closeContextMenu(); } }}>
+          → Nudge Right <span class="ctx-shortcut">+1</span>
+        </button>
+        <div class="ctx-divider"></div>
+        <button class="ctx-item danger" on:click={() => deleteFlag(contextMenu.flagId)}>
+          🗑 Delete Flag <span class="ctx-shortcut">Del</span>
+        </button>
+      </div>
     {:else if contextMenu.isEmpty}
       <!-- Empty space context menu -->
       <div
@@ -4530,6 +4675,9 @@
         </button>
         <button class="ctx-item" on:click={() => addBreakAt(contextMenu.beat)}>
           ┃ Add Break
+        </button>
+        <button class="ctx-item" on:click={() => addFlagAt(contextMenu.beat)}>
+          🚩 Add Flag
         </button>
         {#if clipboard}
           <div class="ctx-divider"></div>
@@ -4555,6 +4703,9 @@
       {#if !isPlaying}
         <div class="scrollbar-playhead" style="left: {playheadPct}%"></div>
       {/if}
+      {#each flags as flag}
+        <div class="scrollbar-flag" style="left: {((flag.beat - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%"></div>
+      {/each}
       <!-- draggable handle -->
       <div class="scrollbar-handle" style="left: {scrollHandlePct}%"></div>
     </div>
@@ -4566,6 +4717,7 @@
     <span class="legend-item"><span class="dot gold"></span> Golden note</span>
     <span class="legend-item"><span class="dot orange"></span> Rap note</span>
     <span class="legend-item"><span class="dot red-line"></span> Break line</span>
+    <span class="legend-item"><span class="dot green-flag"></span> Flag</span>
   </div>
 
   <!-- Stats bar for debugging timing -->
@@ -5184,6 +5336,17 @@
     opacity: 0.85;
   }
 
+  .scrollbar-flag {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #4ade80;
+    pointer-events: none;
+    transform: translateX(-50%);
+    opacity: 0.75;
+  }
+
   .legend {
     display: flex;
     gap: 1.5rem;
@@ -5214,6 +5377,7 @@
   .dot.gold { background: #ffd700; }
   .dot.orange { background: #ff9800; }
   .dot.red-line { background: #c62828; width: 2px; height: 12px; }
+  .dot.green-flag { background: #4ade80; width: 2px; height: 12px; }
 
   .save-controls {
     display: flex;
