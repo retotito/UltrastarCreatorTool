@@ -50,6 +50,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 - **GAP adjustment** (Ctrl+G) — click any grid line to set the GAP position
 - **BPM calibration tool** — manually place beat markers on the waveform; linear regression over all markers calculates the exact BPM; persistent grey reference markers survive across calibration sessions
 - **Text editor** — edit raw Ultrastar content with live preview
+- **Session notes** — jot down reminders while editing; saved automatically per session and restored next time you open the editor
 - **Select all** (Ctrl+A) — select all notes for bulk move
 - **Undo/Redo** — full snapshot history (notes, BPM, GAP, downbeat offset, headers)
 - **Waveform display** — smooth high-resolution waveform (750 peaks/sec) showing full-mix or vocal track alongside notes

@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { currentStep, sessionId, uploadData, lyricsData, generationResult, generationModalOpen, resetSession } from './stores/appStore.js';
-  import { checkHealth, resumeSession, getAudioUrl } from './services/api.js';
+  import { checkHealth, resumeSession, getAudioUrl, submitLyrics } from './services/api.js';
   import StepNavigation from './components/StepNavigation.svelte';
   import ProjectLauncher from './components/ProjectLauncher.svelte';
   import Step1Upload from './components/Step1Upload.svelte';
@@ -71,15 +71,12 @@
   });
 
   async function goHome() {
-    const ok = await showConfirm('Return to the home screen? Unsaved changes will be lost.', {
-      confirmLabel: 'Go Home',
-      cancelLabel: 'Stay',
-      danger: false,
-    });
-    if (ok) {
-      resetSession();
-      currentStep.set(0);
+    // Save Step2 lyrics before session is cleared
+    if ($currentStep === 2 && $sessionId && $lyricsData.text?.trim()) {
+      submitLyrics($sessionId, $lyricsData.text, $lyricsData.artist, $lyricsData.title, $lyricsData.language).catch(() => {});
     }
+    resetSession();
+    currentStep.set(0);
   }
 </script>
 

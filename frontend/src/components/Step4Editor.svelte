@@ -207,6 +207,17 @@
   let showTextEditor = false;
   let textEditorContent = '';
 
+  // Session notes modal
+  let showNotesModal = false;
+  let sessionNotes = '';
+
+  function loadSessionNotes() {
+    if ($sessionId) sessionNotes = localStorage.getItem(`editor_notes_${$sessionId}`) || '';
+  }
+  function saveSessionNotes() {
+    if ($sessionId) localStorage.setItem(`editor_notes_${$sessionId}`, sessionNotes);
+  }
+
   // Extra Ultrastar headers (e.g. #YOUTUBE, #COVER, etc.) — preserved across edits
   let extraHeaders = [];
 
@@ -550,6 +561,7 @@
   // Keyboard shortcut: Ctrl/Cmd+S to force save
   function handleKeydownSave(e) {
     if (showTextEditor) return; // skip when text editor is open
+    if (showNotesModal) return; // skip when notes modal is open
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
       e.preventDefault();
       handleSave();
@@ -1626,10 +1638,11 @@
       } else {
         // Regular click: single select (clear multi-select unless clicking within it)
         if (selectedNotes.size > 0 && selectedNotes.has(found.id)) {
-          // Clicking a note in the multi-selection → drag the whole group
+          // Clicking a note in the multi-selection
           selectedNote = found.id;
           if (found.type !== 'break') {
-            dragMode = 'move';
+            // Only force move when multiple notes selected; single note keeps its detected dragMode (resize/move)
+            if (selectedNotes.size > 1) dragMode = 'move';
           }
         } else {
           // Clear multi-select, single select
@@ -1877,14 +1890,14 @@
       }
       
       if (note.pitch !== dragLastPitch) {
-        updateDragOsc(note.pitch);
+        if (dragStart.groupOffsets.length <= 1) updateDragOsc(note.pitch);
       }
     } else if (dragMode === 'move') {
       note.startBeat = Math.max(0, Math.round(dragStart.beat + dx / zoom));
       note.pitch = Math.max(minPitch, Math.min(maxPitch, yToPitch(dragStart.y + dy)));
-      // Update pitch preview if pitch changed
+      // Update pitch preview if pitch changed — only for single note
       if (note.pitch !== dragLastPitch) {
-        updateDragOsc(note.pitch);
+        if (selectedNotes.size <= 1) updateDragOsc(note.pitch);
       }
     } else if (dragMode === 'resize-right') {
       note.duration = Math.max(1, Math.round(dragStart.duration + dx / zoom));
@@ -2808,6 +2821,7 @@
   function handleKeydown(e) {
     // Skip all shortcuts when text editor modal is open
     if (showTextEditor) return;
+    if (showNotesModal) return;
     // Skip shortcuts when typing in a text/number input field (BPM, GAP, context menu, etc.)
     // For range inputs: only block arrow keys (which move the slider); let all other shortcuts through
     if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') {
@@ -2952,8 +2966,8 @@
           if (e.code === 'ArrowDown')  return { ...n, pitch: n.pitch - (e.shiftKey ? 12 : 1) };
           return n;
         });
-        // Play pitch preview on up/down
-        if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+        // Play pitch preview on up/down — only for single note
+        if ((e.code === 'ArrowUp' || e.code === 'ArrowDown') && selectedNotes.size <= 1) {
           const previewId = selectedNotes.size === 0 ? selectedNote : [...selectedNotes][0];
           const movedNote = notes.find(n => n.id === previewId);
           if (movedNote) {
@@ -3930,12 +3944,25 @@
       console.log('[Step4] Audio: vocals=' + hasVocalsAudio + ', original=' + hasOriginalAudio + ', source=' + audioSource);
       computeTotalBeats();
 
-      // Position playhead and scroll at GAP (song start)
+      // Position playhead and scroll at GAP (song start) — unless we have a saved scroll position
       const gapSec = gapMs / 1000;
       currentTimeSec = gapSec;
       playbackBeat = 0; // beat 0 = GAP position
       const canvasWidth = canvasEl?.width || 800;
-      scrollX = Math.max(getMinBeat() * zoom, (playbackBeat * zoom) - canvasWidth * 0.1);
+      const savedScroll = session ? localStorage.getItem(`editor_scroll_${session}`) : null;
+      if (savedScroll) {
+        try {
+          const { sx, z } = JSON.parse(savedScroll);
+          if (typeof z === 'number') zoom = z;
+          if (typeof sx === 'number') scrollX = sx;
+          console.log(`[Step4] Restored scroll: scrollX=${sx} zoom=${z}`);
+        } catch { /* ignore */ }
+      } else {
+        scrollX = Math.max(getMinBeat() * zoom, (playbackBeat * zoom) - canvasWidth * 0.1);
+      }
+
+      // Restore session notes
+      loadSessionNotes();
 
       // Load waveform
       if (vocalUrl) {
@@ -3967,6 +3994,11 @@
 
   onDestroy(() => {
     if (hasUnsavedChanges) handleSave(); // autosave on navigate away
+    // Persist scroll position for this session
+    if ($sessionId) {
+      localStorage.setItem(`editor_scroll_${$sessionId}`, JSON.stringify({ sx: scrollX, z: zoom }));
+    }
+    saveSessionNotes();
     if (autosaveInterval) clearInterval(autosaveInterval);
     cancelAnimationFrame(animFrame);
     window.removeEventListener('keydown', handleKeydown);
@@ -4148,6 +4180,9 @@
         </button>
         <button class="tool-btn" on:click={openTextEditor} title="Edit raw Ultrastar .txt">
            Text&nbsp;📝 
+        </button>
+        <button class="tool-btn" on:click={() => { loadSessionNotes(); showNotesModal = true; }} title="Session notes">
+           Notes&nbsp;🗒️
         </button>
       </div>
     </div>
@@ -4546,6 +4581,28 @@
   </div>
 
   <!-- Text Editor Modal -->
+  {#if showNotesModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
+    <div class="modal-overlay" on:click={() => { saveSessionNotes(); showNotesModal = false; }} on:keydown={(e) => e.key === 'Escape' && (saveSessionNotes(), showNotesModal = false)} role="dialog" aria-label="Session Notes" tabindex="-1">
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
+      <div class="modal-content text-editor-modal" on:click|stopPropagation role="document">
+        <div class="modal-header">
+          <h3>🗒️ Session Notes</h3>
+          <button class="modal-close" on:click={() => { saveSessionNotes(); showNotesModal = false; }}>✕</button>
+        </div>
+        <textarea
+          class="text-editor-textarea"
+          bind:value={sessionNotes}
+          placeholder="Jot down anything you want to remember for next time…"
+          spellcheck="true"
+        ></textarea>
+        <div class="modal-actions">
+          <button class="btn btn-primary" on:click={() => { saveSessionNotes(); showNotesModal = false; }}>Save &amp; Close</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   {#if showTextEditor}
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
     <div class="modal-overlay" on:click={() => showTextEditor = false} on:keydown={(e) => e.key === 'Escape' && (showTextEditor = false)} role="dialog" aria-label="Text Editor" tabindex="-1">
@@ -4878,12 +4935,12 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    width: 360px;
+    width: 310px;
     border: 1px solid #333;
     border-radius: 4px;
   }
 
-  #vocal_trace_outer_wrapper {
+  #_outer_wrapper {
     border-left: 1px solid #8c8c8c;
     padding-left: 10px;
   }
@@ -4900,7 +4957,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    width: 165px;
+    width: 155px;
     border: 1px solid #333;
     border-radius: 4px;
   }
@@ -5773,9 +5830,11 @@
     border-radius: 4px;
     padding: 2px 4px;
     font-size: 0.7rem;
-    max-width: 120px;
+    max-width: 80px;
     cursor: pointer;
     outline: none;
+    appearance: none;
+    -webkit-appearance: none;
   }
 
   .mic-select:focus {
