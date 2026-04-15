@@ -4041,7 +4041,7 @@
       {/if}
       {#if micNoteHits.size > 0 || micPitchTrail.length > 0}
         {#if micShowTrail}
-          <button class="tool-btn sm" on:click={() => { micShowTrail = false; draw(); }} title="Hide sung blocks"><span class="mic-icon-wrap">👁</span></button>
+          <button class="tool-btn sm active" on:click={() => { micShowTrail = false; draw(); }} title="Hide sung blocks"><span class="mic-icon-wrap">👁</span></button>
         {:else}
           <button class="tool-btn sm" on:click={() => { micShowTrail = true; draw(); }} title="Show sung blocks"><span class="mic-icon-wrap mic-off">👁</span></button>
         {/if}
@@ -4064,7 +4064,7 @@
           {/if}
           {#if vocalTraceFrames.length > 0}
             {#if vocalTraceVisible}
-              <button class="tool-btn sm" on:click={() => { vocalTraceVisible = false; draw(); }} title="Hide vocal trace"><span class="mic-icon-wrap">👁</span></button>
+              <button class="tool-btn sm active" on:click={() => { vocalTraceVisible = false; draw(); }} title="Hide vocal trace"><span class="mic-icon-wrap">👁</span></button>
             {:else}
               <button class="tool-btn sm" on:click={() => { vocalTraceVisible = true; draw(); }} title="Show vocal trace"><span class="mic-icon-wrap mic-off">👁</span></button>
             {/if}
@@ -4114,10 +4114,10 @@
         <button class="tool-btn" id="toggle-playback-btn" on:click={() => { console.log('[UI] togglePlayback'); togglePlayback(); }} title="Space">
           {isPlaying ? '⏸ Pause' : '▶ Play'}
         </button>
-        <button class="tool-btn" on:click={() => { console.log('[UI] togglePlayback'); toggleLoop(); }} title="Space">
-          {loopEnabled ? 'Loop on' : 'Loop off'}
+        <button class="tool-btn" on:click={() => { console.log('[UI] togglePlayback'); toggleLoop(); }} class:active={loopEnabled} title="Loop (L)">
+          <span class="mic-icon-wrap" class:mic-off={!loopEnabled}>🔁</span>
         </button>
-        <button class="tool-btn" class:active={!scrollMode}
+        <button class="tool-btn" style="width: 62px;"
           on:click={() => { scrollMode = !scrollMode; }}
           title={scrollMode ? 'Following playhead — click to pin' : 'View pinned — click to follow'}>
           {scrollMode ? 'Scroll' : 'Page'}
@@ -4149,12 +4149,12 @@
         </div>
       </div>
       <div id="midi-wrapper">
-        <button class="tool-btn" on:click={() => { console.log('[UI] toggleMidi'); toggleMidiPlayback(); }} title="Toggle MIDI pitch tones during playback">
+        <button class="tool-btn" class:active={midiPlayback} on:click={() => { console.log('[UI] toggleMidi'); toggleMidiPlayback(); }} title="Toggle MIDI pitch tones during playback">
           <span>MIDI</span><span style="padding-left: 4px">{midiPlayback ? ' 🔈' : ' 🔇'}</span>
         </button>
       </div>
       <div id="metronome-wrapper">
-        <button class="tool-btn" on:click={() => { console.log('[UI] toggleMetronome'); toggleMetronome(); }} title="Toggle Metronome click on each beat">
+        <button class="tool-btn" class:active={metronomeEnabled} on:click={() => { console.log('[UI] toggleMetronome'); toggleMetronome(); }} title="Toggle Metronome click on each beat">
           <span>Metronome</span><span style="padding-left: 4px">{metronomeEnabled ? ' 🔈' : ' 🔇'}</span>
         </button>
       </div>
@@ -5154,6 +5154,12 @@
     border-color: #4fc3f7;
   }
 
+  .tool-btn.active {
+    /* background: #4fc3f7;
+    color: #0d1117; */
+    border-color: #4fc3f7;
+  }
+
   .bpm-controls {
     display: flex;
     align-items: center;
@@ -5242,7 +5248,13 @@
     height: 4px;
     cursor: pointer;
     accent-color: #4fc3f7;
-    vertical-align: middle;
+    pointer-events: all;
+    opacity: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(79, 195, 247, 0.25);
+    border-radius: 2px;
+    outline: none;
   }
 
   .wave-height-overlay {
@@ -5580,6 +5592,10 @@
     outline: none;
   }
 
+  #midi-wrapper>button.active {
+    border-color: #4fc3f7;
+  }
+
   #midi-wrapper>button:hover {
     background: #333;
   }
@@ -5599,6 +5615,10 @@
     color: #ccc;
     cursor: pointer;
     outline: none;
+  }
+
+  #metronome-wrapper>button.active {
+    border-color: #4fc3f7;
   }
 
   #metronome-wrapper>button:hover {
