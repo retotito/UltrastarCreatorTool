@@ -2972,6 +2972,18 @@
       if (vocalTraceEnabled && micEnabled) { micEnabled = false; stopMic(); }
       toggleVocalTrace();
     }
+    // 9: toggle MIDI playback
+    if (e.key === '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      toggleMidiPlayback();
+    }
+
+    // 0: toggle metronome
+    if (e.key === '0' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      toggleMetronome();
+    }
+
     // Ctrl/Cmd+B: enter Grid Align mode (B = Beat) — blocked if Set GAP is active
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
       e.preventDefault();
@@ -4149,12 +4161,12 @@
         </div>
       </div>
       <div id="midi-wrapper">
-        <button class="tool-btn" class:active={midiPlayback} on:click={() => { console.log('[UI] toggleMidi'); toggleMidiPlayback(); }} title="Toggle MIDI pitch tones during playback">
+        <button class="tool-btn" class:active={midiPlayback} on:click={() => { console.log('[UI] toggleMidi'); toggleMidiPlayback(); }} title="Toggle MIDI pitch tones during playback (9)">
           <span>MIDI</span><span style="padding-left: 4px">{midiPlayback ? ' 🔈' : ' 🔇'}</span>
         </button>
       </div>
       <div id="metronome-wrapper">
-        <button class="tool-btn" class:active={metronomeEnabled} on:click={() => { console.log('[UI] toggleMetronome'); toggleMetronome(); }} title="Toggle Metronome click on each beat">
+        <button class="tool-btn" class:active={metronomeEnabled} on:click={() => { console.log('[UI] toggleMetronome'); toggleMetronome(); }} title="Toggle Metronome click on each beat (0)">
           <span>Metronome</span><span style="padding-left: 4px">{metronomeEnabled ? ' 🔈' : ' 🔇'}</span>
         </button>
       </div>
@@ -4495,6 +4507,7 @@
       <span class="shortcut"><kbd>⌘S</kbd> save</span>
       <span class="shortcut"><kbd>⌘G</kbd> set GAP</span>
       <span class="shortcut"><kbd>⌘B</kbd> grid align</span>
+      <span class="shortcut"><kbd>9</kbd> MIDI · <kbd>0</kbd> metronome</span>
     </div>
   </div>
 
