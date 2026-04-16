@@ -397,6 +397,7 @@
               <img src={coverPreviewUrl} alt="Cover" class="asset-thumb" />
               <div class="asset-preview-actions">
                 <button class="asset-action-btn" on:click={() => document.getElementById('cover-file-input').click()}>✏️ Change</button>
+                <a class="asset-action-btn" href={coverPreviewUrl} download="cover.jpg" title="Download">⬇</a>
                 <button class="asset-action-btn danger" on:click={removeCover}>✕</button>
               </div>
             </div>
@@ -419,9 +420,10 @@
           <span class="asset-label">Background</span>
           {#if bgPreviewUrl}
             <div class="asset-preview">
-              <img src={bgPreviewUrl} alt="Background" class="asset-thumb" />
+              <img src={bgPreviewUrl} alt="Background" class="asset-thumb asset-thumb-bg" />
               <div class="asset-preview-actions">
                 <button class="asset-action-btn" on:click={() => document.getElementById('bg-file-input').click()}>✏️ Change</button>
+                <a class="asset-action-btn" href={bgPreviewUrl} download="background.jpg" title="Download">⬇</a>
                 <button class="asset-action-btn danger" on:click={removeBg}>✕</button>
               </div>
             </div>
@@ -951,6 +953,10 @@
     border-radius: 6px;
     border: 1px solid #444;
   }
+  .asset-thumb-bg {
+    width: 114px;
+    height: 64px;
+  }
 
   .asset-preview-actions {
     display: flex;
@@ -966,6 +972,9 @@
     padding: 0.25rem 0.6rem;
     font-size: 0.78rem;
     transition: all 0.15s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
   }
   .asset-action-btn:hover { background: #30363d; }
   .asset-action-btn.danger { color: #f44; border-color: #633; }
