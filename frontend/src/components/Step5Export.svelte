@@ -400,7 +400,7 @@
           <span class="asset-label">Cover</span>
           {#if coverPreviewUrl}
             <div class="asset-preview">
-              <img src={coverPreviewUrl} alt="Cover" class="asset-thumb" />
+              <div class="asset-thumb-col"><img src={coverPreviewUrl} alt="Cover" class="asset-thumb" /></div>
               <div class="asset-preview-actions">
                 <button class="asset-action-btn" on:click={() => document.getElementById('cover-file-input').click()}>✏️ Change</button>
                 <a class="asset-action-btn" href={coverPreviewUrl} download="cover.jpg" title="Download">⬇</a>
@@ -426,7 +426,7 @@
           <span class="asset-label">Background</span>
           {#if bgPreviewUrl}
             <div class="asset-preview">
-              <img src={bgPreviewUrl} alt="Background" class="asset-thumb asset-thumb-bg" />
+              <div class="asset-thumb-col"><img src={bgPreviewUrl} alt="Background" class="asset-thumb asset-thumb-bg" /></div>
               <div class="asset-preview-actions">
                 <button class="asset-action-btn" on:click={() => document.getElementById('bg-file-input').click()}>✏️ Change</button>
                 <a class="asset-action-btn" href={bgPreviewUrl} download="background.jpg" title="Download">⬇</a>
@@ -950,6 +950,13 @@
     align-items: center;
     gap: 0.75rem;
     flex: 1;
+  }
+
+  .asset-thumb-col {
+    width: 120px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
   }
 
   .asset-thumb {
