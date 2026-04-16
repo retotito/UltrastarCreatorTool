@@ -1726,6 +1726,99 @@ async def download_file(session_id: str, file_type: str):
     return FileResponse(path, filename=download_name)
 
 
+# ────────────────────────────────────────────────────────────
+# Song assets: cover image, background image, video filename
+# ────────────────────────────────────────────────────────────
+
+@app.post("/api/cover/{session_id}")
+async def upload_cover(session_id: str, image: UploadFile = File(...)):
+    """Save a pre-cropped cover image (480×480 JPEG) for the session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    session_dir = os.path.join(UPLOAD_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+    cover_path = os.path.join(session_dir, "cover.jpg")
+    data = await image.read()
+    with open(cover_path, "wb") as f:
+        f.write(data)
+    session["cover_file"] = cover_path
+    save_session(session_id)
+    log_step("ASSETS", f"Cover saved for session {session_id} ({len(data)} bytes)")
+    return {"status": "ok"}
+
+
+@app.get("/api/cover/{session_id}")
+async def get_cover(session_id: str):
+    """Serve the cover image for a session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    cover_path = session.get("cover_file")
+    if not cover_path or not os.path.exists(cover_path):
+        raise HTTPException(status_code=404, detail="No cover image")
+    return FileResponse(cover_path, media_type="image/jpeg")
+
+
+@app.post("/api/bgimage/{session_id}")
+async def upload_bgimage(session_id: str, image: UploadFile = File(...)):
+    """Save a background image for the session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    session_dir = os.path.join(UPLOAD_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+    bg_path = os.path.join(session_dir, "background.jpg")
+    data = await image.read()
+    with open(bg_path, "wb") as f:
+        f.write(data)
+    session["bgimage_file"] = bg_path
+    save_session(session_id)
+    log_step("ASSETS", f"Background image saved for session {session_id} ({len(data)} bytes)")
+    return {"status": "ok"}
+
+
+@app.get("/api/bgimage/{session_id}")
+async def get_bgimage(session_id: str):
+    """Serve the background image for a session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    bg_path = session.get("bgimage_file")
+    if not bg_path or not os.path.exists(bg_path):
+        raise HTTPException(status_code=404, detail="No background image")
+    return FileResponse(bg_path, media_type="image/jpeg")
+
+
+@app.post("/api/assets/{session_id}")
+async def save_assets_meta(session_id: str, request: Request):
+    """Save video filename and optional video gap for the session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    body = await request.json()
+    video_filename = (body.get("video_filename") or "").strip()
+    video_gap = body.get("video_gap")
+    if video_filename:
+        session["video_filename"] = video_filename
+    else:
+        session.pop("video_filename", None)
+    if video_gap is not None:
+        try:
+            session["video_gap"] = float(video_gap)
+        except (ValueError, TypeError):
+            pass
+    else:
+        session.pop("video_gap", None)
+    save_session(session_id)
+    log_step("ASSETS", f"Video meta saved for session {session_id}: {video_filename!r}")
+    return {"status": "ok"}
+
+
 @app.get("/api/download-zip/{session_id}")
 async def download_zip(session_id: str):
     """Bundle all generated files into a single ZIP download."""
@@ -1755,12 +1848,50 @@ async def download_zip(session_id: str):
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Ultrastar .txt
+        # Ultrastar .txt — inject asset headers before writing
         txt_file = result.get("corrected_txt_file", result.get("txt_file"))
         if txt_file:
             path = os.path.join(DOWNLOADS_DIR, txt_file)
             if os.path.exists(path):
-                zf.write(path, f"{base}.txt")
+                with open(path, encoding="utf-8") as f:
+                    txt_content = f.read()
+
+                # Helper: insert/replace a header line
+                def _set_header(content, key, value):
+                    import re
+                    tag = f"#{key}:"
+                    new_line = f"#{key}:{value}"
+                    if tag in content:
+                        return re.sub(rf"#{key}:[^\n]*", new_line, content)
+                    # Insert after last # header line
+                    lines = content.split("\n")
+                    idx = 0
+                    for i, ln in enumerate(lines):
+                        if ln.startswith("#"):
+                            idx = i + 1
+                        else:
+                            break
+                    lines.insert(idx, new_line)
+                    return "\n".join(lines)
+
+                cover_path = session.get("cover_file")
+                if cover_path and os.path.exists(cover_path):
+                    cover_archive = f"{base} [CO].jpg"
+                    txt_content = _set_header(txt_content, "COVER", cover_archive)
+
+                bg_path = session.get("bgimage_file")
+                if bg_path and os.path.exists(bg_path):
+                    bg_archive = f"{base} [BG].jpg"
+                    txt_content = _set_header(txt_content, "BACKGROUND", bg_archive)
+
+                video_filename = session.get("video_filename")
+                if video_filename:
+                    txt_content = _set_header(txt_content, "VIDEO", video_filename)
+                    video_gap = session.get("video_gap")
+                    if video_gap is not None:
+                        txt_content = _set_header(txt_content, "VIDEOGAP", str(video_gap))
+
+                zf.writestr(f"{base}.txt", txt_content)
 
         # MIDI
         midi_file = result.get("midi_file")
@@ -1787,6 +1918,16 @@ async def download_zip(session_id: str):
         if original_path and os.path.exists(original_path):
             ext = os.path.splitext(original_path)[1]
             zf.write(original_path, f"{base}{ext}")
+
+        # Cover image
+        cover_path = session.get("cover_file")
+        if cover_path and os.path.exists(cover_path):
+            zf.write(cover_path, f"{base} [CO].jpg")
+
+        # Background image
+        bg_path = session.get("bgimage_file")
+        if bg_path and os.path.exists(bg_path):
+            zf.write(bg_path, f"{base} [BG].jpg")
 
     buf.seek(0)
     zip_name = f"{base}.zip"

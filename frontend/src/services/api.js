@@ -211,6 +211,31 @@ export async function updateMetadata(sessionId, artist, title) {
   return request('PATCH', `/session/${sessionId}/metadata`, form, true);
 }
 
+// ─── Song assets: cover, background, video ─────
+export async function uploadCover(sessionId, blob) {
+  const form = new FormData();
+  form.append('image', blob, 'cover.jpg');
+  return request('POST', `/cover/${sessionId}`, form, true);
+}
+
+export function getCoverUrl(sessionId) {
+  return `${BASE}/cover/${sessionId}`;
+}
+
+export async function uploadBgImage(sessionId, blob) {
+  const form = new FormData();
+  form.append('image', blob, 'background.jpg');
+  return request('POST', `/bgimage/${sessionId}`, form, true);
+}
+
+export function getBgImageUrl(sessionId) {
+  return `${BASE}/bgimage/${sessionId}`;
+}
+
+export async function saveAssetsMeta(sessionId, videoFilename, videoGap) {
+  return request('POST', `/assets/${sessionId}`, { video_filename: videoFilename, video_gap: videoGap });
+}
+
 export async function saveMicTrail(sessionId, trailData) {
   return request('POST', `/save-mic-trail/${sessionId}`, trailData);
 }

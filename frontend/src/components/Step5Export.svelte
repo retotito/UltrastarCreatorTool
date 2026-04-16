@@ -1,6 +1,7 @@
 <script>
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
-  import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl } from '../services/api.js';
+  import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
+           uploadCover, getCoverUrl, uploadBgImage, getBgImageUrl, saveAssetsMeta } from '../services/api.js';
   import { resetSession } from '../stores/appStore.js';
 
   let exported = false;
@@ -8,6 +9,177 @@
   let editArtist = '';
   let editTitle = '';
   let saving = false;
+
+  // ── Song Assets state ──────────────────────────
+  const CROP_DISPLAY = 340;
+  const CROP_OUTPUT  = 480;
+
+  // Cover
+  let coverPreviewUrl = null;
+  let showCropModal = false;
+  let cropImg = null;
+  let cropCanvasEl;
+  let cropPanX = 0, cropPanY = 0, cropScale = 1;
+  let cropDragging = false, cropDragStartX = 0, cropDragStartY = 0, cropPanStartX = 0, cropPanStartY = 0;
+
+  // Background image
+  let bgPreviewUrl = null;
+  let bgUploading = false;
+
+  // Video
+  let videoFilename = '';
+  let videoGap = 0;
+  let videoSaved = false;
+  let videoSaving = false;
+
+  // Try to load existing assets when session is known
+  $: if ($sessionId) loadExistingAssets();
+
+  async function loadExistingAssets() {
+    // Probe cover
+    try {
+      const r = await fetch(getCoverUrl($sessionId), { method: 'HEAD' });
+      if (r.ok) coverPreviewUrl = getCoverUrl($sessionId) + '?t=' + Date.now();
+    } catch (_) {}
+    // Probe bg image
+    try {
+      const r = await fetch(getBgImageUrl($sessionId), { method: 'HEAD' });
+      if (r.ok) bgPreviewUrl = getBgImageUrl($sessionId) + '?t=' + Date.now();
+    } catch (_) {}
+  }
+
+  // ── Cover crop ────────────────────────────────
+  function onCoverFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    openCropModal(file);
+  }
+
+  function onCoverDrop(e) {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    openCropModal(file);
+  }
+
+  function openCropModal(file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        cropImg = img;
+        // Fit the image to fill the crop square
+        const scale = Math.max(CROP_DISPLAY / img.width, CROP_DISPLAY / img.height);
+        cropScale = scale;
+        cropPanX = (CROP_DISPLAY - img.width * scale) / 2;
+        cropPanY = (CROP_DISPLAY - img.height * scale) / 2;
+        showCropModal = true;
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function cropMouseDown(e) {
+    cropDragging = true;
+    cropDragStartX = e.clientX;
+    cropDragStartY = e.clientY;
+    cropPanStartX = cropPanX;
+    cropPanStartY = cropPanY;
+  }
+
+  function cropMouseMove(e) {
+    if (!cropDragging) return;
+    cropPanX = cropPanStartX + (e.clientX - cropDragStartX);
+    cropPanY = cropPanStartY + (e.clientY - cropDragStartY);
+    drawCrop();
+  }
+
+  function cropMouseUp() { cropDragging = false; }
+
+  function cropWheel(e) {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    const cx = CROP_DISPLAY / 2, cy = CROP_DISPLAY / 2;
+    cropPanX = cx + (cropPanX - cx) * factor;
+    cropPanY = cy + (cropPanY - cy) * factor;
+    cropScale *= factor;
+    drawCrop();
+  }
+
+  function drawCrop() {
+    if (!cropCanvasEl || !cropImg) return;
+    const ctx = cropCanvasEl.getContext('2d');
+    ctx.clearRect(0, 0, CROP_DISPLAY, CROP_DISPLAY);
+    ctx.drawImage(cropImg, cropPanX, cropPanY, cropImg.width * cropScale, cropImg.height * cropScale);
+  }
+
+  $: if (showCropModal && cropCanvasEl && cropImg) drawCrop();
+
+  async function confirmCrop() {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = CROP_OUTPUT;
+    offscreen.height = CROP_OUTPUT;
+    const ctx = offscreen.getContext('2d');
+    const ratio = CROP_OUTPUT / CROP_DISPLAY;
+    ctx.drawImage(cropImg,
+      cropPanX * ratio, cropPanY * ratio,
+      cropImg.width * cropScale * ratio,
+      cropImg.height * cropScale * ratio
+    );
+    offscreen.toBlob(async (blob) => {
+      showCropModal = false;
+      if (!blob) return;
+      await uploadCover($sessionId, blob);
+      coverPreviewUrl = getCoverUrl($sessionId) + '?t=' + Date.now();
+    }, 'image/jpeg', 0.90);
+  }
+
+  function removeCover() {
+    coverPreviewUrl = null;
+    // Note: we could add a DELETE endpoint; for now just clears the preview
+  }
+
+  // ── Background image ──────────────────────────
+  function onBgFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    uploadBg(file);
+  }
+
+  function onBgDrop(e) {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    uploadBg(file);
+  }
+
+  async function uploadBg(file) {
+    bgUploading = true;
+    try {
+      await uploadBgImage($sessionId, file);
+      bgPreviewUrl = getBgImageUrl($sessionId) + '?t=' + Date.now();
+    } finally {
+      bgUploading = false;
+    }
+  }
+
+  function removeBg() { bgPreviewUrl = null; }
+
+  // ── Video meta ────────────────────────────────
+  async function saveVideoMeta() {
+    videoSaving = true;
+    videoSaved = false;
+    try {
+      await saveAssetsMeta($sessionId, videoFilename.trim(), videoFilename.trim() ? videoGap : null);
+      videoSaved = true;
+      setTimeout(() => { videoSaved = false; }, 2000);
+    } finally {
+      videoSaving = false;
+    }
+  }
 
   $: hasArtist = !!($lyricsData?.artist?.trim());
   $: hasTitle = !!($lyricsData?.title?.trim());
@@ -145,6 +317,90 @@
       </div>
     </div>
 
+    <!-- Song Assets card -->
+    <div class="assets-card">
+      <h3>Song Assets</h3>
+
+      <div class="assets-grid">
+        <!-- Cover image -->
+        <div class="asset-row">
+          <span class="asset-label">Cover</span>
+          {#if coverPreviewUrl}
+            <div class="asset-preview">
+              <img src={coverPreviewUrl} alt="Cover" class="asset-thumb" />
+              <div class="asset-preview-actions">
+                <button class="asset-action-btn" on:click={() => document.getElementById('cover-file-input').click()}>✏️ Change</button>
+                <button class="asset-action-btn danger" on:click={removeCover}>✕</button>
+              </div>
+            </div>
+          {:else}
+            <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+            <div class="asset-dropzone"
+              on:dragover|preventDefault
+              on:drop={onCoverDrop}
+              on:click={() => document.getElementById('cover-file-input').click()}
+            >
+              <span class="dropzone-icon">🖼</span>
+              <span class="dropzone-hint">Drop image or click<br><small>480×480 crop tool</small></span>
+            </div>
+          {/if}
+          <input id="cover-file-input" type="file" accept="image/*" style="display:none" on:change={onCoverFileChange} />
+        </div>
+
+        <!-- Background image -->
+        <div class="asset-row">
+          <span class="asset-label">Background</span>
+          {#if bgPreviewUrl}
+            <div class="asset-preview">
+              <img src={bgPreviewUrl} alt="Background" class="asset-thumb" />
+              <div class="asset-preview-actions">
+                <button class="asset-action-btn" on:click={() => document.getElementById('bg-file-input').click()}>✏️ Change</button>
+                <button class="asset-action-btn danger" on:click={removeBg}>✕</button>
+              </div>
+            </div>
+          {:else}
+            <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+            <div class="asset-dropzone" class:uploading={bgUploading}
+              on:dragover|preventDefault
+              on:drop={onBgDrop}
+              on:click={() => document.getElementById('bg-file-input').click()}
+            >
+              <span class="dropzone-icon">{bgUploading ? '⏳' : '🌄'}</span>
+              <span class="dropzone-hint">{bgUploading ? 'Uploading…' : 'Drop image or click'}</span>
+            </div>
+            <input id="bg-file-input" type="file" accept="image/*" style="display:none" on:change={onBgFileChange} />
+          {/if}
+        </div>
+
+        <!-- Video filename -->
+        <div class="asset-row asset-row-video">
+          <span class="asset-label">Video</span>
+          <div class="video-input-row">
+            <input
+              class="video-filename-input"
+              type="text"
+              placeholder="filename.mp4 (leave blank to skip)"
+              bind:value={videoFilename}
+            />
+            {#if videoFilename.trim()}
+              <input
+                class="video-gap-input"
+                type="number"
+                step="0.1"
+                placeholder="Gap"
+                title="VIDEOGAP in seconds"
+                bind:value={videoGap}
+              />
+            {/if}
+            <button class="asset-save-btn" on:click={saveVideoMeta} disabled={videoSaving}>
+              {videoSaved ? '✓' : 'Save'}
+            </button>
+          </div>
+          <span class="video-hint">File name only — place the video file in the song folder</span>
+        </div>
+      </div>
+    </div>
+
     <div class="download-section">
       <div class="download-header">
         <h3>Download Files</h3>
@@ -210,6 +466,32 @@
 
   {#if $errorMessage}
     <div class="error-bar">❌ {$errorMessage}</div>
+  {/if}
+
+  {#if showCropModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class="modal-overlay" on:click={() => showCropModal = false}>
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <div class="modal crop-modal" on:click|stopPropagation>
+        <h3>Crop Cover Image</h3>
+        <p class="crop-hint">Drag to pan · Scroll to zoom · Square crop (480×480)</p>
+        <canvas
+          bind:this={cropCanvasEl}
+          width={CROP_DISPLAY}
+          height={CROP_DISPLAY}
+          class="crop-canvas"
+          on:mousedown={cropMouseDown}
+          on:mousemove={cropMouseMove}
+          on:mouseup={cropMouseUp}
+          on:mouseleave={cropMouseUp}
+          on:wheel|preventDefault={cropWheel}
+        ></canvas>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" on:click={() => showCropModal = false}>Cancel</button>
+          <button class="btn btn-primary" on:click={confirmCrop}>Use this crop</button>
+        </div>
+      </div>
+    </div>
   {/if}
 
   {#if showEditPopup}
@@ -503,4 +785,166 @@
     gap: 0.5rem;
     margin-top: 1rem;
   }
+
+  /* ── Song Assets card ─────────────────────── */
+  .assets-card {
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+  }
+
+  .assets-card h3 {
+    margin-bottom: 0.85rem;
+  }
+
+  .assets-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .asset-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .asset-row-video {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .asset-label {
+    width: 80px;
+    flex-shrink: 0;
+    color: #888;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    padding-top: 0.6rem;
+  }
+
+  .asset-dropzone {
+    flex: 1;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    border: 1px dashed #444;
+    border-radius: 8px;
+    padding: 0.65rem 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    min-height: 52px;
+  }
+  .asset-dropzone:hover, .asset-dropzone.uploading {
+    border-color: #4fc3f7;
+  }
+
+  .dropzone-icon { font-size: 1.4rem; }
+  .dropzone-hint { font-size: 0.78rem; color: #777; line-height: 1.3; }
+
+  .asset-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+  }
+
+  .asset-thumb {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #444;
+  }
+
+  .asset-preview-actions {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .asset-action-btn {
+    background: #21262d;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #ccc;
+    cursor: pointer;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
+    transition: all 0.15s;
+  }
+  .asset-action-btn:hover { background: #30363d; }
+  .asset-action-btn.danger { color: #f44; border-color: #633; }
+  .asset-action-btn.danger:hover { background: #3a1a1a; }
+
+  .video-input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    width: 100%;
+  }
+
+  .video-filename-input {
+    flex: 1;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #111;
+    color: #eee;
+    font-size: 0.88rem;
+  }
+  .video-filename-input:focus { outline: none; border-color: #4fc3f7; }
+
+  .video-gap-input {
+    width: 72px;
+    padding: 0.45rem 0.5rem;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #111;
+    color: #eee;
+    font-size: 0.88rem;
+  }
+  .video-gap-input:focus { outline: none; border-color: #4fc3f7; }
+
+  .asset-save-btn {
+    background: #238636;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.85rem;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .asset-save-btn:hover:not(:disabled) { background: #2ea043; }
+  .asset-save-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .video-hint {
+    font-size: 0.72rem;
+    color: #555;
+    margin-left: 82px;
+  }
+
+  /* ── Crop modal ───────────────────────────── */
+  .crop-modal {
+    width: auto;
+    max-width: none;
+  }
+
+  .crop-hint {
+    color: #666;
+    font-size: 0.78rem;
+    margin: 0.25rem 0 0.75rem;
+    text-align: center;
+  }
+
+  .crop-canvas {
+    display: block;
+    cursor: grab;
+    border-radius: 4px;
+    border: 1px solid #333;
+  }
+  .crop-canvas:active { cursor: grabbing; }
 </style>
