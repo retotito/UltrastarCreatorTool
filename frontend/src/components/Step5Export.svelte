@@ -924,6 +924,7 @@
     font-size: 0.8rem;
     text-transform: uppercase;
     padding-top: 0.6rem;
+    margin-right: 15px;
   }
 
   .asset-dropzone {

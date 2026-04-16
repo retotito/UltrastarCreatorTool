@@ -11,7 +11,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 | **1. Upload** | Upload a song (full mix or vocals-only) | Optionally separates vocals using Demucs |
 | **2. Lyrics & Generate** | Review/edit lyrics, then click "Generate" | Auto-hyphenates syllables, detects BPM, analyzes pitch, aligns syllables to audio, produces Ultrastar file |
 | **3. Editor** | Review and adjust notes in the piano roll | Shows waveform, plays MIDI pitches, supports grid snap, BPM calibration |
-| **4. Export** | Download your files | Exports Ultrastar .txt, MIDI, and a processing summary |
+| **4. Export** | Add cover/background art, video info, download your files | Exports ZIP with Ultrastar .txt (including asset headers), MIDI, images, and audio |
 
 ## Screenshots
 
@@ -86,6 +86,9 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 - **Session persistence** — projects survive server restarts
 
 ### Export
+- **Song Assets** — attach a cover image (480×480), background image (1920×1080), and video filename to the song; both images go through an interactive **crop tool** (pan + zoom) before upload
+- **Asset headers** — `#COVER`, `#BACKGROUND`, `#VIDEO`, `#VIDEOGAP` are written into the Ultrastar `.txt` automatically whenever an asset is saved
+- **One-click ZIP** — downloads all files in a ready-to-drop Ultrastar folder: `.txt` with all headers, images renamed to `Artist - Title [CO].jpg` / `[BG].jpg`, MIDI, audio, and processing summary
 - **Ultrastar .txt** — standard format, compatible with all Ultrastar players
 - **MIDI export** — pitch data as MIDI file
 - **Processing summary** — detailed report of the AI pipeline
