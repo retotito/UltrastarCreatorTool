@@ -232,6 +232,10 @@ export function getBgImageUrl(sessionId) {
   return `${BASE}/bgimage/${sessionId}`;
 }
 
+export async function getAssetsMeta(sessionId) {
+  return request('GET', `/assets/${sessionId}`, null, false, true);
+}
+
 export async function saveAssetsMeta(sessionId, videoFilename, videoGap) {
   return request('POST', `/assets/${sessionId}`, { video_filename: videoFilename, video_gap: videoGap });
 }

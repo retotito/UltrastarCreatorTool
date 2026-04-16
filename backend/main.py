@@ -1869,6 +1869,18 @@ async def get_bgimage(session_id: str):
     return FileResponse(bg_path, media_type="image/jpeg")
 
 
+@app.get("/api/assets/{session_id}")
+async def get_assets_meta(session_id: str):
+    """Return stored video filename and gap for the session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {
+        "video_filename": session.get("video_filename", ""),
+        "video_gap": session.get("video_gap", 0),
+    }
+
+
 @app.post("/api/assets/{session_id}")
 async def save_assets_meta(session_id: str, request: Request):
     """Save video filename and optional video gap for the session."""

@@ -1,7 +1,7 @@
 <script>
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
   import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
-           uploadCover, getCoverUrl, uploadBgImage, getBgImageUrl, saveAssetsMeta } from '../services/api.js';
+           uploadCover, getCoverUrl, uploadBgImage, getBgImageUrl, saveAssetsMeta, getAssetsMeta } from '../services/api.js';
   import { resetSession } from '../stores/appStore.js';
 
   let exported = false;
@@ -57,6 +57,12 @@
     try {
       const r = await fetch(getBgImageUrl($sessionId));
       if (r.ok) bgPreviewUrl = getBgImageUrl($sessionId) + '?t=' + Date.now();
+    } catch (_) {}
+    // Load video meta
+    try {
+      const meta = await getAssetsMeta($sessionId);
+      if (meta?.video_filename) videoFilename = meta.video_filename;
+      if (meta?.video_gap != null) videoGap = meta.video_gap;
     } catch (_) {}
   }
 
