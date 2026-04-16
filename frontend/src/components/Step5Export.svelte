@@ -11,8 +11,14 @@
   let saving = false;
 
   // ── Song Assets state ──────────────────────────
-  const CROP_DISPLAY = 340;
-  const CROP_OUTPUT  = 480;
+  const COVER_DISPLAY = 340;
+  const COVER_OUTPUT  = 480;
+
+  // BG crop display: 16:9 at a reasonable width
+  const BG_DISPLAY_W = 480;
+  const BG_DISPLAY_H = 270; // 16:9
+  const BG_OUTPUT_W  = 1920;
+  const BG_OUTPUT_H  = 1080;
 
   // Cover
   let coverPreviewUrl = null;
@@ -26,6 +32,11 @@
   // Background image
   let bgPreviewUrl = null;
   let bgUploading = false;
+  let showBgCropModal = false;
+  let bgCropImg = null;
+  let bgCropCanvasEl;
+  let bgCropPanX = 0, bgCropPanY = 0, bgCropScale = 1;
+  let bgCropDragging = false, bgCropDragStartX = 0, bgCropDragStartY = 0, bgCropPanStartX = 0, bgCropPanStartY = 0;
 
   // Video
   let videoFilename = '';
@@ -70,11 +81,10 @@
       const img = new Image();
       img.onload = () => {
         cropImg = img;
-        // Fit the image to fill the crop square
-        const scale = Math.max(CROP_DISPLAY / img.width, CROP_DISPLAY / img.height);
+        const scale = Math.max(COVER_DISPLAY / img.width, COVER_DISPLAY / img.height);
         cropScale = scale;
-        cropPanX = (CROP_DISPLAY - img.width * scale) / 2;
-        cropPanY = (CROP_DISPLAY - img.height * scale) / 2;
+        cropPanX = (COVER_DISPLAY - img.width * scale) / 2;
+        cropPanY = (COVER_DISPLAY - img.height * scale) / 2;
         showCropModal = true;
       };
       img.src = ev.target.result;
@@ -84,46 +94,39 @@
 
   function cropMouseDown(e) {
     cropDragging = true;
-    cropDragStartX = e.clientX;
-    cropDragStartY = e.clientY;
-    cropPanStartX = cropPanX;
-    cropPanStartY = cropPanY;
+    cropDragStartX = e.clientX; cropDragStartY = e.clientY;
+    cropPanStartX = cropPanX;   cropPanStartY = cropPanY;
   }
-
   function cropMouseMove(e) {
     if (!cropDragging) return;
     cropPanX = cropPanStartX + (e.clientX - cropDragStartX);
     cropPanY = cropPanStartY + (e.clientY - cropDragStartY);
     drawCrop();
   }
-
   function cropMouseUp() { cropDragging = false; }
-
   function cropWheel(e) {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    const cx = CROP_DISPLAY / 2, cy = CROP_DISPLAY / 2;
+    const cx = COVER_DISPLAY / 2, cy = COVER_DISPLAY / 2;
     cropPanX = cx + (cropPanX - cx) * factor;
     cropPanY = cy + (cropPanY - cy) * factor;
     cropScale *= factor;
     drawCrop();
   }
-
   function drawCrop() {
     if (!cropCanvasEl || !cropImg) return;
     const ctx = cropCanvasEl.getContext('2d');
-    ctx.clearRect(0, 0, CROP_DISPLAY, CROP_DISPLAY);
+    ctx.clearRect(0, 0, COVER_DISPLAY, COVER_DISPLAY);
     ctx.drawImage(cropImg, cropPanX, cropPanY, cropImg.width * cropScale, cropImg.height * cropScale);
   }
-
   $: if (showCropModal && cropCanvasEl && cropImg) drawCrop();
 
   async function confirmCrop() {
     const offscreen = document.createElement('canvas');
-    offscreen.width = CROP_OUTPUT;
-    offscreen.height = CROP_OUTPUT;
+    offscreen.width = COVER_OUTPUT;
+    offscreen.height = COVER_OUTPUT;
     const ctx = offscreen.getContext('2d');
-    const ratio = CROP_OUTPUT / CROP_DISPLAY;
+    const ratio = COVER_OUTPUT / COVER_DISPLAY;
     ctx.drawImage(cropImg,
       cropPanX * ratio, cropPanY * ratio,
       cropImg.width * cropScale * ratio,
@@ -142,34 +145,92 @@
     }, 'image/jpeg', 0.90);
   }
 
-  function removeCover() {
-    coverPreviewUrl = null;
-    // Note: we could add a DELETE endpoint; for now just clears the preview
-  }
+  function removeCover() { coverPreviewUrl = null; }
 
-  // ── Background image ──────────────────────────
+  // ── Background crop ───────────────────────────
   function onBgFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
-    uploadBg(file);
+    openBgCropModal(file);
   }
 
   function onBgDrop(e) {
     e.preventDefault();
     const file = e.dataTransfer?.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
-    uploadBg(file);
+    openBgCropModal(file);
   }
 
-  async function uploadBg(file) {
-    bgUploading = true;
-    try {
-      await uploadBgImage($sessionId, file);
-      bgPreviewUrl = getBgImageUrl($sessionId) + '?t=' + Date.now();
-    } finally {
-      bgUploading = false;
-    }
+  function openBgCropModal(file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        bgCropImg = img;
+        const scale = Math.max(BG_DISPLAY_W / img.width, BG_DISPLAY_H / img.height);
+        bgCropScale = scale;
+        bgCropPanX = (BG_DISPLAY_W - img.width * scale) / 2;
+        bgCropPanY = (BG_DISPLAY_H - img.height * scale) / 2;
+        showBgCropModal = true;
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function bgCropMouseDown(e) {
+    bgCropDragging = true;
+    bgCropDragStartX = e.clientX; bgCropDragStartY = e.clientY;
+    bgCropPanStartX = bgCropPanX; bgCropPanStartY = bgCropPanY;
+  }
+  function bgCropMouseMove(e) {
+    if (!bgCropDragging) return;
+    bgCropPanX = bgCropPanStartX + (e.clientX - bgCropDragStartX);
+    bgCropPanY = bgCropPanStartY + (e.clientY - bgCropDragStartY);
+    drawBgCrop();
+  }
+  function bgCropMouseUp() { bgCropDragging = false; }
+  function bgCropWheel(e) {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    const cx = BG_DISPLAY_W / 2, cy = BG_DISPLAY_H / 2;
+    bgCropPanX = cx + (bgCropPanX - cx) * factor;
+    bgCropPanY = cy + (bgCropPanY - cy) * factor;
+    bgCropScale *= factor;
+    drawBgCrop();
+  }
+  function drawBgCrop() {
+    if (!bgCropCanvasEl || !bgCropImg) return;
+    const ctx = bgCropCanvasEl.getContext('2d');
+    ctx.clearRect(0, 0, BG_DISPLAY_W, BG_DISPLAY_H);
+    ctx.drawImage(bgCropImg, bgCropPanX, bgCropPanY, bgCropImg.width * bgCropScale, bgCropImg.height * bgCropScale);
+  }
+  $: if (showBgCropModal && bgCropCanvasEl && bgCropImg) drawBgCrop();
+
+  async function confirmBgCrop() {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = BG_OUTPUT_W;
+    offscreen.height = BG_OUTPUT_H;
+    const ctx = offscreen.getContext('2d');
+    const ratioW = BG_OUTPUT_W / BG_DISPLAY_W;
+    const ratioH = BG_OUTPUT_H / BG_DISPLAY_H;
+    ctx.drawImage(bgCropImg,
+      bgCropPanX * ratioW, bgCropPanY * ratioH,
+      bgCropImg.width * bgCropScale * ratioW,
+      bgCropImg.height * bgCropScale * ratioH
+    );
+    offscreen.toBlob(async (blob) => {
+      showBgCropModal = false;
+      if (!blob) return;
+      bgUploading = true;
+      try {
+        await uploadBgImage($sessionId, blob);
+        bgPreviewUrl = getBgImageUrl($sessionId) + '?t=' + Date.now();
+      } finally {
+        bgUploading = false;
+      }
+    }, 'image/jpeg', 0.90);
   }
 
   function removeBg() { bgPreviewUrl = null; }
@@ -372,7 +433,7 @@
               on:click={() => document.getElementById('bg-file-input').click()}
             >
               <span class="dropzone-icon">{bgUploading ? '⏳' : '🌄'}</span>
-              <span class="dropzone-hint">{bgUploading ? 'Uploading…' : 'Drop image or click'}</span>
+              <span class="dropzone-hint">{bgUploading ? 'Uploading…' : 'Drop image or click'}<br>{#if !bgUploading}<small>16:9 crop tool · 1920×1080</small>{/if}</span>
             </div>
           {/if}
           <input id="bg-file-input" type="file" accept="image/*" style="display:none" on:change={onBgFileChange} />
@@ -483,8 +544,8 @@
         <p class="crop-hint">Drag to pan · Scroll to zoom · Square crop (480×480)</p>
         <canvas
           bind:this={cropCanvasEl}
-          width={CROP_DISPLAY}
-          height={CROP_DISPLAY}
+          width={COVER_DISPLAY}
+          height={COVER_DISPLAY}
           class="crop-canvas"
           on:mousedown={cropMouseDown}
           on:mousemove={cropMouseMove}
@@ -495,6 +556,32 @@
         <div class="modal-actions">
           <button class="btn btn-secondary" on:click={() => showCropModal = false}>Cancel</button>
           <button class="btn btn-primary" on:click={confirmCrop}>Use this crop</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showBgCropModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class="modal-overlay" on:click={() => showBgCropModal = false}>
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <div class="modal crop-modal" on:click|stopPropagation>
+        <h3>Crop Background Image</h3>
+        <p class="crop-hint">Drag to pan · Scroll to zoom · 16:9 crop (1920×1080)</p>
+        <canvas
+          bind:this={bgCropCanvasEl}
+          width={BG_DISPLAY_W}
+          height={BG_DISPLAY_H}
+          class="crop-canvas"
+          on:mousedown={bgCropMouseDown}
+          on:mousemove={bgCropMouseMove}
+          on:mouseup={bgCropMouseUp}
+          on:mouseleave={bgCropMouseUp}
+          on:wheel|preventDefault={bgCropWheel}
+        ></canvas>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" on:click={() => showBgCropModal = false}>Cancel</button>
+          <button class="btn btn-primary" on:click={confirmBgCrop}>Use this crop</button>
         </div>
       </div>
     </div>
