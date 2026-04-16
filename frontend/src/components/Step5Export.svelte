@@ -16,6 +16,7 @@
 
   // Cover
   let coverPreviewUrl = null;
+  let coverUploading = false;
   let showCropModal = false;
   let cropImg = null;
   let cropCanvasEl;
@@ -38,12 +39,12 @@
   async function loadExistingAssets() {
     // Probe cover
     try {
-      const r = await fetch(getCoverUrl($sessionId), { method: 'HEAD' });
+      const r = await fetch(getCoverUrl($sessionId));
       if (r.ok) coverPreviewUrl = getCoverUrl($sessionId) + '?t=' + Date.now();
     } catch (_) {}
     // Probe bg image
     try {
-      const r = await fetch(getBgImageUrl($sessionId), { method: 'HEAD' });
+      const r = await fetch(getBgImageUrl($sessionId));
       if (r.ok) bgPreviewUrl = getBgImageUrl($sessionId) + '?t=' + Date.now();
     } catch (_) {}
   }
@@ -131,8 +132,13 @@
     offscreen.toBlob(async (blob) => {
       showCropModal = false;
       if (!blob) return;
-      await uploadCover($sessionId, blob);
-      coverPreviewUrl = getCoverUrl($sessionId) + '?t=' + Date.now();
+      coverUploading = true;
+      try {
+        await uploadCover($sessionId, blob);
+        coverPreviewUrl = getCoverUrl($sessionId) + '?t=' + Date.now();
+      } finally {
+        coverUploading = false;
+      }
     }, 'image/jpeg', 0.90);
   }
 
@@ -335,13 +341,13 @@
             </div>
           {:else}
             <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-            <div class="asset-dropzone"
+            <div class="asset-dropzone" class:uploading={coverUploading}
               on:dragover|preventDefault
               on:drop={onCoverDrop}
-              on:click={() => document.getElementById('cover-file-input').click()}
+              on:click={() => !coverUploading && document.getElementById('cover-file-input').click()}
             >
-              <span class="dropzone-icon">🖼</span>
-              <span class="dropzone-hint">Drop image or click<br><small>480×480 crop tool</small></span>
+              <span class="dropzone-icon">{coverUploading ? '⏳' : '🖼'}</span>
+              <span class="dropzone-hint">{coverUploading ? 'Uploading…' : 'Drop image or click'}<br>{#if !coverUploading}<small>480×480 crop tool</small>{/if}</span>
             </div>
           {/if}
           <input id="cover-file-input" type="file" accept="image/*" style="display:none" on:change={onCoverFileChange} />
