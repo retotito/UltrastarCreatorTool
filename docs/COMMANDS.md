@@ -61,6 +61,30 @@ cd /Users/retokupfer/projects/SongCreatorGrok/frontend && npm run dev
 
 ---
 
+## Kill Servers
+
+**Kill backend** (if port 8001 is already in use):
+```bash
+pkill -f "python.*main.py"
+```
+
+Or by port:
+```bash
+lsof -ti :8001 | xargs kill -9
+```
+
+**Kill frontend** (port 5173):
+```bash
+lsof -ti :5173 | xargs kill -9
+```
+
+**Kill both:**
+```bash
+pkill -f "python.*main.py"; lsof -ti :5173 | xargs kill -9
+```
+
+---
+
 ## VS Code Tasks
 
 You can also start the servers using the VS Code task runner (`Cmd+Shift+P` → "Tasks: Run Task"):

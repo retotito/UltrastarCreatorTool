@@ -155,6 +155,16 @@
 
   function removeCover() { coverPreviewUrl = null; }
 
+  async function downloadCover() {
+    const res = await fetch(getCoverUrl($sessionId));
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = getBaseFilename() + ' [CO].jpg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   // ── Background crop ───────────────────────────
   function onBgFileChange(e) {
     const file = e.target.files?.[0];
@@ -242,6 +252,16 @@
   }
 
   function removeBg() { bgPreviewUrl = null; }
+
+  async function downloadBg() {
+    const res = await fetch(getBgImageUrl($sessionId));
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = getBaseFilename() + ' [BG].jpg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
   // ── Video meta ────────────────────────────────
   async function saveVideoMeta() {
@@ -405,7 +425,7 @@
               <div class="asset-thumb-col"><img src={coverPreviewUrl} alt="Cover" class="asset-thumb" /></div>
               <div class="asset-preview-actions">
                 <button class="asset-action-btn" on:click={() => document.getElementById('cover-file-input').click()}>✏️ Change</button>
-                <a class="asset-action-btn" href={coverPreviewUrl} download={getBaseFilename() + ' [CO].jpg'} title="Download">⬇</a>
+                <button class="asset-action-btn" on:click={downloadCover} title="Download">⬇</button>
                 <button class="asset-action-btn danger" on:click={removeCover}>✕</button>
               </div>
             </div>
@@ -431,7 +451,7 @@
               <div class="asset-thumb-col"><img src={bgPreviewUrl} alt="Background" class="asset-thumb asset-thumb-bg" /></div>
               <div class="asset-preview-actions">
                 <button class="asset-action-btn" on:click={() => document.getElementById('bg-file-input').click()}>✏️ Change</button>
-                <a class="asset-action-btn" href={bgPreviewUrl} download={getBaseFilename() + ' [BG].jpg'} title="Download">⬇</a>
+                <button class="asset-action-btn" on:click={downloadBg} title="Download">⬇</button>
                 <button class="asset-action-btn danger" on:click={removeBg}>✕</button>
               </div>
             </div>
