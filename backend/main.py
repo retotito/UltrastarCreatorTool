@@ -1554,6 +1554,9 @@ async def save_editor_state(session_id: str, request: Request):
         f.write(ultrastar_content)
     result["txt_file"] = txt_filename
 
+    # Inject asset headers (COVER, BACKGROUND, VIDEO, VIDEOGAP) from session
+    _update_txt_asset_headers(session)
+
     save_session(session_id)
 
     note_count = sum(1 for n in editor_notes if n.get("type") != "break")
@@ -1727,6 +1730,76 @@ async def download_file(session_id: str, file_type: str):
 
 
 # ────────────────────────────────────────────────────────────
+# Song assets helpers
+# ────────────────────────────────────────────────────────────
+
+import re as _re
+
+def _set_header(content: str, key: str, value: str) -> str:
+    """Insert or replace a #KEY:value line in Ultrastar .txt content."""
+    tag = f"#{key}:"
+    new_line = f"#{key}:{value}"
+    if tag in content:
+        return _re.sub(rf"#{key}:[^\n]*", new_line, content)
+    # Insert after the last # header line
+    lines = content.split("\n")
+    idx = 0
+    for i, ln in enumerate(lines):
+        if ln.startswith("#"):
+            idx = i + 1
+        else:
+            break
+    lines.insert(idx, new_line)
+    return "\n".join(lines)
+
+
+def _update_txt_asset_headers(session: dict) -> None:
+    """Inject/update COVER, BACKGROUND, VIDEO, VIDEOGAP in the session's .txt file."""
+    result = session.get("result")
+    if not result:
+        return
+    txt_file = result.get("txt_file")
+    if not txt_file:
+        return
+    path = os.path.join(DOWNLOADS_DIR, txt_file)
+    if not os.path.exists(path):
+        return
+
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+
+    artist = session.get("artist", "").strip()
+    title = session.get("title", "").strip()
+    if artist and title:
+        base = f"{artist} - {title}"
+    elif title:
+        base = title
+    elif artist:
+        base = artist
+    else:
+        base = "Untitled Song"
+
+    cover_file = session.get("cover_file")
+    if cover_file and os.path.exists(cover_file):
+        content = _set_header(content, "COVER", f"{base} [CO].jpg")
+
+    bg_file = session.get("bgimage_file")
+    if bg_file and os.path.exists(bg_file):
+        content = _set_header(content, "BACKGROUND", f"{base} [BG].jpg")
+
+    video_filename = session.get("video_filename")
+    if video_filename:
+        content = _set_header(content, "VIDEO", video_filename)
+        video_gap = session.get("video_gap")
+        if video_gap is not None:
+            content = _set_header(content, "VIDEOGAP", str(video_gap))
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    result["ultrastar_content"] = content
+
+
+# ────────────────────────────────────────────────────────────
 # Song assets: cover image, background image, video filename
 # ────────────────────────────────────────────────────────────
 
@@ -1746,6 +1819,7 @@ async def upload_cover(session_id: str, image: UploadFile = File(...)):
         f.write(data)
     session["cover_file"] = cover_path
     save_session(session_id)
+    _update_txt_asset_headers(session)
     log_step("ASSETS", f"Cover saved for session {session_id} ({len(data)} bytes)")
     return {"status": "ok"}
 
@@ -1778,6 +1852,7 @@ async def upload_bgimage(session_id: str, image: UploadFile = File(...)):
         f.write(data)
     session["bgimage_file"] = bg_path
     save_session(session_id)
+    _update_txt_asset_headers(session)
     log_step("ASSETS", f"Background image saved for session {session_id} ({len(data)} bytes)")
     return {"status": "ok"}
 
@@ -1815,6 +1890,7 @@ async def save_assets_meta(session_id: str, request: Request):
     else:
         session.pop("video_gap", None)
     save_session(session_id)
+    _update_txt_asset_headers(session)
     log_step("ASSETS", f"Video meta saved for session {session_id}: {video_filename!r}")
     return {"status": "ok"}
 
