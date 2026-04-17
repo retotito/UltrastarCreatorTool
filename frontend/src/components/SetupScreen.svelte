@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
   import { checkSetupStatus, streamSetupDownload } from '../services/api.js';
 
   export let status = null; // { ffmpeg, whisperx, demucs, ready }
@@ -8,14 +8,28 @@
 
   // Step state: 'pending' | 'downloading' | 'done' | 'error' | 'skipped'
   let steps = {
-    ffmpeg:   { label: 'ffmpeg (audio tools)', size: '',      state: 'pending', message: '' },
-    whisperx: { label: 'WhisperX speech model', size: '~1.5 GB', state: 'pending', message: '' },
-    demucs:   { label: 'Demucs vocal model',    size: '~80 MB',  state: 'pending', message: '' },
+    ffmpeg:   { label: 'ffmpeg (audio tools)',   size: '',         state: 'pending', message: '', elapsed: 0 },
+    whisperx: { label: 'WhisperX speech model',  size: '~1.5 GB', state: 'pending', message: '', elapsed: 0 },
+    demucs:   { label: 'Demucs vocal model',      size: '~80 MB',  state: 'pending', message: '', elapsed: 0 },
   };
 
   let downloading = false;
   let allDone = false;
   let stopStream = null;
+  let tickers = {};  // key → intervalId
+
+  function startTicker(key) {
+    steps[key].elapsed = 0;
+    tickers[key] = setInterval(() => { steps[key].elapsed += 1; steps = steps; }, 1000);
+  }
+  function stopTicker(key) {
+    if (tickers[key]) { clearInterval(tickers[key]); delete tickers[key]; }
+  }
+  function stopAllTickers() {
+    Object.keys(tickers).forEach(stopTicker);
+  }
+
+  onDestroy(stopAllTickers);
 
   // Pre-fill states from the initial status check
   $: if (status) {
@@ -30,24 +44,36 @@
     downloading = true;
     // Reset non-done steps to pending so the UI refreshes
     for (const k of Object.keys(steps)) {
-      if (steps[k].state !== 'done') steps[k].state = 'pending';
+      if (steps[k].state !== 'done') { steps[k].state = 'pending'; steps[k].elapsed = 0; }
     }
 
     stopStream = streamSetupDownload((event) => {
       if (event.type === 'progress') {
         const s = steps[event.step];
-        if (s) { s.state = 'downloading'; s.message = event.message; steps = steps; }
+        if (s) {
+          s.state = 'downloading';
+          s.message = event.message;
+          steps = steps;
+          startTicker(event.step);
+        }
       } else if (event.type === 'done') {
         const s = steps[event.step];
         if (s) {
+          stopTicker(event.step);
           s.state = event.error ? 'skipped' : 'done';
           s.message = event.message;
           steps = steps;
         }
       } else if (event.type === 'error') {
         const s = steps[event.step];
-        if (s) { s.state = 'error'; s.message = event.message; steps = steps; }
+        if (s) {
+          stopTicker(event.step);
+          s.state = 'error';
+          s.message = event.message;
+          steps = steps;
+        }
       } else if (event.type === 'complete') {
+        stopAllTickers();
         downloading = false;
         allDone = Object.values(steps).every(s => s.state === 'done' || s.state === 'skipped');
         if (stopStream) stopStream();
@@ -67,12 +93,12 @@
 
     <div class="steps">
       {#each Object.entries(steps) as [key, step]}
-        <div class="step" class:done={step.state === 'done'} class:error={step.state === 'error'} class:skipped={step.state === 'skipped'}>
+        <div class="step" class:done={step.state === 'done'} class:error={step.state === 'error'} class:skipped={step.state === 'skipped'} class:active={step.state === 'downloading'}>
           <div class="step-icon">
             {#if step.state === 'done'}
               ✅
             {:else if step.state === 'downloading'}
-              <span class="spinner">⏳</span>
+              <span class="step-spinner"></span>
             {:else if step.state === 'error'}
               ❌
             {:else if step.state === 'skipped'}
@@ -83,6 +109,9 @@
           </div>
           <div class="step-info">
             <div class="step-label">{step.label} {#if step.size}<span class="size">{step.size}</span>{/if}</div>
+            {#if step.state === 'downloading'}
+              <div class="step-elapsed">⏱ {step.elapsed}s elapsed</div>
+            {/if}
             {#if step.message}
               <div class="step-message">{step.message}</div>
             {/if}
@@ -185,6 +214,15 @@
     margin-left: 0.4rem;
   }
 
+  .step.active { border-color: #388bfd; }
+
+  .step-elapsed {
+    font-size: 0.8rem;
+    color: #388bfd;
+    font-variant-numeric: tabular-nums;
+    margin-top: 0.2rem;
+  }
+
   .step-message {
     color: #8b949e;
     font-size: 0.8rem;
@@ -194,6 +232,19 @@
 
   .step.error .step-message  { color: #f85149; }
   .step.skipped .step-message { color: #d29922; }
+
+  .step-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #30363d;
+    border-top-color: #388bfd;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .btn-primary {
     background: #238636;
@@ -215,10 +266,4 @@
   }
 
   .hint.success { color: #3fb950; }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.4; }
-  }
-  .spinner { display: inline-block; animation: pulse 1.2s ease-in-out infinite; }
 </style>
