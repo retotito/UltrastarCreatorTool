@@ -34,102 +34,33 @@
   $: showStartupOverlay = backendStatus !== 'ok' && !showSetup;
 
   async function waitForBackendAndResume() {
-    // Wait until backend is healthy before attempting session resume
-    const sid = $sessionId;
-
-    // Read the original persisted step directly from localStorage (store caps it at 2 on init)
-    const persistedStep = parseInt(localStorage.getItem('currentStep') || '0');
-
-    // Poll until healthy (max 120 attempts × 1s = 2 minutes).
-    // Actively call pollHealth every second so we don't wait for the 15s interval.
+    // Poll until backend is healthy (max 120 attempts × 1s = 2 minutes).
     for (let i = 0; i < 120; i++) {
       if (backendStatus === 'ok') break;
       await pollHealth();
       if (backendStatus === 'ok') break;
       await new Promise(r => setTimeout(r, 1000));
     }
-    if (backendStatus !== 'ok') return; // backend never came up, leave session intact
+    if (backendStatus !== 'ok') return;
 
     // Check setup status (first-run model download)
     try {
       setupStatus = await checkSetupStatus();
       if (!setupStatus.ready) {
         showSetup = true;
-        return; // don't resume session until setup is done
+        return;
       }
     } catch (e) {
-      // If setup check fails just continue (backend may not support it yet)
+      // If setup check fails just continue
     }
 
-    if (!sid || persistedStep < 2) return;
-
-    try {
-      const data = await resumeSession(sid);
-      const hasVocals = data.has_vocals !== false;
-      const hasOriginal = data.has_original !== false;
-      uploadData.set({
-        filename: data.filename,
-        hasVocals,
-        hasOriginal,
-        vocalUrl: hasVocals ? getAudioUrl(sid, 'vocals') : (hasOriginal ? getAudioUrl(sid, 'original') : null),
-      });
-      if (data.has_lyrics) {
-        lyricsData.set({
-          text: data.lyrics || '',
-          artist: data.artist || '',
-          title: data.title || '',
-          language: data.language || 'en',
-          syllableCount: data.syllable_count || 0,
-          lineCount: data.line_count || 0,
-          preview: [],
-        });
-      }
-      if (data.has_result) {
-        generationResult.set(data.result || {});
-      }
-      // Restore the original step now that session is confirmed
-      currentStep.set(persistedStep);
-      console.log(`[App] Resumed session ${sid} at step ${persistedStep}`);
-    } catch (e) {
-      console.warn('[App] Failed to resume session, resetting:', e);
-      resetSession();
-    }
+    // Always land on home (step 0) — no auto-resume.
+    // Session data is still in localStorage; ProjectLauncher can offer a resume option.
   }
 
   async function onSetupDone() {
     showSetup = false;
-    // Now attempt session resume
-    const sid = $sessionId;
-    const persistedStep = parseInt(localStorage.getItem('currentStep') || '0');
-    if (!sid || persistedStep < 2) return;
-    try {
-      const data = await resumeSession(sid);
-      const hasVocals = data.has_vocals !== false;
-      const hasOriginal = data.has_original !== false;
-      uploadData.set({
-        filename: data.filename,
-        hasVocals,
-        hasOriginal,
-        vocalUrl: hasVocals ? getAudioUrl(sid, 'vocals') : (hasOriginal ? getAudioUrl(sid, 'original') : null),
-      });
-      if (data.has_lyrics) {
-        lyricsData.set({
-          text: data.lyrics || '',
-          artist: data.artist || '',
-          title: data.title || '',
-          language: data.language || 'en',
-          syllableCount: data.syllable_count || 0,
-          lineCount: data.line_count || 0,
-          preview: [],
-        });
-      }
-      if (data.has_result) {
-        generationResult.set(data.result || {});
-      }
-      currentStep.set(persistedStep);
-    } catch (e) {
-      resetSession();
-    }
+    // Always land on home (step 0) after setup — no auto-resume.
   }
 
   onMount(async () => {
@@ -162,7 +93,7 @@
       <h1>Ultrastar Creator</h1>
       <div class="startup-spinner"></div>
       <p class="startup-msg">Backend is starting up…</p>
-      <p class="startup-hint">This can take 15–30 seconds on first launch.</p>
+      <p class="startup-hint">This can take up to 30 seconds.</p>
     </div>
   </div>
 {/if}
