@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { currentStep, sessionId, uploadData, lyricsData, generationResult, generationModalOpen, resetSession } from './stores/appStore.js';
-  import { checkHealth, resumeSession, getAudioUrl, submitLyrics } from './services/api.js';
+  import { checkHealth, resumeSession, getAudioUrl, submitLyrics, checkSetupStatus } from './services/api.js';
   import StepNavigation from './components/StepNavigation.svelte';
   import ProjectLauncher from './components/ProjectLauncher.svelte';
   import Step1Upload from './components/Step1Upload.svelte';
@@ -10,10 +10,15 @@
   import Step4Editor from './components/Step4Editor.svelte';
   import Step5Export from './components/Step5Export.svelte';
   import DialogModal from './components/DialogModal.svelte';
+  import SetupScreen from './components/SetupScreen.svelte';
   import { showConfirm } from './stores/dialogStore.js';
 
   let backendStatus = 'checking';
   let healthPollInterval = null;
+
+  // Setup state: null = not checked yet, object = status result, true = done/skipped by user
+  let setupStatus = null;
+  let showSetup = false;
 
   async function pollHealth() {
     try {
@@ -24,44 +29,106 @@
     }
   }
 
+  async function waitForBackendAndResume() {
+    // Wait until backend is healthy before attempting session resume
+    const sid = $sessionId;
+
+    // Read the original persisted step directly from localStorage (store caps it at 2 on init)
+    const persistedStep = parseInt(localStorage.getItem('currentStep') || '0');
+
+    // Poll until healthy (max 120 attempts × 1s = 2 minutes)
+    for (let i = 0; i < 120; i++) {
+      if (backendStatus === 'ok') break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    if (backendStatus !== 'ok') return; // backend never came up, leave session intact
+
+    // Check setup status (first-run model download)
+    try {
+      setupStatus = await checkSetupStatus();
+      if (!setupStatus.ready) {
+        showSetup = true;
+        return; // don't resume session until setup is done
+      }
+    } catch (e) {
+      // If setup check fails just continue (backend may not support it yet)
+    }
+
+    if (!sid || persistedStep < 2) return;
+
+    try {
+      const data = await resumeSession(sid);
+      const hasVocals = data.has_vocals !== false;
+      const hasOriginal = data.has_original !== false;
+      uploadData.set({
+        filename: data.filename,
+        hasVocals,
+        hasOriginal,
+        vocalUrl: hasVocals ? getAudioUrl(sid, 'vocals') : (hasOriginal ? getAudioUrl(sid, 'original') : null),
+      });
+      if (data.has_lyrics) {
+        lyricsData.set({
+          text: data.lyrics || '',
+          artist: data.artist || '',
+          title: data.title || '',
+          language: data.language || 'en',
+          syllableCount: data.syllable_count || 0,
+          lineCount: data.line_count || 0,
+          preview: [],
+        });
+      }
+      if (data.has_result) {
+        generationResult.set(data.result || {});
+      }
+      // Restore the original step now that session is confirmed
+      currentStep.set(persistedStep);
+      console.log(`[App] Resumed session ${sid} at step ${persistedStep}`);
+    } catch (e) {
+      console.warn('[App] Failed to resume session, resetting:', e);
+      resetSession();
+    }
+  }
+
+  async function onSetupDone() {
+    showSetup = false;
+    // Now attempt session resume
+    const sid = $sessionId;
+    const persistedStep = parseInt(localStorage.getItem('currentStep') || '0');
+    if (!sid || persistedStep < 2) return;
+    try {
+      const data = await resumeSession(sid);
+      const hasVocals = data.has_vocals !== false;
+      const hasOriginal = data.has_original !== false;
+      uploadData.set({
+        filename: data.filename,
+        hasVocals,
+        hasOriginal,
+        vocalUrl: hasVocals ? getAudioUrl(sid, 'vocals') : (hasOriginal ? getAudioUrl(sid, 'original') : null),
+      });
+      if (data.has_lyrics) {
+        lyricsData.set({
+          text: data.lyrics || '',
+          artist: data.artist || '',
+          title: data.title || '',
+          language: data.language || 'en',
+          syllableCount: data.syllable_count || 0,
+          lineCount: data.line_count || 0,
+          preview: [],
+        });
+      }
+      if (data.has_result) {
+        generationResult.set(data.result || {});
+      }
+      currentStep.set(persistedStep);
+    } catch (e) {
+      resetSession();
+    }
+  }
+
   onMount(async () => {
     await pollHealth();
     healthPollInterval = setInterval(pollHealth, 15000);
-
-    // Auto-resume persisted session on refresh
-    const sid = $sessionId;
-    const step = $currentStep;
-    if (sid && step >= 2) {
-      try {
-        const data = await resumeSession(sid);
-        const hasVocals = data.has_vocals !== false;
-        const hasOriginal = data.has_original !== false;
-        uploadData.set({
-          filename: data.filename,
-          hasVocals,
-          hasOriginal,
-          vocalUrl: hasVocals ? getAudioUrl(sid, 'vocals') : (hasOriginal ? getAudioUrl(sid, 'original') : null),
-        });
-        if (data.has_lyrics) {
-          lyricsData.set({
-            text: data.lyrics || '',
-            artist: data.artist || '',
-            title: data.title || '',
-            language: data.language || 'en',
-            syllableCount: data.syllable_count || 0,
-            lineCount: data.line_count || 0,
-            preview: [],
-          });
-        }
-        if (data.has_result) {
-          generationResult.set(data.result || {});
-        }
-        console.log(`[App] Resumed session ${sid} at step ${step}`);
-      } catch (e) {
-        console.warn('[App] Failed to resume session, resetting:', e);
-        resetSession();
-      }
-    }
+    waitForBackendAndResume();
   });
 
   let homeConfirm = false;
@@ -81,6 +148,10 @@
 </script>
 
 <DialogModal />
+
+{#if showSetup}
+  <SetupScreen {setupStatus} on:done={onSetupDone} />
+{/if}
 
 <div class="app" class:full-width={$currentStep === 4}>
   {#if $currentStep === 0}

@@ -10,6 +10,28 @@ multiprocessing.freeze_support()
 
 import os
 import sys
+
+
+def _fix_frozen_path():
+    """When running as a PyInstaller frozen binary the macOS GUI launch environment
+    strips most of PATH (no /opt/homebrew/bin etc.).  WhisperX calls ffmpeg as a
+    subprocess by name, so we need to make sure it's findable."""
+    if not getattr(sys, 'frozen', False):
+        return
+    # 1. bundled ffmpeg extracted alongside our binary by PyInstaller
+    if hasattr(sys, '_MEIPASS'):
+        mei = sys._MEIPASS
+        if os.path.isfile(os.path.join(mei, 'ffmpeg')):
+            os.environ['PATH'] = mei + os.pathsep + os.environ.get('PATH', '')
+            return
+    # 2. common macOS install locations (Homebrew arm64, Homebrew x86, MacPorts)
+    for d in ('/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin'):
+        if os.path.isfile(os.path.join(d, 'ffmpeg')):
+            os.environ['PATH'] = d + os.pathsep + os.environ.get('PATH', '')
+            return
+
+
+_fix_frozen_path()
 import time
 import json
 import uuid
@@ -48,12 +70,24 @@ app.add_middleware(
 app.add_exception_handler(Exception, global_exception_handler)
 app.add_exception_handler(ServiceError, service_exception_handler)
 
-# Directories
-DOWNLOADS_DIR = os.path.join(os.path.dirname(__file__), "downloads")
-CORRECTIONS_DIR = os.path.join(os.path.dirname(__file__), "corrections")
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+# Directories — use persistent user data dir when running as frozen sidecar,
+# so sessions/uploads survive backend restarts between app launches.
+def _user_data_dir() -> str:
+    """Return a persistent data directory that survives PyInstaller temp extraction."""
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller sidecar — store data in ~/Library/Application Support/com.ultrastar.creator
+        base = os.path.expanduser("~/Library/Application Support/com.ultrastar.creator")
+    else:
+        # Dev mode — store alongside source files as before
+        base = os.path.dirname(__file__)
+    return base
+
+_DATA_DIR = _user_data_dir()
+DOWNLOADS_DIR = os.path.join(_DATA_DIR, "downloads")
+CORRECTIONS_DIR = os.path.join(_DATA_DIR, "corrections")
+UPLOAD_DIR = os.path.join(_DATA_DIR, "uploads")
 REFERENCE_DIR = os.path.join(os.path.dirname(__file__), "reference_songs")
-SESSIONS_DIR = os.path.join(os.path.dirname(__file__), "sessions")
+SESSIONS_DIR = os.path.join(_DATA_DIR, "sessions")
 
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 os.makedirs(CORRECTIONS_DIR, exist_ok=True)
@@ -123,6 +157,126 @@ async def health_check():
             "demucs": DEMUCS_AVAILABLE,
         }
     }
+
+
+# ────────────────────────────────────────────────────────────
+# First-run setup: model download status + SSE download stream
+# ────────────────────────────────────────────────────────────
+
+def _check_model_status() -> dict:
+    """Return which AI models are already downloaded."""
+    import shutil
+
+    # ffmpeg
+    ffmpeg_ok = shutil.which('ffmpeg') is not None
+
+    # WhisperX / faster-whisper medium model
+    whisperx_ok = False
+    hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
+    faster_whisper_dir = os.path.join(hf_cache, "models--Systran--faster-whisper-medium")
+    if os.path.isdir(faster_whisper_dir):
+        # Check that there's at least one snapshot with model files
+        snapshots = os.path.join(faster_whisper_dir, "snapshots")
+        if os.path.isdir(snapshots):
+            for snap in os.listdir(snapshots):
+                snap_path = os.path.join(snapshots, snap)
+                if os.path.isdir(snap_path) and os.listdir(snap_path):
+                    whisperx_ok = True
+                    break
+    # Fallback: vanilla whisper medium
+    if not whisperx_ok:
+        vanilla_path = os.path.expanduser("~/.cache/whisper/medium.pt")
+        whisperx_ok = os.path.isfile(vanilla_path)
+
+    # Demucs htdemucs
+    demucs_ok = False
+    torch_hub = os.path.expanduser("~/.cache/torch/hub/checkpoints")
+    if os.path.isdir(torch_hub):
+        for f in os.listdir(torch_hub):
+            # htdemucs checkpoint has a known name prefix
+            if f.startswith("955717e8") or "htdemucs" in f.lower():
+                demucs_ok = True
+                break
+
+    return {
+        "ffmpeg": ffmpeg_ok,
+        "whisperx": whisperx_ok,
+        "demucs": demucs_ok,
+        "ready": ffmpeg_ok and whisperx_ok and demucs_ok,
+    }
+
+
+@app.get("/api/setup/status")
+async def setup_status():
+    """Check which AI models are already downloaded."""
+    return _check_model_status()
+
+
+@app.get("/api/setup/download")
+async def setup_download():
+    """SSE stream: download any missing AI models and report progress."""
+    import asyncio
+
+    async def event_stream():
+        def send(type: str, step: str = "", message: str = "", done: bool = False, error: bool = False):
+            import json
+            data = {"type": type, "step": step, "message": message}
+            return f"data: {json.dumps(data)}\n\n"
+
+        status = _check_model_status()
+
+        # ── ffmpeg ──
+        if not status["ffmpeg"]:
+            yield send("progress", "ffmpeg", "ffmpeg not found — please install via Homebrew: brew install ffmpeg", error=True)
+        else:
+            yield send("done", "ffmpeg", "ffmpeg found")
+
+        await asyncio.sleep(0.05)
+
+        # ── WhisperX ──
+        if not status["whisperx"]:
+            yield send("progress", "whisperx", "Downloading WhisperX medium model (~1.5 GB)…")
+            await asyncio.sleep(0.05)
+            try:
+                import whisperx, torch
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: whisperx.load_model("medium", "cpu", compute_type="int8")
+                )
+                yield send("done", "whisperx", "WhisperX medium model ready")
+            except ImportError:
+                yield send("done", "whisperx", "WhisperX not installed — lyrics will need manual entry", error=True)
+            except Exception as e:
+                yield send("error", "whisperx", f"Download failed: {e}")
+        else:
+            yield send("done", "whisperx", "WhisperX medium model already downloaded")
+
+        await asyncio.sleep(0.05)
+
+        # ── Demucs ──
+        if not status["demucs"]:
+            yield send("progress", "demucs", "Downloading Demucs vocal separation model (~80 MB)…")
+            await asyncio.sleep(0.05)
+            try:
+                from demucs.pretrained import get_model
+                await asyncio.get_event_loop().run_in_executor(None, lambda: get_model("htdemucs"))
+                yield send("done", "demucs", "Demucs model ready")
+            except ImportError:
+                yield send("done", "demucs", "Demucs not installed — vocals must be provided manually", error=True)
+            except Exception as e:
+                yield send("error", "demucs", f"Download failed: {e}")
+        else:
+            yield send("done", "demucs", "Demucs model already downloaded")
+
+        await asyncio.sleep(0.05)
+        import json
+        yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ────────────────────────────────────────────────────────────
@@ -1736,19 +1890,20 @@ async def download_file(session_id: str, file_type: str):
 import re as _re
 
 def _set_header(content: str, key: str, value: str) -> str:
-    """Insert or replace a #KEY:value line in Ultrastar .txt content."""
-    tag = f"#{key}:"
+    """Insert or replace a #KEY:value line in Ultrastar .txt content.
+
+    Always removes any existing occurrences first to prevent duplicates,
+    then inserts after the last header line in the file.
+    """
     new_line = f"#{key}:{value}"
-    if tag in content:
-        return _re.sub(rf"#{key}:[^\n]*", new_line, content)
-    # Insert after the last # header line
+    # Remove all existing occurrences of this key
+    content = _remove_header(content, key)
+    # Find the last #... line in the entire file (not just consecutive from top)
     lines = content.split("\n")
     idx = 0
     for i, ln in enumerate(lines):
         if ln.startswith("#"):
             idx = i + 1
-        else:
-            break
     lines.insert(idx, new_line)
     return "\n".join(lines)
 
@@ -1788,10 +1943,14 @@ def _update_txt_asset_headers(session: dict) -> None:
     cover_file = session.get("cover_file")
     if cover_file and os.path.exists(cover_file):
         content = _set_header(content, "COVER", f"{base} [CO].jpg")
+    else:
+        content = _remove_header(content, "COVER")
 
     bg_file = session.get("bgimage_file")
     if bg_file and os.path.exists(bg_file):
         content = _set_header(content, "BACKGROUND", f"{base} [BG].jpg")
+    else:
+        content = _remove_header(content, "BACKGROUND")
 
     video_filename = session.get("video_filename")
     if video_filename:
@@ -1853,6 +2012,21 @@ async def get_cover(session_id: str):
     return FileResponse(cover_path, media_type="image/jpeg")
 
 
+@app.delete("/api/cover/{session_id}")
+async def delete_cover(session_id: str):
+    """Remove the cover image for a session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    cover_path = session.get("cover_file")
+    if cover_path and os.path.exists(cover_path):
+        os.remove(cover_path)
+    session.pop("cover_file", None)
+    save_session(session_id)
+    _update_txt_asset_headers(session)
+    return {"status": "ok"}
+
+
 @app.post("/api/bgimage/{session_id}")
 async def upload_bgimage(session_id: str, image: UploadFile = File(...)):
     """Save a background image for the session."""
@@ -1884,6 +2058,21 @@ async def get_bgimage(session_id: str):
     if not bg_path or not os.path.exists(bg_path):
         raise HTTPException(status_code=404, detail="No background image")
     return FileResponse(bg_path, media_type="image/jpeg")
+
+
+@app.delete("/api/bgimage/{session_id}")
+async def delete_bgimage(session_id: str):
+    """Remove the background image for a session."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    bg_path = session.get("bgimage_file")
+    if bg_path and os.path.exists(bg_path):
+        os.remove(bg_path)
+    session.pop("bgimage_file", None)
+    save_session(session_id)
+    _update_txt_asset_headers(session)
+    return {"status": "ok"}
 
 
 @app.get("/api/assets/{session_id}")

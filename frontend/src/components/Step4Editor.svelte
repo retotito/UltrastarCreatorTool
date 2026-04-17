@@ -4121,8 +4121,8 @@
       hasUnsavedChanges = false;
       hasVocalsAudio = data.has_vocals !== false;
       hasOriginalAudio = data.has_original !== false;
-      vocalUrl = data.vocal_url;
-      originalUrl = hasOriginalAudio ? `/api/preview-audio/${$sessionId}/original` : '';
+      vocalUrl = hasVocalsAudio ? getAudioUrl($sessionId, 'vocals') : '';
+      originalUrl = hasOriginalAudio ? getAudioUrl($sessionId, 'original') : '';
       // Default to whichever audio is available
       if (hasVocalsAudio) {
         audioSource = 'vocals';

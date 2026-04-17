@@ -4,9 +4,12 @@
 import { writable, derived } from 'svelte/store';
 
 // Current step (0 = launcher, 1-5 = wizard; step 3 is now a modal, not a persisted step)
+// Cap at step 2 on startup — waitForBackendAndResume in App.svelte will advance to the
+// correct step once the backend is confirmed healthy (prevents jumping to export on cold launch).
 const savedStepRaw = localStorage.getItem('currentStep');
 let savedStep = savedStepRaw !== null ? parseInt(savedStepRaw) : 0;
 if (savedStep === 3) savedStep = 2; // step 3 is now a modal; recover to lyrics
+if (savedStep > 2) savedStep = 2;   // don't jump past lyrics until backend confirms session
 export const currentStep = writable(savedStep);
 currentStep.subscribe(v => {
   // Only persist if not on launcher (step 0)

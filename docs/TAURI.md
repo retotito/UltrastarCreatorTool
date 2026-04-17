@@ -19,8 +19,14 @@ Output `.dmg` → `frontend/src-tauri/target/release/bundle/dmg/`
 
 ## Install
 
+Open the DMG folder in Finder:
 ```bash
-open "frontend/src-tauri/target/release/bundle/dmg/Ultrastar Creator_2.0.0_aarch64.dmg"
+open "/Users/retokupfer/projects/SongCreatorGrok/frontend/src-tauri/target/release/bundle/dmg/"
+```
+
+Or mount and install directly:
+```bash
+open "/Users/retokupfer/projects/SongCreatorGrok/frontend/src-tauri/target/release/bundle/dmg/Ultrastar Creator_2.0.0_aarch64.dmg"
 ```
 
 ---

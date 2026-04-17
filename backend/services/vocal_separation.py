@@ -17,6 +17,23 @@ except ImportError:
     log_step("INIT", "Demucs not installed, vocal separation unavailable")
 
 
+def _run_demucs_in_process(audio_path: str, temp_dir: str) -> None:
+    """Call demucs in-process (required for PyInstaller frozen builds where
+    sys.executable is the sidecar binary, not a real Python interpreter)."""
+    from demucs.separate import main as demucs_main
+    args = [
+        "--two-stems", "vocals",
+        "-o", temp_dir,
+        "--mp3",
+        audio_path,
+    ]
+    try:
+        demucs_main(args)
+    except SystemExit as e:
+        if e.code not in (0, None):
+            raise RuntimeError(f"Demucs exited with code {e.code}")
+
+
 def separate_vocals(audio_path: str, output_dir: str) -> str:
     """Extract vocals from a full song using Demucs v4.
     
@@ -33,20 +50,25 @@ def separate_vocals(audio_path: str, output_dir: str) -> str:
     log_step("SEPARATE", f"Starting vocal separation: {os.path.basename(audio_path)}")
     
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Run Demucs using the same Python that's running the server
-        cmd = [
-            sys.executable, "-m", "demucs",
-            "--two-stems", "vocals",  # Only separate vocals vs accompaniment
-            "-o", temp_dir,
-            "--mp3",  # Output as MP3 for smaller size
-            audio_path
-        ]
-        
-        log_step("SEPARATE", "Running Demucs (this may take a few minutes)...")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        
-        if result.returncode != 0:
-            raise RuntimeError(f"Demucs failed: {result.stderr}")
+        if getattr(sys, 'frozen', False):
+            # In a PyInstaller frozen binary sys.executable is the sidecar itself.
+            # Spawning it with "-m demucs" would try to restart the server and fail
+            # with "address already in use".  Call demucs in-process instead.
+            log_step("SEPARATE", "Running Demucs in-process (frozen build)...")
+            _run_demucs_in_process(audio_path, temp_dir)
+        else:
+            # Dev mode: run as subprocess so heavy torch work is isolated.
+            cmd = [
+                sys.executable, "-m", "demucs",
+                "--two-stems", "vocals",
+                "-o", temp_dir,
+                "--mp3",
+                audio_path,
+            ]
+            log_step("SEPARATE", "Running Demucs (this may take a few minutes)...")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if result.returncode != 0:
+                raise RuntimeError(f"Demucs failed: {result.stderr}")
         
         # Find the output vocal file
         # Demucs outputs: htdemucs/<song_name>/vocals.mp3 and no_vocals.mp3

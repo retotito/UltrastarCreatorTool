@@ -1,7 +1,7 @@
 <script>
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
   import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
-           uploadCover, getCoverUrl, uploadBgImage, getBgImageUrl, saveAssetsMeta, getAssetsMeta } from '../services/api.js';
+           uploadCover, getCoverUrl, deleteCover, uploadBgImage, getBgImageUrl, deleteBgImage, saveAssetsMeta, getAssetsMeta } from '../services/api.js';
   import { resetSession } from '../stores/appStore.js';
 
   let exported = false;
@@ -153,7 +153,10 @@
     }, 'image/jpeg', 0.90);
   }
 
-  function removeCover() { coverPreviewUrl = null; }
+  async function removeCover() {
+    coverPreviewUrl = null;
+    try { await deleteCover($sessionId); } catch (_) {}
+  }
 
   async function downloadCover() {
     const res = await fetch(getCoverUrl($sessionId));
@@ -251,7 +254,10 @@
     }, 'image/jpeg', 0.90);
   }
 
-  function removeBg() { bgPreviewUrl = null; }
+  async function removeBg() {
+    bgPreviewUrl = null;
+    try { await deleteBgImage($sessionId); } catch (_) {}
+  }
 
   async function downloadBg() {
     const res = await fetch(getBgImageUrl($sessionId));

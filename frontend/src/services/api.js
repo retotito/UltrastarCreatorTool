@@ -48,6 +48,26 @@ async function request(method, path, body = null, isFormData = false, silent = f
 export async function checkHealth() {
   return request('GET', '/health');
 }
+
+// ─── Setup ─────────────────────────────────────
+export async function checkSetupStatus() {
+  return request('GET', '/setup/status', null, false, true);
+}
+
+export function streamSetupDownload(onEvent) {
+  const url = `${BASE}/setup/download`;
+  const es = new EventSource(url);
+  es.onmessage = (e) => {
+    try {
+      onEvent(JSON.parse(e.data));
+    } catch {}
+  };
+  es.onerror = () => {
+    onEvent({ type: 'error', step: '', message: 'Connection lost' });
+    es.close();
+  };
+  return () => es.close();
+}
 // ─── Sessions ──────────────────────────────────────────────
 export async function listSessions() {
   return request('GET', '/sessions');
@@ -212,6 +232,14 @@ export async function updateMetadata(sessionId, artist, title) {
 }
 
 // ─── Song assets: cover, background, video ─────
+export async function deleteCover(sessionId) {
+  return request('DELETE', `/cover/${sessionId}`);
+}
+
+export async function deleteBgImage(sessionId) {
+  return request('DELETE', `/bgimage/${sessionId}`);
+}
+
 export async function uploadCover(sessionId, blob) {
   const form = new FormData();
   form.append('image', blob, 'cover.jpg');
