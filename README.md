@@ -4,6 +4,28 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 
 **Goal**: Make it easy for anyone to create Ultrastar songs, so more people sing together. 🎤
 
+## Download
+
+> **Early access — not yet code-signed.** See instructions below to open it on macOS.
+
+| Platform | Status | Link |
+|----------|--------|------|
+| macOS (Apple Silicon / ARM) | ✅ Available | [Google Drive](https://drive.google.com/drive/folders/1sFrLy6YNSMU56L0XAZ8I3tmb6WcEh1Oc?usp=sharing) |
+| macOS (Intel) | 🔜 Coming soon | Same folder above |
+| Windows | 🔜 Coming soon | Same folder above |
+| Linux | 🔜 Coming soon | Same folder above |
+
+### Opening on macOS (Gatekeeper bypass)
+
+Because the app is not yet code-signed, macOS will block it on first launch. To open it:
+
+1. Double-click the `.dmg` and drag **Ultrastar Creator** to your Applications folder.
+2. Try to open it — macOS will show a *"cannot be opened because the developer cannot be verified"* message. Click **Cancel**.
+3. Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the Ultrastar Creator entry.
+4. Confirm by clicking **Open** in the dialog that appears.
+
+You only need to do this once.
+
 ## How it Works
 
 | Step | What you do | What the tool does |
