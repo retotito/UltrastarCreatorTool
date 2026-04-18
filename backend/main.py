@@ -9,6 +9,9 @@ import multiprocessing
 multiprocessing.freeze_support()
 
 import os
+# Disable HuggingFace XET protocol so large blobs are downloaded via plain HTTP,
+# enabling progressive filesystem-based progress tracking.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 import sys
 
 
@@ -248,18 +251,19 @@ async def setup_download():
                 from huggingface_hub import snapshot_download
 
                 WHISPERX_TOTAL_BYTES = 1_528_000_000  # ~1.5 GB
-                hf_dir = os.path.expanduser(
-                    "~/.cache/huggingface/hub/models--Systran--faster-whisper-medium"
+                blobs_dir = os.path.expanduser(
+                    "~/.cache/huggingface/hub/models--Systran--faster-whisper-medium/blobs"
                 )
 
-                def _get_downloaded_bytes():
+                def _get_written_bytes():
+                    if not os.path.isdir(blobs_dir):
+                        return 0
                     total = 0
-                    for root, _, files in os.walk(hf_dir):
-                        for f in files:
-                            try:
-                                total += os.path.getsize(os.path.join(root, f))
-                            except OSError:
-                                pass
+                    for entry in os.scandir(blobs_dir):
+                        try:
+                            total += entry.stat().st_size
+                        except OSError:
+                            pass
                     return total
 
                 loop = asyncio.get_event_loop()
@@ -268,15 +272,16 @@ async def setup_download():
                     lambda: snapshot_download("Systran/faster-whisper-medium")
                 )
                 while not fut.done():
-                    await asyncio.sleep(0.5)
-                    downloaded = _get_downloaded_bytes()
+                    await asyncio.sleep(2.0)
+                    downloaded = _get_written_bytes()
                     pct = min(99, int(downloaded * 100 / WHISPERX_TOTAL_BYTES))
                     mb_done = downloaded / 1_000_000
                     mb_total = WHISPERX_TOTAL_BYTES / 1_000_000
+                    log_step("DOWNLOAD", f"whisperx du={downloaded} bytes ({mb_done:.1f} MB) pct={pct}%")
                     yield send("progress", "whisperx",
                                f"Downloading… {mb_done:.0f} / {mb_total:.0f} MB",
                                percent=pct)
-                await fut  # re-raise any exception
+                await fut
 
                 yield send("done", "whisperx", "WhisperX medium model ready")
             except ImportError as e:
@@ -293,21 +298,18 @@ async def setup_download():
             yield send("progress", "demucs", "Downloading Demucs vocal separation model (~80 MB)…", percent=0)
             await asyncio.sleep(0.05)
             try:
-                import torch
-
-                DEMUCS_TOTAL_BYTES = 85_000_000  # ~80 MB
+                DEMUCS_TOTAL_BYTES = 85_000_000
                 torch_hub_dir = os.path.expanduser("~/.cache/torch/hub/checkpoints")
 
                 def _get_demucs_bytes():
-                    total = 0
                     if not os.path.isdir(torch_hub_dir):
                         return 0
-                    for f in os.listdir(torch_hub_dir):
-                        if f.endswith(".th") or f.endswith(".th.tmp"):
-                            try:
-                                total += os.path.getsize(os.path.join(torch_hub_dir, f))
-                            except OSError:
-                                pass
+                    total = 0
+                    for entry in os.scandir(torch_hub_dir):
+                        try:
+                            total += entry.stat().st_size
+                        except OSError:
+                            pass
                     return total
 
                 def _download_demucs():
@@ -317,7 +319,7 @@ async def setup_download():
                 loop = asyncio.get_event_loop()
                 fut = loop.run_in_executor(None, _download_demucs)
                 while not fut.done():
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(2.0)
                     downloaded = _get_demucs_bytes()
                     pct = min(99, int(downloaded * 100 / DEMUCS_TOTAL_BYTES))
                     mb_done = downloaded / 1_000_000
