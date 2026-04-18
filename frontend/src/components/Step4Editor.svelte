@@ -5177,7 +5177,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    width: 324px;
+    width: 335px;
     border: 1px solid #333;
     border-radius: 4px;
   }
@@ -5199,7 +5199,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    width: 156px;
+    width: 175px;
     border: 1px solid #333;
     border-radius: 4px;
   }

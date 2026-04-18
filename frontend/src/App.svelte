@@ -75,6 +75,22 @@
     if (healthPollInterval) clearInterval(healthPollInterval);
   });
 
+  // Global error modal
+  let errorModalMessage = null;
+
+  function showErrorModal(msg) {
+    errorModalMessage = String(msg);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('error', (e) => {
+      showErrorModal(e.message || String(e));
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      showErrorModal(e.reason?.message || String(e.reason));
+    });
+  }
+
   async function goHome() {
     // Save Step2 lyrics before session is cleared
     if ($currentStep === 2 && $sessionId && $lyricsData.text?.trim()) {
@@ -94,6 +110,17 @@
       <div class="startup-spinner"></div>
       <p class="startup-msg">Backend is starting up…</p>
       <p class="startup-hint">This can take up to 30 seconds.</p>
+    </div>
+  </div>
+{/if}
+
+{#if errorModalMessage}
+  <div class="error-modal-overlay" on:click={() => errorModalMessage = null}>
+    <div class="error-modal" on:click|stopPropagation>
+      <h2>Unexpected Error</h2>
+      <pre class="error-modal-msg">{errorModalMessage}</pre>
+      <p class="error-modal-hint">Please screenshot this and report it to the developer.</p>
+      <button on:click={() => errorModalMessage = null}>Dismiss</button>
     </div>
   </div>
 {/if}
@@ -220,5 +247,63 @@
     color: #666e7a;
     font-size: 0.82rem;
     margin: 0;
+  }
+
+  .error-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+
+  .error-modal {
+    background: #1e2330;
+    border: 1px solid #e05555;
+    border-radius: 10px;
+    padding: 1.5rem 2rem;
+    max-width: 560px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  .error-modal h2 {
+    color: #e05555;
+    margin: 0;
+    font-size: 1.1rem;
+  }
+
+  .error-modal-msg {
+    background: #111418;
+    color: #f0a0a0;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 0;
+  }
+
+  .error-modal-hint {
+    color: #888;
+    font-size: 0.8rem;
+    margin: 0;
+  }
+
+  .error-modal button {
+    align-self: flex-end;
+    background: #e05555;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.4rem 1.2rem;
+    cursor: pointer;
+    font-size: 0.9rem;
   }
 </style>

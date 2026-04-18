@@ -26,7 +26,7 @@ fi
 # ── Step 1: Build Python sidecar with PyInstaller ───────────────────────────
 echo "→ Building Python sidecar (this takes a few minutes)..."
 rm -rf dist-backend build/backend
-"$PYINSTALLER" backend/backend.spec --distpath dist-backend --noconfirm
+"$PYINSTALLER" backend/backend.spec --distpath dist-backend --noconfirm --clean
 
 SIDECAR_RESOURCES="frontend/src-tauri/resources/backend"
 echo "→ Copying onedir bundle to $SIDECAR_RESOURCES"

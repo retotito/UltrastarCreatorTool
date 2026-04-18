@@ -33,6 +33,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["resources/backend/**/*"]
+    "resources": ["resources/backend/**/*"],
+    "macOS": {
+      "entitlements": "entitlements.plist",
+      "infoPlist": "Info.plist"
+    }
   }
 }

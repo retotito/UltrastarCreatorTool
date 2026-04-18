@@ -19,6 +19,7 @@
   let tickers = {};  // key → intervalId
 
   function startTicker(key) {
+    if (tickers[key]) return; // already running, don't reset
     steps[key].elapsed = 0;
     tickers[key] = setInterval(() => { steps[key].elapsed += 1; steps = steps; }, 1000);
   }
