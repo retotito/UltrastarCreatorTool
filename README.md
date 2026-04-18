@@ -189,5 +189,3 @@ backend/            FastAPI server
 frontendTest/       Test audio + lyrics files
 docs/               Architecture docs, plan
 ```
-
-https://drive.google.com/drive/folders/1sFrLy6YNSMU56L0XAZ8I3tmb6WcEh1Oc?usp=sharing
