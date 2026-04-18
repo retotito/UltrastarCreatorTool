@@ -13,6 +13,9 @@ frontend/src-tauri/target/
 # Tauri sidecar binaries (large build artifacts, built locally by build_local.sh)
 frontend/src-tauri/binaries/
 
+# PyInstaller sidecar output bundled into Tauri resources
+frontend/src-tauri/resources/backend/
+
 # Environment files
 .env
 .env.local

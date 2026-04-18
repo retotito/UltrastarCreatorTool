@@ -8,9 +8,9 @@
 
   // Step state: 'pending' | 'downloading' | 'done' | 'error' | 'skipped'
   let steps = {
-    ffmpeg:   { label: 'ffmpeg (audio tools)',   size: '',         state: 'pending', message: '', elapsed: 0 },
-    whisperx: { label: 'WhisperX speech model',  size: '~1.5 GB', state: 'pending', message: '', elapsed: 0 },
-    demucs:   { label: 'Demucs vocal model',      size: '~80 MB',  state: 'pending', message: '', elapsed: 0 },
+    ffmpeg:   { label: 'ffmpeg (audio tools)',   size: '',         state: 'pending', message: '', elapsed: 0, percent: null },
+    whisperx: { label: 'WhisperX speech model',  size: '~1.5 GB', state: 'pending', message: '', elapsed: 0, percent: null },
+    demucs:   { label: 'Demucs vocal model',      size: '~80 MB',  state: 'pending', message: '', elapsed: 0, percent: null },
   };
 
   let downloading = false;
@@ -53,6 +53,7 @@
         if (s) {
           s.state = 'downloading';
           s.message = event.message;
+          if (event.percent != null) s.percent = event.percent;
           steps = steps;
           startTicker(event.step);
         }
@@ -110,6 +111,12 @@
           <div class="step-info">
             <div class="step-label">{step.label} {#if step.size}<span class="size">{step.size}</span>{/if}</div>
             {#if step.state === 'downloading'}
+              {#if step.percent != null}
+                <div class="step-progress-bar">
+                  <div class="step-progress-fill" style="width: {step.percent}%"></div>
+                </div>
+                <div class="step-percent">{step.percent}%</div>
+              {/if}
               <div class="step-elapsed">⏱ {step.elapsed}s elapsed</div>
             {/if}
             {#if step.message}
@@ -221,6 +228,28 @@
     color: #388bfd;
     font-variant-numeric: tabular-nums;
     margin-top: 0.2rem;
+  }
+
+  .step-progress-bar {
+    margin-top: 0.35rem;
+    height: 6px;
+    background: #21262d;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .step-progress-fill {
+    height: 100%;
+    background: #388bfd;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+
+  .step-percent {
+    font-size: 0.78rem;
+    color: #388bfd;
+    font-variant-numeric: tabular-nums;
+    margin-top: 0.15rem;
   }
 
   .step-message {

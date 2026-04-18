@@ -100,12 +100,21 @@ except Exception as _e:
     print(f"[spec] essentia collection skipped: {_e}")
 
 # ── Optional AI packages (only if installed) ──────────────────────────────────
-for optional_pkg in ('torch', 'torchaudio', 'demucs', 'whisperx', 'whisper', 'pyannote', 'pyannote.audio', 'pyannote.core', 'pyannote.database', 'pyannote.metrics', 'pyannote.pipeline', 'asteroid_filterbanks', 'speechbrain', 'faster_whisper', 'PIL', 'torchvision', 'transformers'):
+for optional_pkg in ('torch', 'torchaudio', 'demucs', 'whisperx', 'whisper', 'pyannote', 'pyannote.audio', 'pyannote.core', 'pyannote.database', 'pyannote.metrics', 'pyannote.pipeline', 'asteroid_filterbanks', 'speechbrain', 'faster_whisper', 'PIL', 'torchvision', 'transformers', 'Pillow'):
     try:
         _d, _b, _h = collect_all(optional_pkg)
         datas += _d; binaries += _b; hiddenimports += _h
     except Exception:
         pass
+
+# ── Explicitly add PIL .so extensions (collect_all misses them for Pillow) ───
+import glob as _glob
+import importlib.util as _ilu
+_pil_spec = _ilu.find_spec('PIL')
+if _pil_spec and _pil_spec.submodule_search_locations:
+    _pil_dir = list(_pil_spec.submodule_search_locations)[0]
+    for _so in _glob.glob(os.path.join(_pil_dir, '*.so')) + _glob.glob(os.path.join(_pil_dir, '*.dylib')):
+        binaries += [(_so, 'PIL')]
 
 # ── Explicit hidden imports that PyInstaller misses ───────────────────────────
 hiddenimports += [
@@ -143,6 +152,13 @@ hiddenimports += [
     'sklearn',
     'sklearn.utils',
     'sklearn.neighbors',
+    # PIL C extensions
+    'PIL._imaging',
+    'PIL._imagingcms',
+    'PIL._imagingft',
+    'PIL._imagingmath',
+    'PIL._imagingmorph',
+    'PIL._webp',
 ]
 
 # ── Include the full backend source tree ──────────────────────────────────────

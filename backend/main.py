@@ -175,18 +175,23 @@ def _check_model_status() -> dict:
     hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
     faster_whisper_dir = os.path.join(hf_cache, "models--Systran--faster-whisper-medium")
     if os.path.isdir(faster_whisper_dir):
-        # Check that there's at least one snapshot with model files
+        # Check that there's at least one snapshot with the required model files
         snapshots = os.path.join(faster_whisper_dir, "snapshots")
         if os.path.isdir(snapshots):
             for snap in os.listdir(snapshots):
                 snap_path = os.path.join(snapshots, snap)
-                if os.path.isdir(snap_path) and os.listdir(snap_path):
-                    whisperx_ok = True
-                    break
+                if os.path.isdir(snap_path):
+                    # Require both config.json and model.bin to be present and non-empty
+                    config_ok = os.path.isfile(os.path.join(snap_path, "config.json"))
+                    model_ok = os.path.isfile(os.path.join(snap_path, "model.bin")) and \
+                               os.path.getsize(os.path.join(snap_path, "model.bin")) > 100_000_000
+                    if config_ok and model_ok:
+                        whisperx_ok = True
+                        break
     # Fallback: vanilla whisper medium
     if not whisperx_ok:
         vanilla_path = os.path.expanduser("~/.cache/whisper/medium.pt")
-        whisperx_ok = os.path.isfile(vanilla_path)
+        whisperx_ok = os.path.isfile(vanilla_path) and os.path.getsize(vanilla_path) > 100_000_000
 
     # Demucs htdemucs
     demucs_ok = False
@@ -218,9 +223,11 @@ async def setup_download():
     import asyncio
 
     async def event_stream():
-        def send(type: str, step: str = "", message: str = "", done: bool = False, error: bool = False):
+        def send(type: str, step: str = "", message: str = "", done: bool = False, error: bool = False, percent: int = None):
             import json
             data = {"type": type, "step": step, "message": message}
+            if percent is not None:
+                data["percent"] = percent
             return f"data: {json.dumps(data)}\n\n"
 
         status = _check_model_status()
@@ -235,18 +242,45 @@ async def setup_download():
 
         # ── WhisperX ──
         if not status["whisperx"]:
-            yield send("progress", "whisperx", "Downloading WhisperX medium model (~1.5 GB)…")
+            yield send("progress", "whisperx", "Downloading WhisperX medium model (~1.5 GB)…", percent=0)
             await asyncio.sleep(0.05)
             try:
-                import whisperx, torch
-                await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: whisperx.load_model("medium", "cpu", compute_type="int8")
+                from huggingface_hub import snapshot_download
+
+                WHISPERX_TOTAL_BYTES = 1_528_000_000  # ~1.5 GB
+                hf_dir = os.path.expanduser(
+                    "~/.cache/huggingface/hub/models--Systran--faster-whisper-medium"
                 )
+
+                def _get_downloaded_bytes():
+                    total = 0
+                    for root, _, files in os.walk(hf_dir):
+                        for f in files:
+                            try:
+                                total += os.path.getsize(os.path.join(root, f))
+                            except OSError:
+                                pass
+                    return total
+
+                loop = asyncio.get_event_loop()
+                fut = loop.run_in_executor(
+                    None,
+                    lambda: snapshot_download("Systran/faster-whisper-medium")
+                )
+                while not fut.done():
+                    await asyncio.sleep(0.5)
+                    downloaded = _get_downloaded_bytes()
+                    pct = min(99, int(downloaded * 100 / WHISPERX_TOTAL_BYTES))
+                    mb_done = downloaded / 1_000_000
+                    mb_total = WHISPERX_TOTAL_BYTES / 1_000_000
+                    yield send("progress", "whisperx",
+                               f"Downloading… {mb_done:.0f} / {mb_total:.0f} MB",
+                               percent=pct)
+                await fut  # re-raise any exception
+
                 yield send("done", "whisperx", "WhisperX medium model ready")
             except ImportError as e:
-                import traceback
-                yield send("done", "whisperx", f"WhisperX not installed — {traceback.format_exc()}", error=True)
+                yield send("done", "whisperx", f"WhisperX not installed — {e}", error=True)
             except Exception as e:
                 yield send("error", "whisperx", f"Download failed: {e}")
         else:
@@ -256,11 +290,43 @@ async def setup_download():
 
         # ── Demucs ──
         if not status["demucs"]:
-            yield send("progress", "demucs", "Downloading Demucs vocal separation model (~80 MB)…")
+            yield send("progress", "demucs", "Downloading Demucs vocal separation model (~80 MB)…", percent=0)
             await asyncio.sleep(0.05)
             try:
-                from demucs.pretrained import get_model
-                await asyncio.get_event_loop().run_in_executor(None, lambda: get_model("htdemucs"))
+                import torch
+
+                DEMUCS_TOTAL_BYTES = 85_000_000  # ~80 MB
+                torch_hub_dir = os.path.expanduser("~/.cache/torch/hub/checkpoints")
+
+                def _get_demucs_bytes():
+                    total = 0
+                    if not os.path.isdir(torch_hub_dir):
+                        return 0
+                    for f in os.listdir(torch_hub_dir):
+                        if f.endswith(".th") or f.endswith(".th.tmp"):
+                            try:
+                                total += os.path.getsize(os.path.join(torch_hub_dir, f))
+                            except OSError:
+                                pass
+                    return total
+
+                def _download_demucs():
+                    from demucs.pretrained import get_model
+                    get_model("htdemucs")
+
+                loop = asyncio.get_event_loop()
+                fut = loop.run_in_executor(None, _download_demucs)
+                while not fut.done():
+                    await asyncio.sleep(0.5)
+                    downloaded = _get_demucs_bytes()
+                    pct = min(99, int(downloaded * 100 / DEMUCS_TOTAL_BYTES))
+                    mb_done = downloaded / 1_000_000
+                    mb_total = DEMUCS_TOTAL_BYTES / 1_000_000
+                    yield send("progress", "demucs",
+                               f"Downloading… {mb_done:.0f} / {mb_total:.0f} MB",
+                               percent=pct)
+                await fut
+
                 yield send("done", "demucs", "Demucs model ready")
             except ImportError:
                 yield send("done", "demucs", "Demucs not installed — vocals must be provided manually", error=True)
