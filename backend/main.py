@@ -360,6 +360,24 @@ async def setup_download():
             yield send("progress", "wav2vec2", "Downloading wav2vec2 alignment model (~360 MB)…", percent=0)
             await asyncio.sleep(0.05)
             try:
+                WAV2VEC2_TOTAL_BYTES = 360_000_000  # ~360 MB
+                hf_hub_dir = os.path.expanduser("~/.cache/huggingface/hub")
+
+                # Snapshot of bytes already in cache before we start
+                def _dir_bytes(path):
+                    if not os.path.isdir(path):
+                        return 0
+                    total = 0
+                    for dirpath, _, filenames in os.walk(path):
+                        for f in filenames:
+                            try:
+                                total += os.path.getsize(os.path.join(dirpath, f))
+                            except OSError:
+                                pass
+                    return total
+
+                bytes_before = _dir_bytes(hf_hub_dir)
+
                 def _download_wav2vec2():
                     import whisperx
                     align_model, align_metadata = whisperx.load_align_model(language_code="en", device="cpu")
@@ -369,7 +387,13 @@ async def setup_download():
                 fut = loop.run_in_executor(None, _download_wav2vec2)
                 while not fut.done():
                     await asyncio.sleep(2.0)
-                    yield send("progress", "wav2vec2", "Downloading alignment model (~360 MB)…")
+                    downloaded = max(0, _dir_bytes(hf_hub_dir) - bytes_before)
+                    pct = min(99, int(downloaded * 100 / WAV2VEC2_TOTAL_BYTES))
+                    mb_done = downloaded / 1_000_000
+                    mb_total = WAV2VEC2_TOTAL_BYTES / 1_000_000
+                    yield send("progress", "wav2vec2",
+                               f"Downloading… {mb_done:.0f} / {mb_total:.0f} MB",
+                               percent=pct)
                 await fut
                 yield send("done", "wav2vec2", "Alignment model ready")
             except ImportError:
