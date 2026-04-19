@@ -122,6 +122,17 @@ try:
                 # with the bundled Homebrew ffmpeg binary (different ABI version).
                 if not os.path.basename(_lib).startswith(('libav', 'libsw', 'libpostproc')):
                     binaries += [(_lib, '.')]
+
+# ── Override libav*/libsw* dylibs with Homebrew versions ─────────────────────
+# torchaudio and essentia each bundle their own libav dylibs, but they are
+# missing re-exported symbols (e.g. _av_buffer_unref) that the Homebrew-built
+# ffmpeg binary expects.  Explicitly add Homebrew's versions last so they win.
+import glob as _glob
+for _hb_lib in _glob.glob('/opt/homebrew/lib/libav*.dylib') + \
+               _glob.glob('/opt/homebrew/lib/libsw*.dylib') + \
+               _glob.glob('/opt/homebrew/lib/libpostproc*.dylib'):
+    binaries += [(_hb_lib, '.')]
+    print(f"[spec] overriding with Homebrew dylib: {os.path.basename(_hb_lib)}")
     _d, _b, _h = collect_all('essentia')
     datas += _d; binaries += _b; hiddenimports += _h
 except Exception as _e:
