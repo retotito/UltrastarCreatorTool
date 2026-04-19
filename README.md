@@ -11,7 +11,7 @@ A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you 
 | Platform | Status | Link |
 |----------|--------|------|
 | macOS (Apple Silicon / ARM) | ✅ Available | [Google Drive](https://drive.google.com/drive/folders/1sFrLy6YNSMU56L0XAZ8I3tmb6WcEh1Oc?usp=sharing) |
-| macOS (Intel) | 🔜 Coming soon | Same folder above |
+| macOS (Intel x86) | ✅ Available | [Google Drive](https://drive.google.com/drive/folders/1sFrLy6YNSMU56L0XAZ8I3tmb6WcEh1Oc?usp=sharing) |
 | Windows | 🔜 Coming soon | Same folder above |
 | Linux | 🔜 Coming soon | Same folder above |
 
@@ -25,6 +25,16 @@ Because the app is not yet code-signed, macOS will block it on first launch. To 
 4. Confirm by clicking **Open** in the dialog that appears.
 
 You only need to do this once.
+
+### Troubleshooting / Debug Logs
+
+If something goes wrong inside the app, you can view the backend log in real time:
+
+```bash
+tail -f ~/Library/Logs/com.ultrastar.creator/backend.log
+```
+
+This shows all processing steps — vocal separation progress, transcription, pitch detection, and any errors.
 
 ## How it Works
 
