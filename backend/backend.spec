@@ -60,6 +60,8 @@ datas += _d; binaries += _b; hiddenimports += _h
 # scipy + numpy
 _d, _b, _h = collect_all('scipy')
 datas += _d; binaries += _b; hiddenimports += _h
+_d, _b, _h = collect_all('numpy')
+datas += _d; binaries += _b; hiddenimports += _h
 
 # soundfile, audioread, soxr — librosa audio backends
 for pkg in ('soundfile', 'audioread', 'soxr', 'cffi'):
