@@ -224,6 +224,19 @@ export async function generateUltrastar(sessionId, signal = null) {
   return request('POST', `/generate/${sessionId}`, null, false, false, signal);
 }
 
+export function streamGenerate(sessionId, onEvent) {
+  const url = `${BASE}/generate-stream/${sessionId}`;
+  const es = new EventSource(url);
+  es.onmessage = (e) => {
+    try { onEvent(JSON.parse(e.data)); } catch {}
+  };
+  es.onerror = () => {
+    onEvent({ type: 'error', message: 'Connection lost' });
+    es.close();
+  };
+  return es;
+}
+
 export async function cancelGeneration(sessionId) {
   return request('POST', `/cancel/${sessionId}`, null, false, false, null).catch(() => {});
 }

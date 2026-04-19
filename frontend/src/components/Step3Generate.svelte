@@ -1,13 +1,14 @@
 <script>
   import { onMount } from 'svelte';
   import { sessionId, generationResult, currentStep, isProcessing, processingStatus, errorMessage, generationLog, generationShowPreview, generationModalOpen } from '../stores/appStore.js';
-  import { generateUltrastar, cancelGeneration } from '../services/api.js';
+  import { generateUltrastar, cancelGeneration, streamGenerate } from '../services/api.js';
 
   $: logMessages = $generationLog;
   $: showPreview = $generationShowPreview;
 
   let cancelled = false;
   let abortController = null;
+  let generateEs = null;
 
   onMount(() => {
     handleGenerate();
@@ -15,11 +16,10 @@
 
   async function cancel() {
     cancelled = true;
-    // Abort the in-flight fetch immediately
     if (abortController) abortController.abort();
+    if (generateEs) { generateEs.close(); generateEs = null; }
     isProcessing.set(false);
     generationModalOpen.set(false);
-    // Tell the backend to stop (fire-and-forget, don't block on it)
     cancelGeneration($sessionId);
   }
 
@@ -33,15 +33,27 @@
     abortController = new AbortController();
 
     addLog('Starting generation pipeline...');
+    addLog('Step 1/4: Detecting BPM...');
+    addLog('Step 2/4: Running pitch detection...');
+    addLog('Step 3/4: Aligning syllables to audio...');
+    addLog('Step 4/4: Generating Ultrastar files...');
 
     try {
-      addLog('Step 1/4: Detecting BPM...');
-      addLog('Step 2/4: Running pitch detection...');
-      addLog('Step 3/4: Aligning syllables to audio...');
-      addLog('Step 4/4: Generating Ultrastar files...');
-
-      const result = await generateUltrastar($sessionId, abortController.signal);
-      console.log('[Step3] Generation result:', result);
+      const result = await new Promise((resolve, reject) => {
+        generateEs = streamGenerate($sessionId, (event) => {
+          if (event.type === 'error') {
+            reject(new Error(event.message));
+          } else if (event.type === 'done') {
+            resolve(event);
+          }
+          // ping events are silently ignored
+        });
+        abortController.signal.addEventListener('abort', () => {
+          if (generateEs) { generateEs.close(); generateEs = null; }
+          reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+        });
+      });
+      generateEs = null;
 
       generationResult.set(result);
 

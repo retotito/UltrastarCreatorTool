@@ -1926,6 +1926,52 @@ def generate_ultrastar_files(session_id: str):
         raise ServiceError("Generation failed", str(e))
 
 
+@app.get("/api/generate-stream/{session_id}")
+async def generate_stream(session_id: str):
+    """SSE stream that kicks off generation in a thread and sends keep-alive pings.
+    Prevents Tauri/WKWebView from timing out on long CPU-bound generation."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    import asyncio, json, threading
+
+    result_holder = {}
+
+    def run_generation():
+        try:
+            generate_ultrastar_files(session_id)
+            result_holder["ok"] = True
+        except Exception as e:
+            result_holder["error"] = str(e)
+
+    thread = threading.Thread(target=run_generation, daemon=True)
+    thread.start()
+
+    async def event_stream():
+        while thread.is_alive():
+            status = session.get("status", "generating")
+            yield f"data: {json.dumps({'type': 'ping', 'status': status})}\n\n"
+            await asyncio.sleep(5)
+        if "error" in result_holder:
+            yield f"data: {json.dumps({'type': 'error', 'message': result_holder['error']})}\n\n"
+        else:
+            # Build result the same way get_generation_result does
+            result = session.get("result", {})
+            exclude_keys = {"syllable_timings", "ultrastar_content", "pitch_data"}
+            response = {"type": "done", "status": "ok", "session_id": session_id}
+            for k, v in result.items():
+                if k not in exclude_keys:
+                    response[k] = v
+            response["ultrastar_preview"] = result.get("ultrastar_content", "")[:2000]
+            yield f"data: {json.dumps(response)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
+
+
 @app.get("/api/generate/result/{session_id}")
 async def get_generation_result(session_id: str):
     """Get the result of a previous generation."""
