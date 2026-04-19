@@ -29,6 +29,7 @@ for _meta_pkg in (
     'torchcodec', 'transformers', 'tokenizers', 'huggingface_hub',
     'whisperx', 'faster_whisper', 'pyannote.audio', 'pyannote.core',
     'speechbrain', 'torch', 'torchaudio', 'torchvision', 'Pillow',
+    'lightning_fabric', 'pytorch_lightning',
 ):
     try:
         datas += copy_metadata(_meta_pkg)
@@ -124,7 +125,7 @@ except Exception as _e:
     print(f"[spec] essentia collection skipped: {_e}")
 
 # ── Optional AI packages (only if installed) ──────────────────────────────────
-for optional_pkg in ('torch', 'torchaudio', 'demucs', 'whisperx', 'whisper', 'pyannote', 'pyannote.audio', 'pyannote.core', 'pyannote.database', 'pyannote.metrics', 'pyannote.pipeline', 'asteroid_filterbanks', 'speechbrain', 'faster_whisper', 'PIL', 'torchvision', 'transformers', 'Pillow'):
+for optional_pkg in ('torch', 'torchaudio', 'demucs', 'whisperx', 'whisper', 'pyannote', 'pyannote.audio', 'pyannote.core', 'pyannote.database', 'pyannote.metrics', 'pyannote.pipeline', 'asteroid_filterbanks', 'speechbrain', 'faster_whisper', 'PIL', 'torchvision', 'transformers', 'Pillow', 'lightning_fabric', 'pytorch_lightning'):
     try:
         _d, _b, _h = collect_all(optional_pkg)
         datas += _d; binaries += _b; hiddenimports += _h
