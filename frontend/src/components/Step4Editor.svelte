@@ -63,6 +63,13 @@
   $: scrollHandlePct = ((centerBeat   - getMinBeat()) / scrollBeatRange * 100).toFixed(3);
   $: playheadPct     = ((playbackBeat - getMinBeat()) / scrollBeatRange * 100).toFixed(3);
 
+  // Clamp scrollX so the view never scrolls past the end of the song
+  function clampScrollX(x) {
+    const minX = getMinBeat() * zoom;
+    const maxX = Math.max(minX, totalBeats * zoom - canvasW);
+    return Math.min(maxX, Math.max(minX, x));
+  }
+
   // Rubber-band (box) selection
   let isBoxSelecting = false;
   let boxSelectStart = { x: 0, y: 0 };
@@ -2839,11 +2846,11 @@
       console.log(`[Wheel] Zoom ${oldZoom.toFixed(1)} → ${zoom.toFixed(1)}`);
       const mouseX = event.clientX - canvasEl.getBoundingClientRect().left;
       const anchorBeat = (scrollX + mouseX) / oldZoom;
-      scrollX = Math.max(getMinBeat() * zoom, anchorBeat * zoom - mouseX);
+      scrollX = clampScrollX(anchorBeat * zoom - mouseX);
     } else {
       // Horizontal scroll only
       if (Math.abs(event.deltaX) > 1) {
-        scrollX = Math.max(getMinBeat() * zoom, scrollX + event.deltaX);
+        scrollX = clampScrollX(scrollX + event.deltaX);
       }
     }
 
@@ -2862,7 +2869,7 @@
     const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     // Click sets center beat; back-calculate left-edge scrollX
     const clickedCenterBeat = getMinBeat() + frac * scrollBeatRange;
-    scrollX = (clickedCenterBeat - canvasW / (2 * zoom)) * zoom;
+    scrollX = clampScrollX((clickedCenterBeat - canvasW / (2 * zoom)) * zoom);
     draw();
     // Begin drag — store center beat at drag start
     scrollHandleDragging = true;
@@ -2878,7 +2885,7 @@
     const deltaPx        = e.clientX - scrollDragStartX;
     const deltaBeat      = (deltaPx / rect.width) * scrollBeatRange;
     const newCenterBeat  = Math.min(totalBeats, Math.max(getMinBeat(), scrollDragStartBeat + deltaBeat));
-    scrollX = (newCenterBeat - canvasW / (2 * zoom)) * zoom;
+    scrollX = clampScrollX((newCenterBeat - canvasW / (2 * zoom)) * zoom);
     draw();
   }
 
