@@ -36,6 +36,10 @@ def _run_demucs_in_process(audio_path: str, temp_dir: str) -> None:
     except SystemExit as e:
         if e.code not in (0, None):
             raise RuntimeError(f"Demucs exited with code {e.code}")
+    except Exception as e:
+        import traceback
+        log_step("SEPARATE", f"Demucs in-process exception: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        raise
 
 
 def separate_vocals(audio_path: str, output_dir: str) -> str:
