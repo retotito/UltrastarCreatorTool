@@ -354,15 +354,21 @@ async def setup_download():
             await asyncio.sleep(0.05)
             try:
                 WAV2VEC2_TOTAL_BYTES = 360_000_000  # ~360 MB
-                wav2vec2_file = os.path.expanduser(
-                    "~/.cache/torch/hub/checkpoints/wav2vec2_fairseq_base_ls960_asr_ls960.pth"
-                )
+                torch_checkpoints = os.path.expanduser("~/.cache/torch/hub/checkpoints")
 
-                def _get_wav2vec2_bytes():
-                    try:
-                        return os.path.getsize(wav2vec2_file)
-                    except OSError:
+                def _dir_total_bytes(path):
+                    if not os.path.isdir(path):
                         return 0
+                    total = 0
+                    for entry in os.scandir(path):
+                        try:
+                            total += entry.stat().st_size
+                        except OSError:
+                            pass
+                    return total
+
+                # Snapshot before download starts so we measure only new bytes
+                bytes_before = _dir_total_bytes(torch_checkpoints)
 
                 def _download_wav2vec2():
                     import whisperx
@@ -373,7 +379,7 @@ async def setup_download():
                 fut = loop.run_in_executor(None, _download_wav2vec2)
                 while not fut.done():
                     await asyncio.sleep(2.0)
-                    downloaded = _get_wav2vec2_bytes()
+                    downloaded = max(0, _dir_total_bytes(torch_checkpoints) - bytes_before)
                     pct = min(99, int(downloaded * 100 / WAV2VEC2_TOTAL_BYTES))
                     mb_done = downloaded / 1_000_000
                     mb_total = WAV2VEC2_TOTAL_BYTES / 1_000_000
