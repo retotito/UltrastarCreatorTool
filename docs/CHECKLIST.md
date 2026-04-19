@@ -28,6 +28,7 @@
 
 ## TODO Later
 
+- [ ] **Progress bars for long-running operations**: Stream progress from backend via SSE for vocal separation (Demucs), lyrics generation, and Ultrastar file generation. Show a live progress bar in the modal/UI for each step. Backend already emits progress for Demucs (visible in `tail -f backend.log`) — needs to be wired to the frontend.
 - [ ] **Lyrics comparison in Step 2**: Before generating, compare user-pasted lyrics against what MFA actually hears in the audio. Show warnings for mismatched/phantom words (extra articles, missing words, etc.) so the user can fix lyrics before alignment runs.
 - [ ] **Golden note editing**: Support `*` (golden notes) in the piano roll editor.
 - [ ] **Tied/continuation notes**: Support `~` (tied notes) in the piano roll editor.
