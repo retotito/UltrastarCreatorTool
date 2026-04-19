@@ -4170,9 +4170,14 @@
       loadSessionNotes();
       loadFlags();
 
-      // Load waveform
-      if (vocalUrl) {
-        loadWaveform(vocalUrl);
+      // Load waveform for the active audio source and initialize audioEl
+      const activeAudioUrl = audioSource === 'original' ? originalUrl : vocalUrl;
+      if (activeAudioUrl) {
+        loadWaveform(activeAudioUrl);
+        if (audioEl) {
+          audioEl.src = activeAudioUrl;
+          audioEl.load();
+        }
       }
 
       updatePitchRange();
