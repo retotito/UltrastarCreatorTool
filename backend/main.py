@@ -1035,6 +1035,18 @@ async def cancel_transcribe(session_id: str):
 @app.get("/api/transcribe-stream/{session_id}")
 async def transcribe_stream(session_id: str, language: str = "en"):
     """SSE stream for transcription — keeps connection alive during long Whisper runs."""
+    # Normalize full language names to ISO codes (e.g. "English" -> "en")
+    _LANG_MAP = {
+        "english": "en", "german": "de", "french": "fr", "spanish": "es",
+        "italian": "it", "portuguese": "pt", "dutch": "nl", "russian": "ru",
+        "japanese": "ja", "chinese": "zh", "korean": "ko", "arabic": "ar",
+        "turkish": "tr", "polish": "pl", "swedish": "sv", "norwegian": "no",
+        "danish": "da", "finnish": "fi", "czech": "cs", "hungarian": "hu",
+        "romanian": "ro", "ukrainian": "uk", "greek": "el", "hebrew": "he",
+        "hindi": "hi", "thai": "th", "vietnamese": "vi", "indonesian": "id",
+    }
+    language = _LANG_MAP.get(language.lower(), language.lower()) if language else "en"
+
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
