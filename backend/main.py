@@ -974,6 +974,158 @@ async def cancel_transcribe(session_id: str):
     return {"status": "ok", "message": "Transcription cancellation requested"}
 
 
+@app.get("/api/transcribe-stream/{session_id}")
+async def transcribe_stream(session_id: str, language: str = "en"):
+    """SSE stream for transcription — keeps connection alive during long Whisper runs."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    import asyncio
+    from starlette.responses import StreamingResponse
+
+    def _send(phase: str, message: str = "", **kwargs) -> str:
+        data = {"phase": phase, "message": message, **kwargs}
+        return f"data: {json.dumps(data)}\n\n"
+
+    async def event_generator():
+        audio_path = session.get("vocal_audio") or session.get("original_audio")
+        if not audio_path or not os.path.exists(audio_path):
+            yield _send("error", "No audio file found. Upload audio first.")
+            return
+
+        session["transcribe_cancelled"] = False
+        yield _send("loading", "Loading Whisper model…")
+
+        loop = asyncio.get_event_loop()
+
+        # Run the existing synchronous transcribe logic in a thread
+        result_container = {}
+
+        def _run_transcribe():
+            WHISPER_LANG_MAP = {
+                "en": "English", "de": "German", "fr": "French",
+                "es": "Spanish", "it": "Italian", "pt": "Portuguese",
+                "nl": "Dutch", "ja": "Japanese", "ko": "Korean",
+                "zh": "Chinese",
+            }
+            log_step("WHISPER", f"Transcribing {os.path.basename(audio_path)} (lang={language})...")
+
+            # Try WhisperX first
+            try:
+                import whisperx
+                import torch
+                device = "cpu"
+                compute_type = "int8"
+                model_name = "medium"
+                log_step("WHISPERX", f"Loading WhisperX model '{model_name}' (device={device})...")
+                model = whisperx.load_model(model_name, device, compute_type=compute_type)
+                log_step("WHISPERX", "Loading audio...")
+                audio = whisperx.load_audio(audio_path)
+                log_step("WHISPERX", "Running transcription...")
+                transcribe_result = model.transcribe(audio, batch_size=4, language=language if language else None)
+                segments = transcribe_result.get("segments", [])
+                lines = [s["text"].strip() for s in segments if s.get("text", "").strip()]
+                all_words = []
+                all_chars = []
+                try:
+                    align_model, align_metadata = whisperx.load_align_model(
+                        language_code=transcribe_result.get("language", language or "en"),
+                        device=device
+                    )
+                    aligned = whisperx.align(segments, align_model, align_metadata, audio, device, return_char_alignments=True)
+                    for w in aligned.get("word_segments", []):
+                        all_words.append({"word": w.get("word","").strip(), "start": round(w.get("start",0),4), "end": round(w.get("end",0),4), "score": round(w.get("score",0),4)})
+                    for seg in aligned.get("segments", []):
+                        for c in seg.get("chars", []):
+                            if c.get("char","").strip():
+                                all_chars.append({"char": c["char"], "start": round(c.get("start",0),4), "end": round(c.get("end",0),4)})
+                except Exception as align_err:
+                    log_step("WHISPERX", f"Alignment failed (non-fatal): {align_err}")
+                transcribed_text = "\n".join(lines)
+                session["whisper_words"] = all_words
+                session["whisper_chars"] = all_chars
+                session["whisper_method"] = "whisperx"
+                save_session(session_id)
+                word_count = sum(len(l.split()) for l in lines)
+                result_container["result"] = {
+                    "text": transcribed_text, "lines": len(lines), "words": word_count,
+                    "language": transcribe_result.get("language", language),
+                    "language_name": WHISPER_LANG_MAP.get(transcribe_result.get("language", language), language),
+                    "model": f"whisperx-medium", "alignment": "wav2vec2", "char_timestamps": len(all_chars),
+                }
+                return
+            except ImportError as e:
+                import traceback
+                log_step("WHISPER", f"WhisperX ImportError: {e}, falling back to vanilla Whisper...")
+                log_step("WHISPER", traceback.format_exc())
+            except Exception as e:
+                import traceback
+                log_step("WHISPERX", f"WhisperX failed: {e}, falling back to vanilla Whisper")
+                log_step("WHISPERX", traceback.format_exc())
+
+            # Fallback: vanilla Whisper
+            try:
+                import whisper
+                model_name = "medium"
+                log_step("WHISPER", f"Loading Whisper model '{model_name}'...")
+                model = whisper.load_model(model_name)
+                log_step("WHISPER", "Running transcription...")
+                result = model.transcribe(audio_path, language=language, word_timestamps=True)
+                lines = []
+                all_words = []
+                for segment in result.get("segments", []):
+                    text = segment.get("text", "").strip()
+                    if text:
+                        lines.append(text)
+                    for w in segment.get("words", []):
+                        all_words.append({"word": w.get("word","").strip(), "start": round(w.get("start",0),4), "end": round(w.get("end",0),4)})
+                transcribed_text = "\n".join(lines)
+                session["whisper_words"] = all_words
+                session["whisper_chars"] = []
+                session["whisper_method"] = "whisper"
+                save_session(session_id)
+                word_count = sum(len(l.split()) for l in lines)
+                log_step("WHISPER", f"Fallback transcription complete: {len(lines)} lines, {word_count} words")
+                result_container["result"] = {
+                    "text": transcribed_text, "lines": len(lines), "words": word_count,
+                    "language": language,
+                    "language_name": WHISPER_LANG_MAP.get(language, language),
+                    "model": f"whisper-{model_name}", "alignment": "whisper-native", "char_timestamps": 0,
+                }
+            except ImportError as e:
+                import traceback
+                log_step("WHISPER", f"Vanilla Whisper ImportError: {e}")
+                log_step("WHISPER", traceback.format_exc())
+                result_container["error"] = "Neither WhisperX nor Whisper installed. Run: pip install whisperx"
+            except Exception as e:
+                import traceback
+                log_step("WHISPER", f"Transcription failed: {e}")
+                log_step("WHISPER", traceback.format_exc())
+                result_container["error"] = f"Transcription failed: {str(e)}"
+
+        executor_future = loop.run_in_executor(None, _run_transcribe)
+        yield _send("transcribing", "Transcribing vocals with Whisper…")
+
+        start = loop.time()
+        while not executor_future.done():
+            if session.get("transcribe_cancelled"):
+                yield _send("cancelled", "Transcription cancelled")
+                return
+            elapsed = int(loop.time() - start)
+            yield _send("heartbeat", f"Transcribing… {elapsed}s elapsed")
+            await asyncio.sleep(5)
+
+        await executor_future
+
+        if "error" in result_container:
+            yield _send("error", result_container["error"])
+        else:
+            yield _send("done", "Transcription complete", **result_container["result"])
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/api/transcribe/{session_id}")
 def transcribe_audio(session_id: str, language: str = Form("en")):
     """Transcribe vocal audio using WhisperX with phoneme-level forced alignment.

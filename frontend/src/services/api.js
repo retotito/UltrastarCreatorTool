@@ -144,21 +144,42 @@ export function getAudioUrl(sessionId, type) {
 }
 
 // ─── Step 2: Lyrics ────────────────────────────
-export async function transcribeAudio(sessionId, language = 'en', signal = null) {
-  const form = new FormData();
-  form.append('language', language);
-  const url = `${BASE}/transcribe/${sessionId}`;
-  const options = { method: 'POST', body: form };
-  if (signal) options.signal = signal;
-  console.log(`[API] POST ${url}`);
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(`API error ${response.status}: ${errData.detail || response.statusText}`);
-  }
-  const data = await response.json();
-  console.log(`[API] ✅ POST ${url} →`, data);
-  return data;
+export function transcribeAudio(sessionId, language = 'en', signal = null) {
+  return new Promise((resolve, reject) => {
+    const url = `${BASE}/transcribe-stream/${sessionId}?language=${encodeURIComponent(language)}`;
+    console.log(`[API] SSE ${url}`);
+    const es = new EventSource(url);
+
+    if (signal) {
+      signal.addEventListener('abort', () => { es.close(); reject(new DOMException('Aborted', 'AbortError')); });
+    }
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('[API] transcribe SSE:', data);
+        if (data.phase === 'done') {
+          es.close();
+          resolve(data);
+        } else if (data.phase === 'error') {
+          es.close();
+          reject(new Error(data.message || 'Transcription failed'));
+        } else if (data.phase === 'cancelled') {
+          es.close();
+          reject(new DOMException('Aborted', 'AbortError'));
+        }
+        // heartbeat / loading / transcribing phases: keep waiting
+      } catch (e) {
+        es.close();
+        reject(e);
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      reject(new Error('Connection to server lost during transcription'));
+    };
+  });
 }
 
 export async function cancelExtractVocals(sessionId) {
