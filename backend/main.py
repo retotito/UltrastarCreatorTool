@@ -208,18 +208,11 @@ def _check_model_status() -> dict:
 
     # WhisperX wav2vec2 alignment model (English)
     wav2vec2_ok = False
-    hf_hub = os.path.expanduser("~/.cache/huggingface/hub")
-    if os.path.isdir(hf_hub):
-        for entry in os.listdir(hf_hub):
-            if "wav2vec2" in entry.lower() or "wav2vec" in entry.lower():
-                wav2vec2_ok = True
-                break
-    # Fallback: check torch hub checkpoints
-    if not wav2vec2_ok and os.path.isdir(torch_hub):
-        for f in os.listdir(torch_hub):
-            if "wav2vec" in f.lower():
-                wav2vec2_ok = True
-                break
+    wav2vec2_path = os.path.expanduser(
+        "~/.cache/torch/hub/checkpoints/wav2vec2_fairseq_base_ls960_asr_ls960.pth"
+    )
+    if os.path.isfile(wav2vec2_path) and os.path.getsize(wav2vec2_path) > 100_000_000:
+        wav2vec2_ok = True
 
     return {
         "ffmpeg": ffmpeg_ok,
@@ -361,22 +354,15 @@ async def setup_download():
             await asyncio.sleep(0.05)
             try:
                 WAV2VEC2_TOTAL_BYTES = 360_000_000  # ~360 MB
-                hf_hub_dir = os.path.expanduser("~/.cache/huggingface/hub")
+                wav2vec2_file = os.path.expanduser(
+                    "~/.cache/torch/hub/checkpoints/wav2vec2_fairseq_base_ls960_asr_ls960.pth"
+                )
 
-                # Snapshot of bytes already in cache before we start
-                def _dir_bytes(path):
-                    if not os.path.isdir(path):
+                def _get_wav2vec2_bytes():
+                    try:
+                        return os.path.getsize(wav2vec2_file)
+                    except OSError:
                         return 0
-                    total = 0
-                    for dirpath, _, filenames in os.walk(path):
-                        for f in filenames:
-                            try:
-                                total += os.path.getsize(os.path.join(dirpath, f))
-                            except OSError:
-                                pass
-                    return total
-
-                bytes_before = _dir_bytes(hf_hub_dir)
 
                 def _download_wav2vec2():
                     import whisperx
@@ -387,7 +373,7 @@ async def setup_download():
                 fut = loop.run_in_executor(None, _download_wav2vec2)
                 while not fut.done():
                     await asyncio.sleep(2.0)
-                    downloaded = max(0, _dir_bytes(hf_hub_dir) - bytes_before)
+                    downloaded = _get_wav2vec2_bytes()
                     pct = min(99, int(downloaded * 100 / WAV2VEC2_TOTAL_BYTES))
                     mb_done = downloaded / 1_000_000
                     mb_total = WAV2VEC2_TOTAL_BYTES / 1_000_000
