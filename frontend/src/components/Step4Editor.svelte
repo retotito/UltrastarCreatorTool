@@ -5618,6 +5618,7 @@
     cursor: pointer;
     border: none;
     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    margin-top: -5px;
   }
   .wave-height-slider::-webkit-slider-runnable-track {
     height: 4px;
