@@ -3,6 +3,29 @@
 from typing import List, Optional
 from utils.logger import log_step
 
+# ISO 639-1 code → full English language name for #LANGUAGE header
+_ISO_TO_LANGUAGE_NAME = {
+    "af": "Afrikaans", "sq": "Albanian", "ar": "Arabic", "hy": "Armenian",
+    "az": "Azerbaijani", "eu": "Basque", "be": "Belarusian", "bn": "Bengali",
+    "bs": "Bosnian", "bg": "Bulgarian", "ca": "Catalan", "zh": "Chinese",
+    "hr": "Croatian", "cs": "Czech", "da": "Danish", "nl": "Dutch",
+    "en": "English", "et": "Estonian", "fi": "Finnish", "fr": "French",
+    "gl": "Galician", "ka": "Georgian", "de": "German", "el": "Greek",
+    "gu": "Gujarati", "ht": "Haitian Creole", "ha": "Hausa", "he": "Hebrew",
+    "hi": "Hindi", "hu": "Hungarian", "is": "Icelandic", "id": "Indonesian",
+    "ga": "Irish", "it": "Italian", "ja": "Japanese", "kn": "Kannada",
+    "kk": "Kazakh", "ko": "Korean", "lv": "Latvian", "lt": "Lithuanian",
+    "mk": "Macedonian", "ms": "Malay", "ml": "Malayalam", "mt": "Maltese",
+    "mi": "Maori", "mr": "Marathi", "mn": "Mongolian", "ne": "Nepali",
+    "no": "Norwegian", "fa": "Persian", "pl": "Polish", "pt": "Portuguese",
+    "pa": "Punjabi", "ro": "Romanian", "ru": "Russian", "sr": "Serbian",
+    "sk": "Slovak", "sl": "Slovenian", "so": "Somali", "es": "Spanish",
+    "sw": "Swahili", "sv": "Swedish", "tl": "Filipino", "ta": "Tamil",
+    "te": "Telugu", "th": "Thai", "tr": "Turkish", "uk": "Ukrainian",
+    "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese", "cy": "Welsh",
+    "yi": "Yiddish", "yo": "Yoruba",
+}
+
 
 def generate_ultrastar(
     syllable_timings: List[dict],
@@ -33,13 +56,16 @@ def generate_ultrastar(
     
     log_step("ULTRASTAR", f"Generating file: {len(syllable_timings)} syllables, BPM={bpm:.2f}, GAP={gap_ms}ms")
     
+    # Convert ISO code to full English name for #LANGUAGE header (e.g. "en" → "English")
+    language_name = _ISO_TO_LANGUAGE_NAME.get(language.lower(), language) if language else "English"
+    
     # Header
     header = (
         f"#ARTIST:{artist}\n"
         f"#TITLE:{title}\n"
         f"#BPM:{bpm:.2f}\n"
         f"#GAP:{gap_ms}\n"
-        f"#LANGUAGE:{language}\n"
+        f"#LANGUAGE:{language_name}\n"
         f"#MP3:{mp3_filename}\n"
     )
     
