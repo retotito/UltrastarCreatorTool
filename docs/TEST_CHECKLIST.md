@@ -6,8 +6,7 @@ Legend: ⏳ not tested · ✅ pass · ❌ fail
 
 ## Bohning's requested fixes (next update)
 
-- [ ] Drag & drop MP3 on upload page doesn't work (ARM + Intel)
-- [ ] BPM should be multiplied until above 200 (e.g. 100 BPM → 400, not 200)
+- [✅] BPM should be multiplied until above 200 (e.g. 100 BPM → 400, not 200)
 - [ ] `#LANGUAGE` should use full English name (e.g. `English`, not `en`)
 - [ ] Empty line between header and notes in .txt (when no video file)
 - [ ] `#MP3` filename reference in .txt is wrong

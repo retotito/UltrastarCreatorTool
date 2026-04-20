@@ -156,7 +156,9 @@ def detect_bpm(audio_path: str, original_audio_path: str = None) -> float:
     # Round to nearest 0.5 BPM (songs almost always use round values)
     bpm_rounded = round(median_bpm * 2) / 2
     
-    ultrastar_bpm = round(bpm_rounded * 2, 1)
+    # Ultrastar #BPM = quarter beats per minute = actual BPM × 4
+    # (e.g. 100 BPM → 400, giving 37.5 ms beat resolution)
+    ultrastar_bpm = round(bpm_rounded * 4, 1)
     
     log_step("BPM", f"Candidates (normalized): {[round(b, 1) for b in sorted(normalized)]}")
     log_step("BPM", f"Median: {median_bpm:.1f} -> rounded: {bpm_rounded:.1f} -> Ultrastar BPM: {ultrastar_bpm:.1f}")
