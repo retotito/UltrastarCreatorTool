@@ -128,7 +128,7 @@ def generate_ultrastar(
     # Footer
     note_lines.append("E")
     
-    content = header + "\n" + "\n".join(note_lines)
+    content = header + "\n".join(note_lines)
     
     log_step("ULTRASTAR", f"Generated {len(note_lines) - 1} note lines")
     
