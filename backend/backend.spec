@@ -131,12 +131,14 @@ except Exception as _e:
 # torchaudio bundles its own libav dylibs that are missing re-exported symbols
 # (e.g. _av_buffer_unref) that the Homebrew-built ffmpeg binary expects.
 # Explicitly add Homebrew's versions so they overwrite the torchaudio copies.
+# Homebrew is at /opt/homebrew on ARM and /usr/local on Intel.
 import glob as _glob
-for _hb_lib in _glob.glob('/opt/homebrew/lib/libav*.dylib') + \
-               _glob.glob('/opt/homebrew/lib/libsw*.dylib') + \
-               _glob.glob('/opt/homebrew/lib/libpostproc*.dylib'):
-    binaries += [(_hb_lib, '.')]
-    print(f"[spec] overriding with Homebrew dylib: {os.path.basename(_hb_lib)}")
+for _hb_prefix in ('/opt/homebrew/lib', '/usr/local/lib'):
+    for _hb_lib in _glob.glob(f'{_hb_prefix}/libav*.dylib') + \
+                   _glob.glob(f'{_hb_prefix}/libsw*.dylib') + \
+                   _glob.glob(f'{_hb_prefix}/libpostproc*.dylib'):
+        binaries += [(_hb_lib, '.')]
+        print(f"[spec] overriding with Homebrew dylib: {os.path.basename(_hb_lib)}")
 
 # ── Optional AI packages (only if installed) ──────────────────────────────────
 for optional_pkg in ('torch', 'torchaudio', 'demucs', 'whisperx', 'whisper', 'pyannote', 'pyannote.audio', 'pyannote.core', 'pyannote.database', 'pyannote.metrics', 'pyannote.pipeline', 'asteroid_filterbanks', 'speechbrain', 'faster_whisper', 'PIL', 'torchvision', 'transformers', 'Pillow', 'lightning_fabric', 'pytorch_lightning', 'matplotlib'):
