@@ -1008,6 +1008,7 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
                 'Accept-Ranges': 'bytes',
                 'Content-Length': str(length),
                 'Content-Type': content_type,
+                'Cache-Control': 'no-store',
             }
         )
     
@@ -1026,7 +1027,7 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
     suffix = " [Vocals]" if audio_type == "vocals" else ""
     download_name = base + suffix + ext
     
-    return FileResponse(path, filename=download_name, headers={'Accept-Ranges': 'bytes'})
+    return FileResponse(path, filename=download_name, headers={'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store'})
 
 
 # ────────────────────────────────────────────────────────────

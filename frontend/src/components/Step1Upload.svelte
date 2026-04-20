@@ -1,46 +1,11 @@
 <script>
-  import { onMount } from 'svelte';
   import { sessionId, uploadData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
   import { newSession, uploadAudio, extractVocals, cancelExtractVocals, streamExtractVocals, uploadCorrectedVocals, uploadMixAudio, deleteAudio, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
 
-  let dragOverMix = false;
-  let dragOverVocals = false;
   let audioPlayerMix;
   let audioPlayerVocals;
 
-  let isTauri = false;
 
-  // ── Tauri native file drop (handles m4a and other types WebView may block) ──
-  let tauriUnlisten = null;
-  onMount(async () => {
-    try {
-      const { listen } = await import('@tauri-apps/api/event');
-      const { convertFileSrc } = await import('@tauri-apps/api/core');
-      isTauri = true;
-      tauriUnlisten = await listen('tauri://file-drop', async (event) => {
-        const paths = event.payload;
-        if (!paths || paths.length === 0) return;
-        const path = paths[0];
-        const name = path.split('/').pop();
-        try {
-          const assetUrl = convertFileSrc(path);
-          const res = await fetch(assetUrl);
-          if (!res.ok) throw new Error(`asset fetch failed: ${res.status}`);
-          const blob = await res.blob();
-          const ext = name.split('.').pop().toLowerCase();
-          const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac' };
-          const mime = mimeMap[ext] || blob.type || 'audio/mpeg';
-          const file = new File([blob], name, { type: mime });
-          handleMixFile(file);
-        } catch (e) {
-          console.error('Tauri file-drop read error:', e);
-        }
-      });
-    } catch (e) {
-      // Not in Tauri context (dev server) — ignore
-    }
-    return () => { if (tauriUnlisten) tauriUnlisten(); };
-  });
 
   // ── Extract vocals modal ─────────────────────────────────
   let extractModalOpen = false;
@@ -59,8 +24,8 @@
     if (elapsedTicker) { clearInterval(elapsedTicker); elapsedTicker = null; }
   }
 
-  $: mixUrl    = $sessionId && $uploadData.hasOriginal ? getAudioUrl($sessionId, 'original') : null;
-  $: vocalsUrl = $sessionId && $uploadData.hasVocals   ? getAudioUrl($sessionId, 'vocals')   : null;
+  $: mixUrl    = $sessionId && $uploadData.hasOriginal ? getAudioUrl($sessionId, 'original') + '?t=' + Date.now() : null;
+  $: vocalsUrl = $sessionId && $uploadData.hasVocals   ? getAudioUrl($sessionId, 'vocals')   + '?t=' + Date.now() : null;
 
   // ── Mix upload ──────────────────────────────────────────
   async function handleMixFile(file) {
@@ -173,22 +138,6 @@
     }
   }
 
-  // ── Drag & drop helpers ──────────────────────────────────
-  function onDropMix(e) {
-    e.preventDefault();
-    dragOverMix = false;
-    if (isTauri) return; // handled by tauri://file-drop native event
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleMixFile(file);
-  }
-
-  function onDropVocals(e) {
-    e.preventDefault();
-    dragOverVocals = false;
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleVocalsFile(file);
-  }
-
   // ── Resume last ──────────────────────────────────────────
   async function handleResumeLast() {
     errorMessage.set('');
@@ -234,6 +183,8 @@
       isProcessing.set(false);
     }
   }
+
+
 </script>
 
 <div class="step-content">
@@ -257,27 +208,15 @@
           <audio bind:this={audioPlayerMix} controls src={mixUrl}></audio>
         </div>
         <div class="card-actions">
-          <label class="btn btn-replace">
-            ↻ Replace
-            <input type="file" accept="audio/*" on:change={(e) => { const f = e.target.files?.[0]; if (f) handleMixFile(f); e.target.value=''; }} hidden />
-          </label>
           <button class="btn btn-delete" on:click={() => handleDeleteAudio('original')} disabled={$isProcessing}>
-            🗑
+            🗑 Delete
           </button>
         </div>
       {:else}
-        <div
-          class="drop-zone"
-          class:drag-over={dragOverMix}
-          role="button"
-          tabindex="0"
-          on:dragover|preventDefault={() => (dragOverMix = true)}
-          on:dragleave={() => (dragOverMix = false)}
-          on:drop={onDropMix}
-        >
-          <div class="drop-icon">🎵</div>
-          <p class="drop-text">Drag & drop full mix here</p>
-          <p class="drop-hint">MP3, WAV, FLAC, …</p>
+        <div class="upload-zone">
+          <div class="upload-icon">🎵</div>
+          <p class="upload-text">Full mix audio</p>
+          <p class="upload-hint">MP3, WAV, FLAC, M4A, …</p>
           <label class="btn btn-browse" class:disabled={$isProcessing}>
             📁 Browse
             <input type="file" accept="audio/*" on:change={(e) => { const f = e.target.files?.[0]; if (f) handleMixFile(f); e.target.value=''; }} hidden />
@@ -303,27 +242,15 @@
           </div>
         {/if}
         <div class="card-actions">
-          <label class="btn btn-replace">
-            ↻ Replace
-            <input type="file" accept="audio/*" on:change={(e) => { const f = e.target.files?.[0]; if (f) handleVocalsFile(f); e.target.value=''; }} hidden />
-          </label>
           <button class="btn btn-delete" on:click={() => handleDeleteAudio('vocals')} disabled={$isProcessing}>
-            🗑
+            🗑 Delete
           </button>
         </div>
       {:else}
-        <div
-          class="drop-zone"
-          class:drag-over={dragOverVocals}
-          role="button"
-          tabindex="0"
-          on:dragover|preventDefault={() => (dragOverVocals = true)}
-          on:dragleave={() => (dragOverVocals = false)}
-          on:drop={onDropVocals}
-        >
-          <div class="drop-icon">🎤</div>
-          <p class="drop-text">Drag & drop vocals here</p>
-          <p class="drop-hint">Already isolated? Drop directly</p>
+        <div class="upload-zone">
+          <div class="upload-icon">🎤</div>
+          <p class="upload-text">Vocals audio</p>
+          <p class="upload-hint">Already isolated? Upload directly</p>
           <label class="btn btn-browse" class:disabled={$isProcessing}>
             📁 Browse
             <input type="file" accept="audio/*" on:change={(e) => { const f = e.target.files?.[0]; if (f) handleVocalsFile(f); e.target.value=''; }} hidden />
@@ -386,8 +313,7 @@
 
 <style>
   .step-content {
-    max-width: 680px;
-    margin: 0 auto;
+    
   }
 
   h2 { color: #4fc3f7; margin-bottom: 0.25rem; }
@@ -459,14 +385,12 @@
     border: 1px solid #1976d2;
   }
 
-  /* ── Drop zone ── */
-  .drop-zone {
-    border: 2px dashed #333;
+  /* ── Upload zone ── */
+  .upload-zone {
+    border: 2px solid #2a2a3e;
     border-radius: 10px;
     padding: 1.5rem 1rem;
     text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -474,17 +398,10 @@
     gap: 0.4rem;
   }
 
-  .drop-zone.drag-over {
-    border-color: #4fc3f7;
-    background: #1a2e4a22;
-  }
+  .upload-icon { font-size: 2rem; }
 
-  .drop-zone:hover { border-color: #555; }
-
-  .drop-icon { font-size: 2rem; }
-
-  .drop-text { color: #aaa; font-size: 0.88rem; margin: 0; }
-  .drop-hint { color: #555; font-size: 0.78rem; margin: 0; }
+  .upload-text { color: #aaa; font-size: 0.88rem; margin: 0; }
+  .upload-hint { color: #555; font-size: 0.78rem; margin: 0; }
 
   /* ── File present state ── */
   .file-info { display: flex; align-items: center; }
@@ -522,14 +439,6 @@
   }
   .btn-browse:hover:not(.disabled) { background: #1a2e4a; }
   .btn-browse.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
-
-  .btn-replace {
-    background: #1a1a2e;
-    color: #aaa;
-    border: 1px solid #444;
-    flex: 1;
-  }
-  .btn-replace:hover { background: #222; border-color: #666; }
 
   .btn-delete {
     background: transparent;

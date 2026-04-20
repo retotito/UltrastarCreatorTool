@@ -1,7 +1,0 @@
-#!/bin/sh
-# Development placeholder for the Tauri sidecar binary.
-# In production this file is replaced by the PyInstaller-built binary.
-# In debug/dev Tauri builds, the sidecar is NOT actually spawned (see main.rs),
-# so this script is just a placeholder to satisfy the Tauri build system.
-exec "$(dirname "$0")/../../../../.venv/bin/python3" \
-     "$(dirname "$0")/../../../../backend/main.py" "$@"
