@@ -78,7 +78,17 @@
   import { onDestroy } from 'svelte';
   import { sessionId, lyricsData, uploadData, currentStep, isProcessing, processingStatus, errorMessage, generationModalOpen } from '../stores/appStore.js';
   import { SUPPORTED_LANGUAGES } from '../lib/languages';
-  import { submitLyrics, getTestLyrics, loadTestSession, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl } from '../services/api.js';
+  import { submitLyrics, getTestLyrics, loadTestSession, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata } from '../services/api.js';
+
+  async function syncMetadata() {
+    if (!$sessionId || !$lyricsData.syllableCount) return; // only if a result exists
+    if (!artist.trim() || !title.trim()) return;
+    try {
+      await updateMetadata($sessionId, artist.trim(), title.trim());
+    } catch (e) {
+      // non-critical, ignore
+    }
+  }
 
 
   // If coming from test session, lyrics may already be loaded
@@ -251,11 +261,11 @@
     <div class="form-row">
       <div class="form-group half">
         <label for="artist">Artist <span class="required">*</span></label>
-        <input id="artist" type="text" bind:value={artist} placeholder="Artist name" class:input-missing={!artist.trim()} />
+        <input id="artist" type="text" bind:value={artist} placeholder="Artist name" class:input-missing={!artist.trim()} on:blur={syncMetadata} />
       </div>
       <div class="form-group half">
         <label for="title">Title <span class="required">*</span></label>
-        <input id="title" type="text" bind:value={title} placeholder="Song title" class:input-missing={!title.trim()} />
+        <input id="title" type="text" bind:value={title} placeholder="Song title" class:input-missing={!title.trim()} on:blur={syncMetadata} />
       </div>
     </div>
 
