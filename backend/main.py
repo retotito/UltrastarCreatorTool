@@ -1027,7 +1027,7 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
     else:
         base = "Untitled Song"
     suffix = " [Vocals]" if audio_type == "vocals" else ""
-    download_name = base + suffix + ext
+    download_name = base + suffix + os.path.splitext(path)[1]
     
     return FileResponse(path, filename=download_name, headers={'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store'})
 
