@@ -2739,7 +2739,11 @@
     const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP', 'DOWNBEATOFFSET']);
     for (const h of extraHeaders) {
       if (!standardKeys.has(h.key.toUpperCase())) {
-        lines.push(`#${h.key}:${h.value}`);
+        // Keep #MP3 in sync with current artist/title
+        const value = h.key.toUpperCase() === 'MP3'
+          ? `${$lyricsData?.artist || 'Unknown'} - ${$lyricsData?.title || 'Unknown'}.mp3`
+          : h.value;
+        lines.push(`#${h.key}:${value}`);
       }
     }
     // Notes
