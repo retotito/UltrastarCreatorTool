@@ -2336,8 +2336,21 @@ async def download_file(session_id: str, file_type: str):
     path = os.path.join(DOWNLOADS_DIR, filename)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found on disk")
-    
-    # Build a user-friendly download name from artist/title
+
+    # For .txt files, normalize linebreaks to YASS-style (single number) on the fly
+    if file_type == "txt":
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        import re as _re_dl
+        content = _re_dl.sub(r'^(- \d+) \d+$', r'\1', content, flags=_re_dl.MULTILINE)
+        # Build a user-friendly download name from artist/title
+        artist = session.get("artist", "").strip()
+        title = session.get("title", "").strip()
+        base = f"{artist} - {title}" if artist and title else title or artist or "Untitled Song"
+        from fastapi.responses import Response
+        return Response(content=content, media_type="text/plain",
+                        headers={"Content-Disposition": f'attachment; filename="{base}.txt"'})
+
     artist = session.get("artist", "").strip()
     title = session.get("title", "").strip()
     if artist and title:
@@ -2627,6 +2640,10 @@ async def download_zip(session_id: str):
             if os.path.exists(path):
                 with open(path, encoding="utf-8") as f:
                     txt_content = f.read()
+
+                # Normalize linebreaks to YASS-style (single number) for old sessions
+                import re as _re_zip
+                txt_content = _re_zip.sub(r'^(- \d+) \d+$', r'\1', txt_content, flags=_re_zip.MULTILINE)
 
                 # Helper: insert/replace a header line
                 def _set_header(content, key, value):
