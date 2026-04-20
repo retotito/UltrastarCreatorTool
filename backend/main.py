@@ -1797,27 +1797,12 @@ def generate_ultrastar_files(session_id: str):
             from services.alignment import align_lyrics_to_audio
             syllable_timings = align_lyrics_to_audio(vocal_path, lyrics, language)
         
-        # Calculate GAP aligned to the musical beat grid.
-        # GAP = the beat phase offset, i.e. where the song's actual rhythm starts.
-        # The beat grid follows the real music (kick drum, instruments),
-        # NOT the first syllable. The first note will land on whatever beat
-        # it naturally falls on (e.g. beat 32, 64, etc.).
+        # GAP = time of first vocal note, so beat 0 = first sung syllable.
         gap_ms = 0
         if syllable_timings:
             first_start_ms = syllable_timings[0]["start"] * 1000
-            musical_bpm = bpm / 2.0
-            beat_period_ms = 60000.0 / musical_bpm
-            phase_ms = beat_phase_sec * 1000.0
-            
-            # GAP = beat phase (where the actual first musical beat falls)
-            gap_ms = max(0, int(round(phase_ms)))
-            
-            first_note_offset_ms = first_start_ms - gap_ms
-            first_note_beat = first_note_offset_ms * bpm / 15000
-            log_step("GENERATE", f"GAP: {gap_ms}ms (phase={phase_ms:.0f}ms, "
-                     f"first syllable={first_start_ms:.0f}ms, "
-                     f"first note at beat {first_note_beat:.1f}, "
-                     f"period={beat_period_ms:.0f}ms)")
+            gap_ms = max(0, int(round(first_start_ms)))
+            log_step("GENERATE", f"GAP: {gap_ms}ms (first syllable at {first_start_ms:.0f}ms → beat 0)")
         
         # Refine BPM using syllable timestamps (can recover exact BPM)
         bpm = refine_bpm(syllable_timings, gap_ms, bpm)
