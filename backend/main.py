@@ -1820,6 +1820,7 @@ def generate_ultrastar_files(session_id: str):
             artist=artist,
             title=title,
             language=language,
+            mp3_filename=f"{artist} - {title}.mp3",
         )
         
         # Determine pitch/alignment methods (from actual results)

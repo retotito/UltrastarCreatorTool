@@ -8,7 +8,7 @@ Legend: ⏳ not tested · ✅ pass · ❌ fail
 
 - [✅] BPM should be multiplied until above 200 (e.g. 100 BPM → 400, not 200)
 - [✅] `#LANGUAGE` should use full English name (e.g. `English`, not `en`)
-- [ ] Empty line between header and notes in .txt (when no video file)
+- [✅] Empty line between header and notes in .txt (when no video file)
 - [ ] `#MP3` filename reference in .txt is wrong
 - [ ] First note should start on beat 0 (GAP = time to first vocal note)
 - [ ] Linebreak end-times not needed anymore — calculate "YASS-style"
