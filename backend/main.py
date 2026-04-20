@@ -2148,10 +2148,6 @@ async def save_editor_state(session_id: str, request: Request):
     for note in editor_notes:
         note_type = note.get("type", "")
         if note_type == "break":
-            end_beat = note.get("endBeat")
-            if end_beat is not None:
-                lines.append(f"- {note['startBeat']} {end_beat}")
-            else:
                 lines.append(f"- {note['startBeat']}")
         else:
             if note.get("isGolden"):
