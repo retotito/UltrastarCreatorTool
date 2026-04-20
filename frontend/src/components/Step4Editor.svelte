@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep } from '../stores/appStore.js';
+  import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep, uploadData } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, saveEditorState } from '../services/api.js';
   import { showConfirm, showAlert } from '../stores/dialogStore.js';
   import { PitchDetector } from 'pitchy';
@@ -2739,9 +2739,11 @@
     const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP', 'DOWNBEATOFFSET']);
     for (const h of extraHeaders) {
       if (!standardKeys.has(h.key.toUpperCase())) {
-        // Keep #MP3 in sync with current artist/title
+        // Keep #MP3 in sync with current artist/title and original file extension
+        const origFilename = $uploadData?.filename || '';
+        const origExt = (origFilename.match(/\.\w+$/) || ['.mp3'])[0];
         const value = h.key.toUpperCase() === 'MP3'
-          ? `${$lyricsData?.artist || 'Unknown'} - ${$lyricsData?.title || 'Unknown'}.mp3`
+          ? `${$lyricsData?.artist || 'Unknown'} - ${$lyricsData?.title || 'Unknown'}${origExt}`
           : h.value;
         lines.push(`#${h.key}:${value}`);
       }
