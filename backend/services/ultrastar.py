@@ -109,16 +109,10 @@ def generate_ultrastar(
                 midi_pitch = 60  # Default to C4 if no pitch detected
             prefix = ":"
         
-        # Add break line between phrases
+        # Add break line between phrases (YASS-style: single number = end of last line)
         if prev_line_index is not None and line_index != prev_line_index:
-            # Calculate break line with padding
             break_start = last_end_beat + 2  # 2 beat padding after last note
-            break_end = max(break_start + 1, start_beat - 2)  # 2 beat padding before next note
-            
-            if break_end > break_start:
-                note_lines.append(f"- {break_start} {break_end}")
-            else:
-                note_lines.append(f"- {break_start}")
+            note_lines.append(f"- {break_start}")
         
         note_lines.append(f"{prefix} {start_beat} {duration_beats} {midi_pitch} {syllable}")
         
