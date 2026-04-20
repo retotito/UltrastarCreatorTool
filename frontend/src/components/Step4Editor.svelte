@@ -2969,7 +2969,25 @@
     const maxTime = audioEl.duration || audioDuration || 300;
     const t = Math.max(0, Math.min(maxTime, timeSec));
     console.log(`[Seek] seekToTime ${t.toFixed(2)}s`);
-    audioEl.currentTime = t;
+
+    // WKWebView (Tauri) doesn't always re-request the audio range when currentTime
+    // is set while the stream is active — the audio keeps playing from where it was
+    // buffered. Fix: reload the src with a media fragment to force a new range request.
+    const inTauri = !!window.__TAURI__;
+    if (inTauri && isPlaying) {
+      const baseUrl = audioEl.src.split('#')[0];
+      audioEl.pause();
+      audioEl.src = `${baseUrl}#t=${t.toFixed(3)}`;
+      audioEl.load();
+      audioEl.oncanplay = () => {
+        audioEl.currentTime = t;
+        audioEl.oncanplay = null;
+        audioEl.play().catch(() => {});
+      };
+    } else {
+      audioEl.currentTime = t;
+    }
+
     currentTimeSec = t;
     playbackBeat = timeToBeat(t);
     // Scroll only if the playhead would be off-screen
@@ -2991,7 +3009,20 @@
     const oldTime = currentTimeSec;  // Use our tracked time, not audioEl.currentTime
     const newTime = Math.max(0, Math.min(maxTime, oldTime + deltaSec));
     console.log(`[Seek] delta=${deltaSec}s, old=${oldTime.toFixed(2)}s, new=${newTime.toFixed(2)}s, max=${maxTime.toFixed(2)}s`);
-    audioEl.currentTime = newTime;
+    const inTauri = !!window.__TAURI__;
+    if (inTauri && isPlaying) {
+      const baseUrl = audioEl.src.split('#')[0];
+      audioEl.pause();
+      audioEl.src = `${baseUrl}#t=${newTime.toFixed(3)}`;
+      audioEl.load();
+      audioEl.oncanplay = () => {
+        audioEl.currentTime = newTime;
+        audioEl.oncanplay = null;
+        audioEl.play().catch(() => {});
+      };
+    } else {
+      audioEl.currentTime = newTime;
+    }
     currentTimeSec = newTime;
     const gapSec = gapMs / 1000;
     playbackBeat = ((newTime - gapSec) * bpm) / 15;
