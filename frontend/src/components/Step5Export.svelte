@@ -665,8 +665,7 @@
 
 <style>
   .step-content {
-    max-width: 600px;
-    margin: 0 auto;
+    
   }
 
   h2 { color: #4fc3f7; margin-bottom: 1rem; }

@@ -357,8 +357,7 @@
 
 <style>
   .step-content {
-    max-width: 600px;
-    margin: 0 auto;
+    
   }
 
   h2 { color: #4fc3f7; margin-bottom: 1rem; }
@@ -446,6 +445,7 @@
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
+    margin-bottom: 16px;
   }
 
   .transcribe-hint {
