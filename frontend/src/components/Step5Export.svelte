@@ -350,10 +350,16 @@
     const url = getAudioUrl($sessionId, type);
     const base = getBaseFilename();
     const suffix = type === 'vocals' ? ' [Vocals]' : '';
-    const blob = await fetch(url).then(r => r.blob());
+    const response = await fetch(url);
+    const blob = await response.blob();
+    // Derive extension from Content-Disposition if available, else from MIME type
+    const disposition = response.headers.get('content-disposition') || '';
+    const dispMatch = disposition.match(/filename="?([^"]+)"?/i);
+    const extMatch = dispMatch ? dispMatch[1].match(/\.\w+$/) : null;
+    const ext = extMatch ? extMatch[0] : ({ 'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/flac': '.flac', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a' }[blob.type] || '.mp3');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = base + suffix;
+    a.download = base + suffix + ext;
     document.body.appendChild(a);
     a.click();
     a.remove();
