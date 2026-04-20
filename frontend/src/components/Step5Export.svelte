@@ -502,7 +502,7 @@
               />
             </div>
             <div class="video-gap-row">
-              <span class="video-gap-label">Gap (s)</span>
+              <span class="video-gap-label">Video GAP (s)</span>
               <input
                 class="video-gap-input"
                 type="number"

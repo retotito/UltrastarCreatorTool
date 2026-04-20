@@ -1475,6 +1475,29 @@ async def submit_lyrics(
     session["parsed_lyrics"] = parsed
     session["status"] = "lyrics_submitted"
     save_session(session_id)
+
+    # If a .txt already exists, update its headers to reflect new artist/title
+    result = session.get("result")
+    if result:
+        import re as _re
+        for key in ["corrected_txt_file", "txt_file"]:
+            fname = result.get(key)
+            if not fname:
+                continue
+            path = os.path.join(DOWNLOADS_DIR, fname)
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                content = _re.sub(r"^#TITLE:.*$", f"#TITLE:{title}", content, count=1, flags=_re.MULTILINE)
+                content = _re.sub(r"^#ARTIST:.*$", f"#ARTIST:{artist}", content, count=1, flags=_re.MULTILINE)
+                content = _re.sub(r"^#MP3:.*$", f"#MP3:{artist} - {title}.mp3", content, count=1, flags=_re.MULTILINE)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                log_step("LYRICS", f"Updated headers in {fname}")
+            except Exception as e:
+                log_step("LYRICS", f"Failed to update {fname}: {e}")
     
     log_step("LYRICS", f"Session {session_id}: {flat_count} syllables, {len(parsed)} lines")
     
@@ -2289,6 +2312,7 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
                 import re
                 content = re.sub(r"^#TITLE:.*$", f"#TITLE:{title}", content, count=1, flags=re.MULTILINE)
                 content = re.sub(r"^#ARTIST:.*$", f"#ARTIST:{artist}", content, count=1, flags=re.MULTILINE)
+                content = re.sub(r"^#MP3:.*$", f"#MP3:{artist} - {title}.mp3", content, count=1, flags=re.MULTILINE)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(content)
                 log_step("METADATA", f"Updated headers in {fname}")
