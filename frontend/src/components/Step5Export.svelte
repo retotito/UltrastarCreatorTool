@@ -356,7 +356,7 @@
     const disposition = response.headers.get('content-disposition') || '';
     const dispMatch = disposition.match(/filename="?([^"]+)"?/i);
     const extMatch = dispMatch ? dispMatch[1].match(/\.\w+$/) : null;
-    const ext = extMatch ? extMatch[0] : ({ 'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/flac': '.flac', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a' }[blob.type] || '.mp3');
+    const ext = extMatch ? extMatch[0] : ({ 'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/flac': '.flac', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a', 'audio/aac': '.aac' }[blob.type] || '.mp3');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = base + suffix + ext;

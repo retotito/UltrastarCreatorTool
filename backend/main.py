@@ -78,6 +78,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 app.add_exception_handler(Exception, global_exception_handler)
@@ -976,6 +977,7 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
     content_type = {
         '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
         '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+        '.m4a': 'audio/mp4', '.aac': 'audio/aac',
     }.get(ext, 'application/octet-stream')
     
     # Handle range requests for seeking support
