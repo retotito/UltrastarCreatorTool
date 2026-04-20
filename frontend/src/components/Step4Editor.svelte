@@ -5582,7 +5582,7 @@
   }
 
   .bpm-input, .gap-input {
-    width: 72px;
+    /* width: 120px; */
     padding: 4px 6px;
     background: #1a1a2e;
     border: 1px solid #444;
@@ -5593,10 +5593,6 @@
     text-align: center;
     -moz-appearance: textfield;
     appearance: textfield;
-  }
-
-  .gap-input {
-    width: 70px;
   }
 
   .gap-display {
