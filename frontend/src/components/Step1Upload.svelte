@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { sessionId, uploadData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
   import { newSession, uploadAudio, extractVocals, cancelExtractVocals, streamExtractVocals, uploadCorrectedVocals, uploadMixAudio, deleteAudio, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
 
@@ -6,6 +7,40 @@
   let dragOverVocals = false;
   let audioPlayerMix;
   let audioPlayerVocals;
+
+  let isTauri = false;
+
+  // ── Tauri native file drop (handles m4a and other types WebView may block) ──
+  let tauriUnlisten = null;
+  onMount(async () => {
+    try {
+      const { listen } = await import('@tauri-apps/api/event');
+      const { convertFileSrc } = await import('@tauri-apps/api/core');
+      isTauri = true;
+      tauriUnlisten = await listen('tauri://file-drop', async (event) => {
+        const paths = event.payload;
+        if (!paths || paths.length === 0) return;
+        const path = paths[0];
+        const name = path.split('/').pop();
+        try {
+          const assetUrl = convertFileSrc(path);
+          const res = await fetch(assetUrl);
+          if (!res.ok) throw new Error(`asset fetch failed: ${res.status}`);
+          const blob = await res.blob();
+          const ext = name.split('.').pop().toLowerCase();
+          const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', flac: 'audio/flac', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac' };
+          const mime = mimeMap[ext] || blob.type || 'audio/mpeg';
+          const file = new File([blob], name, { type: mime });
+          handleMixFile(file);
+        } catch (e) {
+          console.error('Tauri file-drop read error:', e);
+        }
+      });
+    } catch (e) {
+      // Not in Tauri context (dev server) — ignore
+    }
+    return () => { if (tauriUnlisten) tauriUnlisten(); };
+  });
 
   // ── Extract vocals modal ─────────────────────────────────
   let extractModalOpen = false;
@@ -142,6 +177,7 @@
   function onDropMix(e) {
     e.preventDefault();
     dragOverMix = false;
+    if (isTauri) return; // handled by tauri://file-drop native event
     const file = e.dataTransfer.files?.[0];
     if (file) handleMixFile(file);
   }
