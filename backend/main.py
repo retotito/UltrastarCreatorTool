@@ -1492,9 +1492,11 @@ async def submit_lyrics(
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     content = f.read()
+                _orig = session.get('original_audio') or session.get('vocal_audio') or ''
+                _ext = os.path.splitext(_orig)[1] or '.mp3'
                 content = _re.sub(r"^#TITLE:.*$", f"#TITLE:{title}", content, count=1, flags=_re.MULTILINE)
                 content = _re.sub(r"^#ARTIST:.*$", f"#ARTIST:{artist}", content, count=1, flags=_re.MULTILINE)
-                content = _re.sub(r"^#MP3:.*$", f"#MP3:{artist} - {title}.mp3", content, count=1, flags=_re.MULTILINE)
+                content = _re.sub(r"^#MP3:.*$", f"#MP3:{artist} - {title}{_ext}", content, count=1, flags=_re.MULTILINE)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(content)
                 log_step("LYRICS", f"Updated headers in {fname}")
@@ -1837,6 +1839,8 @@ def generate_ultrastar_files(session_id: str):
         from services.midi_export import generate_midi
         
         # Generate Ultrastar .txt
+        _orig_path = session.get('original_audio') or session.get('vocal_audio') or ''
+        _audio_ext = os.path.splitext(_orig_path)[1] or '.mp3'
         txt_content = generate_ultrastar(
             syllable_timings=syllable_timings,
             pitch_data=pitch_data,
@@ -1845,7 +1849,7 @@ def generate_ultrastar_files(session_id: str):
             artist=artist,
             title=title,
             language=language,
-            mp3_filename=f"{artist} - {title}.mp3",
+            mp3_filename=f"{artist} - {title}{_audio_ext}",
         )
         
         # Determine pitch/alignment methods (from actual results)
@@ -2312,9 +2316,11 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
                 with open(path, "r", encoding="utf-8") as f:
                     content = f.read()
                 import re
+                _orig = session.get('original_audio') or session.get('vocal_audio') or ''
+                _ext = os.path.splitext(_orig)[1] or '.mp3'
                 content = re.sub(r"^#TITLE:.*$", f"#TITLE:{title}", content, count=1, flags=re.MULTILINE)
                 content = re.sub(r"^#ARTIST:.*$", f"#ARTIST:{artist}", content, count=1, flags=re.MULTILINE)
-                content = re.sub(r"^#MP3:.*$", f"#MP3:{artist} - {title}.mp3", content, count=1, flags=re.MULTILINE)
+                content = re.sub(r"^#MP3:.*$", f"#MP3:{artist} - {title}{_ext}", content, count=1, flags=re.MULTILINE)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(content)
                 log_step("METADATA", f"Updated headers in {fname}")
