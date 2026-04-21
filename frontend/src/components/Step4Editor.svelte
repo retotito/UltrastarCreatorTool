@@ -290,7 +290,7 @@
     let id = 0;
 
     for (const line of lines) {
-      const trimmed = line.trim();
+      const trimmed = line.trimStart(); // trimStart only — trailing space is part of the syllable
       if (trimmed.startsWith('*') || trimmed.startsWith(':') || trimmed.startsWith('F:')) {
         const isGolden = trimmed.startsWith('*');
         const isRap = trimmed.startsWith('F:');
