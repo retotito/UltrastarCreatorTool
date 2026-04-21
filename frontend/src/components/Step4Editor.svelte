@@ -2687,6 +2687,7 @@
     draw();
     showToast(changed > 0 ? `✔ ${changed} space${changed === 1 ? '' : 's'} fixed` : 'No spaces needed fixing');
     console.log(`[AutoFix] Fixed word spaces on ${changed} notes`);
+    if (changed > 0) handleSave();
   }
 
   // ── Audio source toggle ──
