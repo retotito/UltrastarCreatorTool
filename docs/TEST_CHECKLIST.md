@@ -11,7 +11,7 @@ Legend: ⏳ not tested · ✅ pass · ❌ fail
 - [✅] Empty line between header and notes in .txt (when no video file)
 - [✅] `#MP3` filename reference in .txt is wrong
 - [✅] First note should start on beat 0 (GAP = time to first vocal note)
-- [ ] Linebreak end-times not needed anymore — calculate "YASS-style"
+- [✅] Linebreak end-times not needed anymore — calculate "YASS-style"
 - [❌] Pitches could be normalized (mod 12) — octave is irrelevant for singing (leave as it is for now)
 - [ ] Inter-word spaces should be after the word, not before
 

@@ -1227,25 +1227,31 @@
         ctx.fillText('★', x + width - 12, y + 3);
       }
 
-      // Syllable text
+      // Syllable text — show · after syllable if it has a trailing space (space visualisation)
       if (zoom > 1 && width > 10) {
-        ctx.fillStyle = '#eee';
+        const hasTrailingSpace = note.syllable.endsWith(' ');
+        const displayText = note.syllable.trim() + (hasTrailingSpace ? '·' : '');
+        ctx.fillStyle = hasTrailingSpace ? '#7ecbf7' : '#eee';
         ctx.font = '10px sans-serif';
-        ctx.fillText(note.syllable.trim(), x + 2, y + 3);
+        ctx.fillText(displayText, x + 2, y + 3);
       }
 
-      // Red dot indicator for mid-word syllables (no leading space)
+      // Red dot indicator for mid-word syllables (no trailing space on previous note)
       // Skip the very first note and the first note after each break
-      if (!note.syllable.startsWith(' ')) {
+      {
         const noteIdx = notes.indexOf(note);
         const isFirstAfterBreakOrStart = noteIdx === 0 ||
           (noteIdx > 0 && notes[noteIdx - 1].type === 'break');
         if (!isFirstAfterBreakOrStart) {
-          const dotR = 3;
-          ctx.fillStyle = '#ef5350';
-          ctx.beginPath();
-          ctx.arc(x + width - dotR - 1, y - noteHeight / 2 + dotR + 1, dotR, 0, Math.PI * 2);
-          ctx.fill();
+          const prevNote = notes[noteIdx - 1];
+          const prevHasTrailingSpace = prevNote && prevNote.type !== 'break' && prevNote.syllable.endsWith(' ');
+          if (!prevHasTrailingSpace) {
+            const dotR = 3;
+            ctx.fillStyle = '#ef5350';
+            ctx.beginPath();
+            ctx.arc(x + width - dotR - 1, y - noteHeight / 2 + dotR + 1, dotR, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
     }
@@ -2600,7 +2606,7 @@
     pushUndo();
     // Extend current to cover next
     current.duration = (next.startBeat + next.duration) - current.startBeat;
-    current.syllable = current.syllable.trimEnd() + next.syllable;
+    current.syllable = current.syllable.trimEnd() + next.syllable.trimStart();
 
     // Remove next note
     notes = notes.filter(n => n.id !== next.id);
@@ -2614,10 +2620,10 @@
     const note = notes.find(n => n.id === noteId);
     if (!note || note.type === 'break') return;
     pushUndo();
-    if (hasSpace && !note.syllable.startsWith(' ')) {
-      note.syllable = ' ' + note.syllable;
-    } else if (!hasSpace && note.syllable.startsWith(' ')) {
-      note.syllable = note.syllable.substring(1);
+    if (hasSpace && !note.syllable.endsWith(' ')) {
+      note.syllable = note.syllable + ' ';
+    } else if (!hasSpace && note.syllable.endsWith(' ')) {
+      note.syllable = note.syllable.trimEnd();
     }
     editingSyllable = note.syllable;
     notes = [...notes];
@@ -2632,42 +2638,49 @@
   }
 
   function autoFixWordSpaces() {
-    // Auto-detect word boundaries and add leading spaces.
+    // Auto-detect word boundaries and add trailing spaces.
     // Rules:
-    // - First note of song: no space
-    // - First note after a break: no space
-    // - '~' ties: no space (keep as-is)
-    // - Syllable that looks like a continuation (lowercase, no punctuation before it): no space
-    // - Otherwise: add leading space (word start)
+    // - Last note of song: no space
+    // - Note before a break: no space
+    // - '~' ties: no space
+    // - Last syllable of a word (next syllable is a word start): add trailing space
     pushUndo();
     let changed = 0;
-    let prevWasBreak = true; // treat start of song like after a break
-    for (const note of notes) {
-      if (note.type === 'break') {
-        prevWasBreak = true;
-        continue;
-      }
-      const trimmed = note.syllable.trimStart();
-      if (prevWasBreak) {
-        // First note after break/start — remove any leading space
-        if (note.syllable !== trimmed) {
-          note.syllable = trimmed;
-          changed++;
-        }
-        prevWasBreak = false;
-        continue;
-      }
-      // '~' ties: leave as-is
-      if (trimmed === '~') {
-        prevWasBreak = false;
-        continue;
-      }
-      // If syllable doesn't have a leading space, add one (word boundary)
-      if (!note.syllable.startsWith(' ')) {
-        note.syllable = ' ' + note.syllable;
+    const realNotes = notes.filter(n => n.type !== 'break');
+    for (let i = 0; i < notes.length; i++) {
+      const note = notes[i];
+      if (note.type === 'break') continue;
+      // Remove any legacy leading space
+      if (note.syllable.startsWith(' ')) {
+        note.syllable = note.syllable.trimStart();
         changed++;
       }
-      prevWasBreak = false;
+      const trimmed = note.syllable.trimEnd();
+      // '~' ties: leave trailing as-is
+      if (trimmed === '~') continue;
+      // Find next non-break note
+      let nextNote = null;
+      for (let j = i + 1; j < notes.length; j++) {
+        if (notes[j].type !== 'break') { nextNote = notes[j]; break; }
+      }
+      // Find next item (could be break)
+      const nextItem = notes[i + 1] || null;
+      const isLastBeforeBreakOrEnd = !nextNote || (nextItem && nextItem.type === 'break');
+      if (isLastBeforeBreakOrEnd) {
+        // Remove trailing space before breaks/end
+        if (note.syllable.endsWith(' ')) {
+          note.syllable = note.syllable.trimEnd();
+          changed++;
+        }
+        continue;
+      }
+      // Add trailing space if next note is a word start (determined by it having no trailing space on current = new word)
+      // We use a heuristic: next syllable that starts with uppercase or current ends a word
+      // Simple rule: all notes get trailing space except last before break/end
+      if (!note.syllable.endsWith(' ')) {
+        note.syllable = note.syllable + ' ';
+        changed++;
+      }
     }
     notes = [...notes];
     markUnsaved();
@@ -4425,7 +4438,7 @@
         </div>
       </div>
       <div id="edit-controls-wrapper">
-        <button class="tool-btn" on:click={autoFixWordSpaces} title="Auto-add leading spaces for word boundaries">
+        <button class="tool-btn" on:click={autoFixWordSpaces} title="Auto-fix trailing spaces for word boundaries">
            Fix Spaces&nbsp;🔤
         </button>
         <button class="tool-btn" on:click={openTextEditor} title="Edit raw Ultrastar .txt">
@@ -4653,21 +4666,24 @@
             {#if isMultiCtx}
               <span class="ctx-multi-label">{selectedNotes.size} notes selected</span>
             {:else}
-            <input
-              class="ctx-syllable-input"
-              type="text"
-              bind:value={editingSyllable}
-              on:input={() => updateSyllable(ctxNote.id, editingSyllable)}
-              on:keydown|stopPropagation={(e) => { if (e.key === 'Escape') closeContextMenu(); }}
-              placeholder="syllable"
-            />
+            <div class="ctx-syllable-wrapper">
+              <div class="ctx-syllable-highlight" aria-hidden="true">{@html editingSyllable.replace(/ /g, '<span class="spc">·</span>')}</div>
+              <input
+                class="ctx-syllable-input"
+                type="text"
+                bind:value={editingSyllable}
+                on:input={() => updateSyllable(ctxNote.id, editingSyllable)}
+                on:keydown|stopPropagation={(e) => { if (e.key === 'Escape') closeContextMenu(); }}
+                placeholder="syllable"
+              />
+            </div>
             <span class="ctx-pitch">{noteName(ctxNote.pitch)}</span>
             {/if}
           </div>
           {#if !isMultiCtx}
-          <label class="ctx-checkbox" class:space-on={ctxNote.syllable.startsWith(' ')} class:space-off={!ctxNote.syllable.startsWith(' ')}>
+          <label class="ctx-checkbox" class:space-on={ctxNote.syllable.endsWith(' ')} class:space-off={!ctxNote.syllable.endsWith(' ')}>
             <input type="checkbox"
-              checked={ctxNote.syllable.startsWith(' ')}
+              checked={ctxNote.syllable.endsWith(' ')}
               on:change={(e) => toggleWordSpace(ctxNote.id, e.target.checked)}
             />
             Word space
@@ -5803,9 +5819,32 @@
     padding: 6px 10px;
   }
 
+  .ctx-syllable-wrapper {
+    flex: 1;
+    position: relative;
+    display: flex;
+    background: #0d1117;
+    border-radius: 4px;
+  }
+  .ctx-syllable-highlight {
+    position: absolute;
+    inset: 0;
+    padding: 4px 6px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: transparent;
+    white-space: pre;
+    pointer-events: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .ctx-syllable-highlight :global(.spc) {
+    color: #7ecbf7;
+  }
   .ctx-syllable-input {
     flex: 1;
-    background: #0d1117;
+    background: transparent;
     border: 1px solid #444;
     border-radius: 4px;
     color: #eee;
@@ -5813,6 +5852,8 @@
     font-size: 0.85rem;
     padding: 4px 6px;
     outline: none;
+    position: relative;
+    caret-color: #eee;
   }
 
   .ctx-syllable-input:focus {
