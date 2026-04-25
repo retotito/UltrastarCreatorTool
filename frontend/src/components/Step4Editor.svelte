@@ -2647,18 +2647,15 @@
       const note = notes[i];
       if (note.type === 'break') continue;
       if (note.syllable.startsWith(' ')) {
-        // Find previous non-break note — but only if no break sits between them
+        // Find previous non-break note (skip over any break nodes)
         let prevNote = null;
-        let crossesBreak = false;
         for (let j = i - 1; j >= 0; j--) {
-          if (notes[j].type === 'break') { crossesBreak = true; break; }
-          prevNote = notes[j];
-          break;
+          if (notes[j].type !== 'break') { prevNote = notes[j]; break; }
         }
         // Strip all leading spaces from current note
         note.syllable = note.syllable.trimStart();
-        // Only add trailing space to prev if it's on the same line (no break between)
-        if (prevNote && !crossesBreak && !prevNote.syllable.endsWith(' ')) {
+        // Add trailing space to prev note (space belongs after "you", not before "make")
+        if (prevNote && !prevNote.syllable.endsWith(' ')) {
           prevNote.syllable = prevNote.syllable + ' ';
         }
         changed++;
