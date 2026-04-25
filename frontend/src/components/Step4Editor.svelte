@@ -2638,55 +2638,32 @@
   }
 
   function autoFixWordSpaces() {
-    // Auto-detect word boundaries and add trailing spaces.
-    // Rules:
-    // - Last note of song: no space
-    // - Note before a break: no space
-    // - '~' ties: no space
-    // - Last syllable of a word (next syllable is a word start): add trailing space
+    // Option C: Convert leading spaces (old style) to trailing spaces (new style).
+    // Only relocates spaces that already exist — never adds or removes word boundaries.
+    // Safe for both freshly generated songs and old imports.
     pushUndo();
     let changed = 0;
-    const realNotes = notes.filter(n => n.type !== 'break');
     for (let i = 0; i < notes.length; i++) {
       const note = notes[i];
       if (note.type === 'break') continue;
-      // Remove any legacy leading space
       if (note.syllable.startsWith(' ')) {
-        note.syllable = note.syllable.trimStart();
-        changed++;
-      }
-      const trimmed = note.syllable.trimEnd();
-      // '~' ties: leave trailing as-is
-      if (trimmed === '~') continue;
-      // Find next non-break note
-      let nextNote = null;
-      for (let j = i + 1; j < notes.length; j++) {
-        if (notes[j].type !== 'break') { nextNote = notes[j]; break; }
-      }
-      // Find next item (could be break)
-      const nextItem = notes[i + 1] || null;
-      const isLastBeforeBreakOrEnd = !nextNote || (nextItem && nextItem.type === 'break');
-      if (isLastBeforeBreakOrEnd) {
-        // Remove trailing space before breaks/end
-        if (note.syllable.endsWith(' ')) {
-          note.syllable = note.syllable.trimEnd();
-          changed++;
+        // Move leading space to end of previous non-break note
+        let prevNote = null;
+        for (let j = i - 1; j >= 0; j--) {
+          if (notes[j].type !== 'break') { prevNote = notes[j]; break; }
         }
-        continue;
-      }
-      // Add trailing space if next note is a word start (determined by it having no trailing space on current = new word)
-      // We use a heuristic: next syllable that starts with uppercase or current ends a word
-      // Simple rule: all notes get trailing space except last before break/end
-      if (!note.syllable.endsWith(' ')) {
-        note.syllable = note.syllable + ' ';
+        note.syllable = note.syllable.trimStart();
+        if (prevNote && !prevNote.syllable.endsWith(' ')) {
+          prevNote.syllable = prevNote.syllable + ' ';
+        }
         changed++;
       }
     }
     notes = [...notes];
     markUnsaved();
     draw();
-    showToast(changed > 0 ? `✔ ${changed} space${changed === 1 ? '' : 's'} fixed` : 'No spaces needed fixing');
-    console.log(`[AutoFix] Fixed word spaces on ${changed} notes`);
+    showToast(changed > 0 ? `✔ Converted ${changed} leading space${changed === 1 ? '' : 's'} to trailing` : 'No leading spaces found');
+    console.log(`[AutoFix] Converted ${changed} leading spaces to trailing`);
     if (changed > 0) handleSave();
   }
 
@@ -4439,7 +4416,7 @@
         </div>
       </div>
       <div id="edit-controls-wrapper">
-        <button class="tool-btn" on:click={autoFixWordSpaces} title="Auto-fix trailing spaces for word boundaries">
+        <button class="tool-btn" on:click={autoFixWordSpaces} title="Convert old-style leading spaces to trailing (for imported songs)">
            Fix Spaces&nbsp;🔤
         </button>
         <button class="tool-btn" on:click={openTextEditor} title="Edit raw Ultrastar .txt">
