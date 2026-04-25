@@ -28,6 +28,7 @@ const savedUploadRaw = localStorage.getItem('uploadData');
 let initialUpload = {
   filename: null,
   hasVocals: false,
+  vocalsFilename: null,
   hasOriginal: false,
   vocalUrl: null,
 };
@@ -128,7 +129,7 @@ export function resetSession() {
   generationModalOpen.set(false);
   currentStep.set(0);
   sessionId.set(null);
-  uploadData.set({ filename: null, hasVocals: false, hasOriginal: false, vocalUrl: null });
+  uploadData.set({ filename: null, hasVocals: false, vocalsFilename: null, hasOriginal: false, vocalUrl: null });
   localStorage.removeItem('uploadData');
   lyricsData.set({ text: '', artist: '', title: '', language: 'en', syllableCount: 0, lineCount: 0, preview: [] });
   localStorage.removeItem('lyricsData');

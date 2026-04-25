@@ -354,7 +354,11 @@
     // For original, derive extension from the uploaded filename.
     let ext;
     if (type === 'vocals') {
-      ext = '.mp3';
+      // Use actual vocal filename extension if known (uploaded vocal keeps its format);
+      // Demucs-generated vocals are always .mp3.
+      const vocalsFilename = $uploadData?.vocalsFilename || '';
+      const vocalsExtMatch = vocalsFilename.match(/\.\w+$/);
+      ext = vocalsExtMatch ? vocalsExtMatch[0] : '.mp3';
     } else {
       const origFilename = $uploadData?.filename || '';
       const extMatch = origFilename.match(/\.\w+$/);

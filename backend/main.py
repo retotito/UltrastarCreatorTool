@@ -503,6 +503,7 @@ async def resume_specific_session(session_id: str):
         "session_id": session_id,
         "filename": display_filename,
         "has_vocals": has_vocals,
+        "vocals_filename": os.path.basename(vocal) if has_vocals else None,
         "has_original": has_original,
         "has_lyrics": bool(lyrics),
         "lyrics": lyrics,

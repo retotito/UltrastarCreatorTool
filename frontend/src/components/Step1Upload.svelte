@@ -149,6 +149,7 @@
       uploadData.set({
         filename: result.filename,
         hasVocals: result.has_vocals !== false,
+        vocalsFilename: result.vocals_filename || null,
         hasOriginal: result.has_original === true,
         vocalUrl: getAudioUrl(result.session_id, 'vocals'),
       });

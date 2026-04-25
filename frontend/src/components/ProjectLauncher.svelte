@@ -166,6 +166,7 @@
       uploadData.set({
         filename: data.filename,
         hasVocals,
+        vocalsFilename: data.vocals_filename || null,
         hasOriginal,
         vocalUrl: hasVocals ? getAudioUrl(data.session_id, 'vocals') : (hasOriginal ? getAudioUrl(data.session_id, 'original') : null),
       });
