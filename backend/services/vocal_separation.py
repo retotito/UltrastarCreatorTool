@@ -42,6 +42,37 @@ def _run_demucs_in_process(audio_path: str, temp_dir: str) -> None:
         raise
 
 
+def _ensure_wav(audio_path: str, temp_dir: str) -> str:
+    """If the audio file is not a WAV, convert it to WAV using the bundled ffmpeg.
+    Returns the path to use (original if already WAV, converted path otherwise).
+    This avoids torchaudio's dependency on FFmpeg shared libs for formats like .m4a."""
+    ext = os.path.splitext(audio_path)[1].lower()
+    if ext == '.wav':
+        return audio_path
+    # Find bundled or system ffmpeg
+    ffmpeg_bin = None
+    if hasattr(sys, '_MEIPASS'):
+        candidate = os.path.join(sys._MEIPASS, 'ffmpeg')
+        if os.path.isfile(candidate):
+            ffmpeg_bin = candidate
+    if ffmpeg_bin is None:
+        ffmpeg_bin = shutil.which('ffmpeg')
+    if ffmpeg_bin is None:
+        log_step("SEPARATE", "ffmpeg not found — skipping pre-conversion, Demucs will try natively")
+        return audio_path
+    wav_path = os.path.join(temp_dir, 'input_converted.wav')
+    log_step("SEPARATE", f"Pre-converting {os.path.basename(audio_path)} → WAV via {ffmpeg_bin}")
+    result = subprocess.run(
+        [ffmpeg_bin, '-y', '-i', audio_path, '-ar', '44100', '-ac', '2', wav_path],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0 or not os.path.isfile(wav_path):
+        log_step("SEPARATE", f"Pre-conversion failed: {result.stderr[-500:]}")
+        return audio_path  # fall back to original
+    log_step("SEPARATE", f"Pre-conversion done: {os.path.getsize(wav_path):,} bytes")
+    return wav_path
+
+
 def separate_vocals(audio_path: str, output_dir: str) -> str:
     """Extract vocals from a full song using Demucs v4.
     
@@ -58,12 +89,16 @@ def separate_vocals(audio_path: str, output_dir: str) -> str:
     log_step("SEPARATE", f"Starting vocal separation: {os.path.basename(audio_path)}")
     
     with tempfile.TemporaryDirectory() as temp_dir:
+        # Pre-convert to WAV if needed — torchaudio can always read WAV without
+        # needing FFmpeg shared libraries (which aren't bundled in the frozen app).
+        demucs_input = _ensure_wav(audio_path, temp_dir)
+
         if getattr(sys, 'frozen', False):
             # In a PyInstaller frozen binary sys.executable is the sidecar itself.
             # Spawning it with "-m demucs" would try to restart the server and fail
             # with "address already in use".  Call demucs in-process instead.
             log_step("SEPARATE", "Running Demucs in-process (frozen build)...")
-            _run_demucs_in_process(audio_path, temp_dir)
+            _run_demucs_in_process(demucs_input, temp_dir)
         else:
             # Dev mode: run as subprocess so heavy torch work is isolated.
             cmd = [
@@ -71,16 +106,15 @@ def separate_vocals(audio_path: str, output_dir: str) -> str:
                 "--two-stems", "vocals",
                 "-o", temp_dir,
                 "--mp3",
-                audio_path,
+                demucs_input,
             ]
             log_step("SEPARATE", "Running Demucs (this may take a few minutes)...")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
                 raise RuntimeError(f"Demucs failed: {result.stderr}")
         
-        # Find the output vocal file
-        # Demucs outputs: htdemucs/<song_name>/vocals.mp3 and no_vocals.mp3
-        song_name = os.path.splitext(os.path.basename(audio_path))[0]
+        # Demucs names its output folder after the input file's stem
+        song_name = os.path.splitext(os.path.basename(demucs_input))[0]
         
         vocal_path = None
         all_files = []

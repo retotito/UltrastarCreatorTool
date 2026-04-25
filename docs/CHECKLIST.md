@@ -28,6 +28,7 @@
 
 ## TODO Later
 
+- [ ] **Allow GAP after first note (negative beats)**: Remove the editor constraints that prevent moving GAP past the first note and prevent dragging notes before beat 0. The UltraStar spec allows negative beat numbers — GAP is just a time offset and games compute `time = GAP_ms + beat * (60000 / BPM / 4)`. Confirmed by Bohning. Will simplify editor logic noticeably.
 - [ ] **Progress bars for long-running operations**: Stream progress from backend via SSE for vocal separation (Demucs), lyrics generation, and Ultrastar file generation. Show a live progress bar in the modal/UI for each step. Backend already emits progress for Demucs (visible in `tail -f backend.log`) — needs to be wired to the frontend.
 - [ ] **Lyrics comparison in Step 2**: Before generating, compare user-pasted lyrics against what MFA actually hears in the audio. Show warnings for mismatched/phantom words (extra articles, missing words, etc.) so the user can fix lyrics before alignment runs.
 - [ ] **Golden note editing**: Support `*` (golden notes) in the piano roll editor.
