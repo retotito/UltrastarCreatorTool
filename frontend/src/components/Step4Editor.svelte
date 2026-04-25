@@ -4823,7 +4823,15 @@
   {/if}
 
   <!-- Hidden audio element for playback -->
-  <audio bind:this={audioEl} src={vocalUrl || originalUrl} preload="auto"></audio>
+  <audio bind:this={audioEl} src={vocalUrl || originalUrl} preload="auto"
+    on:ended={() => {
+      isPlaying = false;
+      cancelAnimationFrame(animFrame);
+      stopAllMidiNotes();
+      draw();
+      console.log('[Audio] Reached end of track — stopped playback');
+    }}
+  ></audio>
 
   <div class="shortcut-bar">
     <div class="shortcut-group">
