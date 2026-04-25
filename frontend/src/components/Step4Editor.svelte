@@ -1236,23 +1236,13 @@
         ctx.fillText(displayText, x + 2, y + 3);
       }
 
-      // Red dot indicator for mid-word syllables (no trailing space on previous note)
-      // Skip the very first note and the first note after each break
-      {
-        const noteIdx = notes.indexOf(note);
-        const isFirstAfterBreakOrStart = noteIdx === 0 ||
-          (noteIdx > 0 && notes[noteIdx - 1].type === 'break');
-        if (!isFirstAfterBreakOrStart) {
-          const prevNote = notes[noteIdx - 1];
-          const prevHasTrailingSpace = prevNote && prevNote.type !== 'break' && prevNote.syllable.endsWith(' ');
-          if (!prevHasTrailingSpace) {
-            const dotR = 3;
-            ctx.fillStyle = '#ef5350';
-            ctx.beginPath();
-            ctx.arc(x + width - dotR - 1, y - noteHeight / 2 + dotR + 1, dotR, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
+      // Red dot indicator: this note has no trailing space (word continues into next note)
+      if (!note.syllable.endsWith(' ')) {
+        const dotR = 3;
+        ctx.fillStyle = '#ef5350';
+        ctx.beginPath();
+        ctx.arc(x + width - dotR - 1, y - noteHeight / 2 + dotR + 1, dotR, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
