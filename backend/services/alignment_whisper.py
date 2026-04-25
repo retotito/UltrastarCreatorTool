@@ -58,15 +58,19 @@ def parse_lyrics(lyrics_text: str) -> List[List[dict]]:
             for j, part in enumerate(parts):
                 if not part:
                     continue
-                prefix = " " if (j == 0 and len(syllables) > 0) else ""
                 syllables.append({
-                    "text": prefix + part,
+                    "text": part,
                     "is_rap": is_rap,
                     "is_word_start": j == 0,
                     "word": word,
                     "line_index": len(lines)
                 })
         
+        # Add trailing space to last syllable of each word (except last syllable of the line)
+        for idx, syl in enumerate(syllables):
+            is_last_in_word = (idx == len(syllables) - 1) or syllables[idx + 1].get('is_word_start', False)
+            if is_last_in_word and idx < len(syllables) - 1:
+                syl['text'] = syl['text'] + ' '
         if syllables:
             lines.append(syllables)
     

@@ -2176,6 +2176,7 @@ async def save_editor_state(session_id: str, request: Request):
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(ultrastar_content)
     result["txt_file"] = txt_filename
+    result["corrected_txt_file"] = txt_filename  # ensure downloads always use latest saved file
 
     # Inject asset headers (COVER, BACKGROUND, VIDEO, VIDEOGAP) from session
     _update_txt_asset_headers(session)
