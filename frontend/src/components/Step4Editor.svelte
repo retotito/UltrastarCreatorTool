@@ -2647,13 +2647,18 @@
       const note = notes[i];
       if (note.type === 'break') continue;
       if (note.syllable.startsWith(' ')) {
-        // Move leading space to end of previous non-break note
+        // Find previous non-break note — but only if no break sits between them
         let prevNote = null;
+        let crossesBreak = false;
         for (let j = i - 1; j >= 0; j--) {
-          if (notes[j].type !== 'break') { prevNote = notes[j]; break; }
+          if (notes[j].type === 'break') { crossesBreak = true; break; }
+          prevNote = notes[j];
+          break;
         }
+        // Strip all leading spaces from current note
         note.syllable = note.syllable.trimStart();
-        if (prevNote && !prevNote.syllable.endsWith(' ')) {
+        // Only add trailing space to prev if it's on the same line (no break between)
+        if (prevNote && !crossesBreak && !prevNote.syllable.endsWith(' ')) {
           prevNote.syllable = prevNote.syllable + ' ';
         }
         changed++;
