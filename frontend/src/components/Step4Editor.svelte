@@ -192,7 +192,7 @@
   let metronomeDivisor = 1;   // 1=quarter note, 2=half note, 4=bar click
   // BEATS_PER_QUARTER: US-BPM / 30 = quarter note duration in US beats (Bohning ×4 convention)
   // e.g. BPM=480 → 16, BPM=400 → ~13.3, BPM=200 → ~6.7. Recalculated reactively when bpm changes.
-  $: BEATS_PER_QUARTER = bpm > 0 ? bpm / 30 : 8;
+  $: BEATS_PER_QUARTER = bpm > 0 ? Math.round(bpm / 30) : 8;
   $: BEATS_PER_MEASURE = BEATS_PER_QUARTER * 4;
 
   // Downbeat offset: ms from audio 0s to first downbeat
