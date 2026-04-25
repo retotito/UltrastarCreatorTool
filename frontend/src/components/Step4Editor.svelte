@@ -288,7 +288,7 @@
 
   // Parse Ultrastar content into notes array
   function parseUltrastar(content) {
-    const lines = content.split('\n');
+    const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const parsed = [];
     let id = 0;
 
