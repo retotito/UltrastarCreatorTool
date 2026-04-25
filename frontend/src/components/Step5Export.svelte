@@ -350,10 +350,16 @@
     const url = getAudioUrl($sessionId, type);
     const base = getBaseFilename();
     const suffix = type === 'vocals' ? ' [Vocals]' : '';
-    // Derive extension from original uploaded filename (same logic as zip)
-    const origFilename = $uploadData?.filename || '';
-    const extMatch = origFilename.match(/\.\w+$/);
-    const ext = extMatch ? extMatch[0] : '.mp3';
+    // Vocals are always .mp3 (Demucs --mp3 output).
+    // For original, derive extension from the uploaded filename.
+    let ext;
+    if (type === 'vocals') {
+      ext = '.mp3';
+    } else {
+      const origFilename = $uploadData?.filename || '';
+      const extMatch = origFilename.match(/\.\w+$/);
+      ext = extMatch ? extMatch[0] : '.mp3';
+    }
     const blob = await fetch(url).then(r => r.blob());
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
