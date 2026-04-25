@@ -189,8 +189,11 @@
   let metronomeCtx = null;
   let lastMetronomeBeat = -1; // tracks which quarter-note beat we last clicked
   let metronomeOffset = 0;    // offset in ultrastar beats (0 = on beat, 4 = half beat / 8th note off)
-  const BEATS_PER_QUARTER = 8; // 8 ultrastar beats = 1 real quarter note (BPM is doubled, formula uses /15)
-  const BEATS_PER_MEASURE = BEATS_PER_QUARTER * 4; // 32 ultrastar beats = 1 measure (4/4 time)
+  let metronomeDivisor = 1;   // 1=quarter note, 2=half note, 4=bar click
+  // BEATS_PER_QUARTER: US-BPM / 30 = quarter note duration in US beats (Bohning ×4 convention)
+  // e.g. BPM=480 → 16, BPM=400 → ~13.3, BPM=200 → ~6.7. Recalculated reactively when bpm changes.
+  $: BEATS_PER_QUARTER = bpm > 0 ? bpm / 30 : 8;
+  $: BEATS_PER_MEASURE = BEATS_PER_QUARTER * 4;
 
   // Downbeat offset: ms from audio 0s to first downbeat
   let downbeatOffsetMs = 0;
@@ -1034,15 +1037,18 @@
       const isMeasure = ((rel % beatsPerMeasure) + beatsPerMeasure) % beatsPerMeasure === 0;
       const isQuarter = ((rel % BEATS_PER_QUARTER) + BEATS_PER_QUARTER) % BEATS_PER_QUARTER === 0;
       const isEighth = ((rel % beatsPerEighth) + beatsPerEighth) % beatsPerEighth === 0;
-      
+      // Highlight the beat level that the metronome is currently clicking on
+      const metronomeInterval = BEATS_PER_QUARTER * metronomeDivisor;
+      const isMetronomeBeat = metronomeEnabled && ((rel % metronomeInterval) + metronomeInterval) % metronomeInterval === 0;
+
       if (isMeasure) {
-        ctx.strokeStyle = '#7070cc';
+        ctx.strokeStyle = isMetronomeBeat ? '#a0a0ff' : '#7070cc';
         ctx.lineWidth = 2;
       } else if (isQuarter) {
-        ctx.strokeStyle = '#404078';
+        ctx.strokeStyle = isMetronomeBeat ? '#8888ee' : '#404078';
         ctx.lineWidth = 1;
       } else if (isEighth) {
-        ctx.strokeStyle = '#30305a';
+        ctx.strokeStyle = isMetronomeBeat ? '#6666cc' : '#30305a';
         ctx.lineWidth = 0.5;
       } else {
         // 16th note level — only show if zoomed in enough (> 4px per beat)
@@ -2927,8 +2933,9 @@
       if (micEnabled) micShowTrail = true;
       // Initialize metronome to current beat so it doesn't click immediately
       if (metronomeEnabled) {
+        const clickInterval = BEATS_PER_QUARTER * metronomeDivisor;
         const offsetBeat = playbackBeat - metronomeOffset;
-        lastMetronomeBeat = Math.floor(offsetBeat / BEATS_PER_QUARTER);
+        lastMetronomeBeat = Math.floor(offsetBeat / clickInterval);
       }
       if (midiPlayback) ensureMidiCtx();
       updatePlayback();
@@ -3450,23 +3457,23 @@
   }
 
   function updateMetronome(currentBeat) {
-    // Click on every quarter note (every BEATS_PER_QUARTER ultrastar beats)
+    // Click interval in US beats = one quarter note × divisor
+    const clickInterval = BEATS_PER_QUARTER * metronomeDivisor;
     // When we have a downbeat reference, shift the click grid so a click falls on it
     let clickOffset = metronomeOffset;
     let accentPhase = 0;
     if (downbeatFromHeader) {
       const exactBeat = (downbeatOffsetMs - gapMs) * bpm / 15000;
       const dbBeat = Math.round(exactBeat);
-      // Shift clicks so one lands exactly on dbBeat
-      clickOffset = dbBeat % BEATS_PER_QUARTER;
-      // Which quarter-note index the downbeat falls on (for accent every 4 quarters)
-      accentPhase = Math.floor((dbBeat - clickOffset) / BEATS_PER_QUARTER) % 4;
+      clickOffset = dbBeat % clickInterval;
+      accentPhase = Math.floor((dbBeat - clickOffset) / clickInterval) % 4;
     }
     const offsetBeat = currentBeat - clickOffset;
-    const quarterBeat = Math.floor(offsetBeat / BEATS_PER_QUARTER);
-    if (quarterBeat !== lastMetronomeBeat) {
-      lastMetronomeBeat = quarterBeat;
-      const isDownbeat = ((quarterBeat - accentPhase) % 4 + 4) % 4 === 0;
+    const clickBeat = Math.floor(offsetBeat / clickInterval);
+    if (clickBeat !== lastMetronomeBeat) {
+      lastMetronomeBeat = clickBeat;
+      // Accent on the downbeat (every 4 clicks = one bar)
+      const isDownbeat = ((clickBeat - accentPhase) % 4 + 4) % 4 === 0;
       playMetronomeClick(isDownbeat);
     }
   }
@@ -4469,6 +4476,11 @@
         <button class="tool-btn" class:active={metronomeEnabled} on:click={() => { console.log('[UI] toggleMetronome'); toggleMetronome(); }} title="Toggle Metronome click on each beat (0)">
           <span>Metronome</span><span style="padding-left: 4px">{metronomeEnabled ? ' 🔈' : ' 🔇'}</span>
         </button>
+        {#if metronomeEnabled}
+          <button class="tool-btn sm" class:active={metronomeDivisor === 1} on:click={() => { metronomeDivisor = 1; lastMetronomeBeat = -1; draw(); }} title="Click every quarter note">♩</button>
+          <button class="tool-btn sm" class:active={metronomeDivisor === 2} on:click={() => { metronomeDivisor = 2; lastMetronomeBeat = -1; draw(); }} title="Click every half note">𝅗𝅥</button>
+          <button class="tool-btn sm" class:active={metronomeDivisor === 4} on:click={() => { metronomeDivisor = 4; lastMetronomeBeat = -1; draw(); }} title="Click every bar (4/4)">𝄺</button>
+        {/if}
       </div>
     </div>
   </div>
