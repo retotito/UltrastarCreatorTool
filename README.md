@@ -1,5 +1,7 @@
 # Ultrastar Creator Tool
 
+> **Latest release: v2.0.4** — Custom app icon, negative beat support, metronome divisor, CRLF import fix, m4a support, and more. See [Changelog](#changelog) below.
+
 A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you through 4 steps — from uploading audio to exporting a ready-to-play Ultrastar .txt file — using automatic vocal separation, pitch detection, and lyrics alignment to do the heavy lifting, while you fine-tune the result in a built-in piano roll editor.
 
 **Goal**: Make it easy for anyone to create Ultrastar songs, so more people sing together. 🎤
@@ -199,6 +201,24 @@ npm run dev
 ### 3. Open the App
 
 Open **http://localhost:5173** in your browser. The Vite proxy automatically forwards `/api/*` requests to the backend on port 8001.
+
+## Changelog
+
+### v2.0.4
+- **Custom app icon** — new branded 1024×1024 icon (with padding) used across macOS, Windows, Android, and iOS builds
+- **Negative beats / early GAP** — removed the beat-0 lower-bound constraint; GAP can now be set before the first note, allowing songs that start before beat 0
+- **Metronome divisor** — three click intervals: quarter note (♩), half note (𝅗𝅥), and full bar (𝄺); buttons appear when metronome is active
+- **Dynamic BEATS_PER_QUARTER** — `Math.round(bpm / 30)` so the grid and downbeat modulo work correctly with fractional BPM values
+- **CRLF import fix** — Windows `.txt` files with `\r\n` line endings now parse correctly (notes no longer missing after import)
+- **m4a / AAC support** — audio is pre-converted to WAV before Demucs so m4a uploads no longer fail vocal separation
+- **Vocal download extension** — downloaded vocals always use `.mp3` instead of inheriting the wrong uploaded-file extension
+- **Audio ended event** — playback animation frame is now cancelled when the audio track ends naturally, preventing a stale playhead
+- **Word-space red dot** — the indicator dot is drawn on the note *missing* the trailing space (not on the following note)
+- **Auto-fix word spaces across breaks** — `autoFixWordSpaces()` correctly moves leading spaces to the trailing position on the previous note even across line breaks
+
+### v2.0.3 and earlier
+- Bohning UltraStar format compliance (BPM×4, `#LANGUAGE`, no blank line after headers, `#MP3`, GAP/beat-0, YASS linebreaks, trailing word spaces)
+- Trailing word-space feature with visual red-dot indicator and one-click auto-fix
 
 ## VS Code Tasks
 
