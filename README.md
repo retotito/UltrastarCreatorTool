@@ -1,5 +1,9 @@
 # Ultrastar Creator Tool
 
+<p align="center">
+  <img src="frontend/src-tauri/icons/icon.png" alt="Ultrastar Creator Icon" width="128" />
+</p>
+
 > **Latest release: v2.0.4** — Custom app icon, negative beat support, metronome divisor, CRLF import fix, m4a support, and more. See [Changelog](#changelog) below.
 
 A tool to create **Ultrastar karaoke songs** with the help of AI. It guides you through 4 steps — from uploading audio to exporting a ready-to-play Ultrastar .txt file — using automatic vocal separation, pitch detection, and lyrics alignment to do the heavy lifting, while you fine-tune the result in a built-in piano roll editor.
