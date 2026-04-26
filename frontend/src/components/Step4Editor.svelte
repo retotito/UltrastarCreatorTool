@@ -468,7 +468,7 @@
       // Insert break between phrases
       if (prevLineIndex !== null && lineIndex !== prevLineIndex) {
         const breakStart = lastEndBeat + 2;
-        const nextStartBeat = Math.max(0, Math.round(((startSec - gapSec) * bpm) / 15));
+        const nextStartBeat = Math.round(((startSec - gapSec) * bpm) / 15);
         const breakEnd = Math.max(breakStart + 1, nextStartBeat - 2);
         if (breakEnd > breakStart) {
           newNotes.push({ id: id++, type: 'break', startBeat: breakStart, endBeat: breakEnd });
@@ -477,7 +477,7 @@
         }
       }
 
-      let startBeat = Math.max(0, Math.round(((startSec - gapSec) * bpm) / 15));
+      let startBeat = Math.round(((startSec - gapSec) * bpm) / 15);
       let endBeat   = Math.max(startBeat + 1, Math.round(((endSec - gapSec) * bpm) / 15));
 
       // Prevent overlap with previous note
@@ -1877,17 +1877,15 @@
       return;
     }
 
-    // ── Set GAP mode hover: highlight nearest valid grid line ──
+    // ── Set GAP mode hover: highlight nearest grid line ──
     if (setGapMode) {
       const hoverBeat = nearestGridBeat(mx);
       const hoverTimeSec = beatToTime(hoverBeat);
-      const maxGapSec = getMaxGapSec();
-      // Only allow if this position is at or before the first note's raw start time
-      // Use 1ms tolerance to avoid float rounding rejecting the exact same position
-      if (hoverTimeSec <= maxGapSec + 0.001) {
+      // GAP can be placed anywhere — including after the first note (negative beats)
+      if (hoverTimeSec >= 0) {
         setGapHoverBeat = hoverBeat;
       } else {
-        setGapHoverBeat = null;
+        setGapHoverBeat = null; // can't set GAP before audio start
       }
       canvasEl.style.cursor = setGapHoverBeat !== null ? 'crosshair' : 'not-allowed';
       draw();
@@ -1963,7 +1961,7 @@
 
     // ── Paste preview tracking ──
     if (pasteMode && clipboard) {
-      pastePreviewBeat = Math.max(0, Math.round(xToBeat(mx)));
+      pastePreviewBeat = Math.round(xToBeat(mx));
       draw();
       return;
     }
@@ -1978,7 +1976,7 @@
 
     // Break drag: horizontal only
     if (note.type === 'break' && dragMode === 'move-break') {
-      note.startBeat = Math.max(0, Math.round(dragStart.beat + dx / zoom));
+      note.startBeat = Math.round(dragStart.beat + dx / zoom);
       if (note.endBeat !== null && note.endBeat !== undefined) {
         const origDiff = (dragStart.endBeat || note.endBeat) - dragStart.beat;
         note.endBeat = note.startBeat + origDiff;
@@ -2010,7 +2008,7 @@
       for (const offset of dragStart.groupOffsets) {
         const n = notes.find(nn => nn.id === offset.id);
         if (n) {
-          n.startBeat = Math.max(0, offset.beat + beatDelta);
+          n.startBeat = offset.beat + beatDelta;
           n.pitch = Math.max(minPitch, Math.min(maxPitch, offset.pitch + pitchDelta));
         }
       }
@@ -2019,7 +2017,7 @@
         if (dragStart.groupOffsets.length <= 1) updateDragOsc(note.pitch);
       }
     } else if (dragMode === 'move') {
-      note.startBeat = Math.max(0, Math.round(dragStart.beat + dx / zoom));
+      note.startBeat = Math.round(dragStart.beat + dx / zoom);
       note.pitch = Math.max(minPitch, Math.min(maxPitch, yToPitch(dragStart.y + dy)));
       // Update pitch preview if pitch changed — only for single note
       if (note.pitch !== dragLastPitch) {
@@ -2028,7 +2026,7 @@
     } else if (dragMode === 'resize-right') {
       note.duration = Math.max(1, Math.round(dragStart.duration + dx / zoom));
     } else if (dragMode === 'resize-left') {
-      const newStart = Math.max(0, Math.round(dragStart.beat + dx / zoom));
+      const newStart = Math.round(dragStart.beat + dx / zoom);
       const diff = note.startBeat - newStart;
       note.startBeat = newStart;
       note.duration = Math.max(1, note.duration + diff);
@@ -2529,7 +2527,7 @@
     pushUndo();
     const maxId = Math.max(...notes.map(n => n.id)) + 1;
     const breakBeat = position === 'before'
-      ? Math.max(0, note.startBeat - 1)
+      ? note.startBeat - 1
       : note.startBeat + note.duration + 1;
     const breakNote = { id: maxId, type: 'break', startBeat: breakBeat, endBeat: null };
 
@@ -2543,7 +2541,7 @@
   function addBreakAt(beat) {
     pushUndo();
     const maxId = Math.max(0, ...notes.map(n => n.id)) + 1;
-    const breakNote = { id: maxId, type: 'break', startBeat: Math.max(0, beat), endBeat: null };
+    const breakNote = { id: maxId, type: 'break', startBeat: beat, endBeat: null };
     // Insert in sorted position
     let insertIdx = notes.findIndex(n => {
       const nb = n.type === 'break' ? n.startBeat : n.startBeat;
@@ -2562,7 +2560,7 @@
     const maxId = Math.max(0, ...notes.map(n => n.id)) + 1;
     const newNote = {
       id: maxId,
-      startBeat: Math.max(0, beat),
+      startBeat: beat,
       duration,
       pitch: Math.max(minPitch, Math.min(maxPitch, pitch)),
       syllable: ' ~',
@@ -4632,7 +4630,7 @@
             <span class="ctx-break-label">Break @ beat {ctxNote.startBeat}</span>
           </div>
           <div class="ctx-divider"></div>
-          <button class="ctx-item" on:click={() => { pushUndo(); const n = notes.find(n2 => n2.id === ctxNote.id); if(n) { n.startBeat = Math.max(0, n.startBeat - 1); notes = [...notes]; markUnsaved(); draw(); } }}>
+          <button class="ctx-item" on:click={() => { pushUndo(); const n = notes.find(n2 => n2.id === ctxNote.id); if(n) { n.startBeat = n.startBeat - 1; notes = [...notes]; markUnsaved(); draw(); } }}>
             ← Nudge Left <span class="ctx-shortcut">-1</span>
           </button>
           <button class="ctx-item" on:click={() => { pushUndo(); const n = notes.find(n2 => n2.id === ctxNote.id); if(n) { n.startBeat += 1; notes = [...notes]; markUnsaved(); draw(); } }}>
