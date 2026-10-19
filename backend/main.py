@@ -3145,13 +3145,16 @@ async def lyrics_search(session_id: str, artist: str = "", title: str = ""):
             duration = get_audio_duration(audio)
         except Exception:
             pass
-    from services.lyrics_search import search
+    from services.lyrics_search import LyricsServiceBusy, search
     try:
         found = await asyncio.to_thread(search, artist, title, duration)
-    except OSError as e:
-        # No network, timeout, or LRCLIB itself is down (HTTP 5xx).
+    except LyricsServiceBusy:
         raise ServiceError("Lyrics search failed",
-                           f"LRCLIB (lrclib.net) isn't available right now ({e}). Try again later.")
+                           "LRCLIB (lrclib.net) is overloaded right now. Try again in a minute, "
+                           "or paste the lyrics yourself.")
+    except OSError as e:
+        # No network or timeout.
+        raise ServiceError("Lyrics search failed", f"LRCLIB (lrclib.net) couldn't be reached ({e}).")
     if not found:
         return {"found": False}
     return {"found": True, **found}

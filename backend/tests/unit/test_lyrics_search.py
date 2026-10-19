@@ -82,3 +82,63 @@ def test_live_lrclib():
     """Real request (network): run with -m slow."""
     found = lyrics.search("Freak Power", "Turn On, Tune In, Cop Out")
     assert found and "fast lane" in found["text"]
+
+
+class FakeResponse:
+    def __init__(self, data):
+        self.data = data
+
+    def read(self):
+        return self.data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def http_error(code, retry_after="1"):
+    import email.message
+    import urllib.error
+    headers = email.message.Message()
+    headers["Retry-After"] = retry_after
+    return urllib.error.HTTPError("https://lrclib.net/api/search", code, "busy", headers, None)
+
+
+def test_fetch_retries_while_lrclib_is_busy(monkeypatch):
+    answers = [http_error(503), http_error(503), FakeResponse(b'[{"id": 7}]')]
+
+    def fake_urlopen(request, timeout):
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(lyrics.urllib.request, "urlopen", fake_urlopen)
+    waits = []
+    assert lyrics.fetch({"q": "x"}, sleep=waits.append) == [{"id": 7}]
+    assert waits == [1, 2]
+
+
+def test_fetch_gives_up_with_a_clear_error(monkeypatch):
+    def always_busy(request, timeout):
+        raise http_error(503)
+
+    monkeypatch.setattr(lyrics.urllib.request, "urlopen", always_busy)
+    with pytest.raises(lyrics.LyricsServiceBusy):
+        lyrics.fetch({"q": "x"}, sleep=lambda s: None)
+
+
+def test_fetch_does_not_retry_other_errors(monkeypatch):
+    calls = []
+
+    def not_found(request, timeout):
+        calls.append(1)
+        raise http_error(404)
+
+    monkeypatch.setattr(lyrics.urllib.request, "urlopen", not_found)
+    import urllib.error
+    with pytest.raises(urllib.error.HTTPError):
+        lyrics.fetch({"q": "x"}, sleep=lambda s: None)
+    assert calls == [1]

@@ -6,7 +6,9 @@ misses or mishears words in sung audio. Tune Studio uses the same source.
 
 import json
 import re
+import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 from typing import List, Optional
@@ -17,6 +19,13 @@ API = "https://lrclib.net/api/search"
 # LRCLIB asks clients to identify themselves.
 USER_AGENT = "UltrastarCreatorTool (https://github.com/retotito/UltrastarCreatorTool)"
 TIMEOUT_SEC = 10
+# LRCLIB answers 503 "ServerOverloaded" (with Retry-After) or 429 when busy: wait and try again.
+RETRY_STATUSES = {429, 502, 503, 504}
+RETRY_DELAYS_SEC = (1, 2, 4)
+
+
+class LyricsServiceBusy(OSError):
+    """LRCLIB stayed busy (overloaded) after retrying."""
 
 TIMESTAMP = re.compile(r"\[(\d+):(\d+(?:\.\d+)?)\]")
 # Whole-line section labels like "[Chorus]" or "(Verse 2)"; [RAP] / [/RAP] are the app's own markers.
@@ -104,11 +113,24 @@ def entry_lyrics(entry: dict) -> dict:
     }
 
 
-def fetch(params: dict) -> List[dict]:
+def fetch(params: dict, sleep=time.sleep) -> List[dict]:
     url = f"{API}?{urllib.parse.urlencode(params)}"
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=TIMEOUT_SEC) as response:
-        return json.loads(response.read().decode("utf-8"))
+    for attempt in range(len(RETRY_DELAYS_SEC) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT_SEC) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            if error.code not in RETRY_STATUSES:
+                raise
+            if attempt == len(RETRY_DELAYS_SEC):
+                raise LyricsServiceBusy(f"LRCLIB is busy (HTTP {error.code})") from error
+            try:
+                wait = max(float(error.headers.get("Retry-After") or 0), RETRY_DELAYS_SEC[attempt])
+            except ValueError:
+                wait = RETRY_DELAYS_SEC[attempt]
+            log_step("LYRICS", f"LRCLIB busy (HTTP {error.code}), retrying in {wait:.0f}s")
+            sleep(min(wait, 10))
 
 
 def search(artist: str, title: str, duration: Optional[float] = None) -> Optional[dict]:
