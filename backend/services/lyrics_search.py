@@ -11,6 +11,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+from difflib import SequenceMatcher
 from typing import List, Optional
 
 from utils.logger import log_step
@@ -69,6 +70,15 @@ def clean_lines(lines: List[str]) -> List[str]:
     return out
 
 
+# An automatic match needs the artist to be about right ("Freak Power" vs "Freakpower" passes,
+# "Threshold" doesn't); otherwise the user picks from the suggestions.
+MIN_ARTIST_SIMILARITY = 0.75
+
+
+def artist_similarity(entry: dict, artist: str) -> float:
+    return SequenceMatcher(None, normalize(entry.get("artistName", "")), normalize(artist)).ratio()
+
+
 def pick(entries: List[dict], title: str, artist: str, duration: Optional[float] = None) -> Optional[dict]:
     """The best entry: same title (ignoring version labels), then same artist, synced lyrics, closest length."""
     wanted_title, wanted_artist = base_title(title), normalize(artist)
@@ -88,6 +98,8 @@ def pick(entries: List[dict], title: str, artist: str, duration: Optional[float]
     best = min(candidates, key=rank)
     if base_title(best.get("trackName", "")) != wanted_title and wanted_title not in base_title(best.get("trackName", "")):
         return None  # a different song: better nothing than wrong lyrics
+    if wanted_artist and artist_similarity(best, artist) < MIN_ARTIST_SIMILARITY:
+        return None  # same title by someone else: let the user choose from the suggestions
     return best
 
 
@@ -133,14 +145,74 @@ def fetch(params: dict, sleep=time.sleep) -> List[dict]:
             sleep(min(wait, 10))
 
 
-def search(artist: str, title: str, duration: Optional[float] = None) -> Optional[dict]:
-    """The lyrics LRCLIB has for this song, or None. Raises OSError when LRCLIB can't be reached."""
-    entries = fetch({"track_name": title, "artist_name": artist})
-    if not entries and base_title(title) != normalize(title):
-        entries = fetch({"track_name": base_title(title), "artist_name": artist})
-    if not entries:
-        entries = fetch({"q": f"{artist} {title}"})
-    best = pick(entries, title, artist, duration)
-    log_step("LYRICS", f"LRCLIB: {len(entries)} results for '{artist} - {title}', "
-                       f"{'picked ' + str(best.get('id')) if best else 'none matches'}")
-    return entry_lyrics(best) if best else None
+MAX_CANDIDATES = 10
+LENGTH_MATCH_SEC = 5.0
+
+
+def similarity(entry: dict, title: str, artist: str) -> float:
+    """0..1: how close an entry's title and artist are to what the user typed (title counts double)."""
+    title_score = SequenceMatcher(None, base_title(entry.get("trackName", "")), base_title(title)).ratio()
+    artist_score = SequenceMatcher(None, normalize(entry.get("artistName", "")), normalize(artist)).ratio()
+    return (2 * title_score + artist_score) / 3
+
+
+def candidates(entries: List[dict], title: str, artist: str, duration: Optional[float] = None) -> List[dict]:
+    """Entries to choose from, most similar first: lyrics plus `score` and `length_match`.
+
+    Instrumentals and entries without lyrics are left out; duplicates (same title, artist, length
+    and text) appear once, the synced one if there is one.
+    """
+    usable = [e for e in entries if not e.get("instrumental") and (e.get("syncedLyrics") or e.get("plainLyrics"))]
+
+    def length_off(entry):
+        return abs(entry["duration"] - duration) if duration and entry.get("duration") else None
+
+    def order(entry):
+        off = length_off(entry)
+        length_ok = off is not None and off <= LENGTH_MATCH_SEC
+        return (-round(similarity(entry, title, artist), 2), not length_ok, not entry.get("syncedLyrics"),
+                off if off is not None else 999.0)
+
+    out, seen = [], set()
+    for entry in sorted(usable, key=order):
+        found = entry_lyrics(entry)
+        key = (normalize(found["track"]), normalize(found["artist"]), round(found["duration"] or 0), found["text"])
+        if key in seen or not found["text"]:
+            continue
+        seen.add(key)
+        off = length_off(entry)
+        found["score"] = round(similarity(entry, title, artist), 3)
+        found["length_match"] = None if off is None else off <= LENGTH_MATCH_SEC
+        out.append(found)
+        if len(out) == MAX_CANDIDATES:
+            break
+    return out
+
+
+def search(artist: str, title: str, duration: Optional[float] = None) -> dict:
+    """What LRCLIB has for this song: `best` (lyrics of the clear match, or None) and `candidates`
+    (similar entries to choose from). Raises OSError when LRCLIB can't be reached.
+
+    Asks by artist and title first, then without version labels, then as free text, so typos and
+    missing words still give suggestions.
+    """
+    entries: dict = {}
+
+    def ask(params):
+        for entry in fetch(params):
+            entries.setdefault(entry.get("id"), entry)
+
+    ask({"track_name": title, "artist_name": artist})
+    if len(entries) < 3 and base_title(title) != normalize(title):
+        ask({"track_name": base_title(title), "artist_name": artist})
+    ask({"q": f"{artist} {title}"})
+    if len(entries) < 3:
+        ask({"q": base_title(title) or title})
+    found = list(entries.values())
+    best = pick(found, title, artist, duration)
+    log_step("LYRICS", f"LRCLIB: {len(found)} results for '{artist} - {title}', "
+                       f"{'picked ' + str(best.get('id')) if best else 'no clear match'}")
+    return {
+        "best": entry_lyrics(best) if best else None,
+        "candidates": candidates(found, title, artist, duration),
+    }

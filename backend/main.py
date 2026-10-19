@@ -3176,9 +3176,9 @@ async def lyrics_search(session_id: str, artist: str = "", title: str = ""):
     except OSError as e:
         # No network or timeout.
         raise ServiceError("Lyrics search failed", f"LRCLIB (lrclib.net) couldn't be reached ({e}).")
-    if not found:
-        return {"found": False}
-    return {"found": True, **found}
+    best = found["best"]
+    return {"found": best is not None, **(best or {}), "candidates": found["candidates"],
+            "song_duration": round(duration, 1) if duration else None}
 
 
 @app.post("/api/hyphenate")

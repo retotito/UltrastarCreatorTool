@@ -55,6 +55,13 @@ class TestPick:
     def test_instrumentals_and_empty_entries_are_skipped(self):
         assert lyrics.pick([entry(instrumental=True, plain="x"), entry()], "Turn On, Tune In, Cop Out", "Freak Power") is None
 
+    def test_same_title_by_another_artist_is_not_picked_automatically(self):
+        assert lyrics.pick([entry(title="Turn On Tune In", artist="Threshold", plain="x")],
+                           "Turn on tune in", "Freek Power") is None
+
+    def test_a_slightly_misspelled_artist_still_matches(self):
+        assert lyrics.pick([entry(artist="Freakpower", plain="x")], "Turn On, Tune In, Cop Out", "Freak Power")
+
     def test_a_different_song_is_not_returned(self):
         assert lyrics.pick([entry(title="Rush", plain="x")], "Turn On, Tune In, Cop Out", "Freak Power") is None
 
@@ -68,20 +75,63 @@ def test_search_retries_without_version_label(monkeypatch):
 
     monkeypatch.setattr(lyrics, "fetch", fake_fetch)
     found = lyrics.search("Freak Power", "Turn On, Tune In, Cop Out (Remastered 2011)")
-    assert found["synced"] is True
+    assert found["best"]["synced"] is True
     assert calls[1]["track_name"] == "turn on tune in cop out"
 
 
 def test_search_finds_nothing(monkeypatch):
     monkeypatch.setattr(lyrics, "fetch", lambda params: [])
-    assert lyrics.search("Nobody", "Nothing") is None
+    assert lyrics.search("Nobody", "Nothing") == {"best": None, "candidates": []}
+
+
+def test_a_misspelled_title_gives_suggestions_but_no_automatic_match(monkeypatch):
+    def fake_fetch(params):
+        if "q" in params:
+            return [entry(id=1, synced=SYNCED), entry(id=2, title="Rush", plain="la")]
+        return []
+
+    monkeypatch.setattr(lyrics, "fetch", fake_fetch)
+    found = lyrics.search("Freak Power", "Tune In Cop Out")
+    assert found["best"] is None or found["best"]["id"] == 1
+    assert [c["id"] for c in found["candidates"]] == [1, 2]  # most similar first
+
+
+class TestCandidates:
+    def test_matching_length_and_timestamps_rank_first(self):
+        entries = [entry(id=1, plain="a", duration=262), entry(id=2, synced="[00:01.00] b", duration=300),
+                   entry(id=3, synced="[00:01.00] c", duration=263)]
+        found = lyrics.candidates(entries, "Turn On, Tune In, Cop Out", "Freak Power", duration=264)
+        assert [c["id"] for c in found] == [3, 1, 2]
+
+    def test_duplicates_appear_once_and_synced_wins(self):
+        entries = [entry(id=1, plain="Turn on"), entry(id=2, synced="[00:01.00] Turn on"), entry(id=3, plain="Other text")]
+        found = lyrics.candidates(entries, "Turn On, Tune In, Cop Out", "Freak Power")
+        assert [c["id"] for c in found] == [2, 3]
+
+    def test_length_match_is_marked(self):
+        entries = [entry(id=1, plain="a", duration=262), entry(id=2, plain="b", duration=300)]
+        found = lyrics.candidates(entries, "Turn On, Tune In, Cop Out", "Freak Power", duration=264)
+        assert [(c["id"], c["length_match"]) for c in found] == [(1, True), (2, False)]
+
+    def test_without_song_length_nothing_is_marked(self):
+        found = lyrics.candidates([entry(plain="a")], "Turn On, Tune In, Cop Out", "Freak Power")
+        assert found[0]["length_match"] is None
+
+    def test_instrumentals_are_left_out(self):
+        assert lyrics.candidates([entry(instrumental=True, plain="a")], "x", "y") == []
+
+    def test_at_most_ten(self):
+        entries = [entry(id=i, plain=f"text {i}") for i in range(15)]
+        assert len(lyrics.candidates(entries, "Turn On, Tune In, Cop Out", "Freak Power")) == 10
 
 
 @pytest.mark.slow
 def test_live_lrclib():
     """Real request (network): run with -m slow."""
     found = lyrics.search("Freak Power", "Turn On, Tune In, Cop Out")
-    assert found and "fast lane" in found["text"]
+    assert found["best"] and "fast lane" in found["best"]["text"]
+    sloppy = lyrics.search("freak power", "tune in cop out")
+    assert any("fast lane" in c["text"] for c in sloppy["candidates"])
 
 
 class FakeResponse:

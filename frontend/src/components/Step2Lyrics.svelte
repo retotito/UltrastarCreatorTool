@@ -130,6 +130,10 @@
   let lyricsSourceLoadedForSession = null;
   let lyricsSearching = false;
   let lyricsSearchInfo = '';
+  let lyricsCandidates = [];      // LRCLIB entries to choose from
+  let showLyricsCandidates = false;
+  let chosenCandidateId = null;
+  let songDuration = null;
   $: activeLyrics = (lyricsSource === 'original' ? comparisonLyrics : lyricsText) || '';
   let comparisonState = null; // { text, marks: [{ from, to, color }] }
   let comparisonLyricsLoadedForSession = null;
@@ -282,24 +286,45 @@
     ))) return;
     errorMessage.set('');
     lyricsSearchInfo = '';
+    lyricsCandidates = [];
+    showLyricsCandidates = false;
+    chosenCandidateId = null;
     lyricsSearching = true;
     try {
       const found = await searchLyricsOnline($sessionId, artist.trim(), title.trim());
-      if (!found.found) {
+      lyricsCandidates = found.candidates || [];
+      songDuration = found.song_duration || null;
+      if (found.found) {
+        useLyricsCandidate(found);
+      } else if (lyricsCandidates.length) {
+        lyricsSearchInfo = `No exact match for "${artist.trim()} – ${title.trim()}". Did you mean:`;
+        showLyricsCandidates = true;
+      } else {
         lyricsSearchInfo = `No lyrics found on LRCLIB for "${artist.trim()} – ${title.trim()}". Check the spelling, or paste them yourself.`;
-        return;
       }
-      comparisonEditor.setValue(found.text);
-      comparisonEditor.getAllMarks().forEach(mark => mark.clear());
-      saveComparisonLyrics();
-      setLyricsSource('original');
-      const length = found.duration ? `, ${Math.floor(found.duration / 60)}:${String(Math.round(found.duration % 60)).padStart(2, '0')}` : '';
-      lyricsSearchInfo = `${found.lines} lines from LRCLIB: ${found.artist} – ${found.track}${length}${found.synced ? ', line-synced' : ''}. Check them against the song; repeated choruses must be written out.`;
     } catch (err) {
       errorMessage.set(err.message);
     } finally {
       lyricsSearching = false;
     }
+  }
+
+  function formatDuration(seconds) {
+    if (!seconds) return '';
+    const s = Math.round(seconds);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  /** Put an LRCLIB entry's lyrics into the right field and use them for generation. */
+  function useLyricsCandidate(entry) {
+    comparisonEditor.setValue(entry.text);
+    comparisonEditor.getAllMarks().forEach(mark => mark.clear());
+    saveComparisonLyrics();
+    setLyricsSource('original');
+    chosenCandidateId = entry.id;
+    showLyricsCandidates = false;
+    const length = entry.duration ? `, ${formatDuration(entry.duration)}` : '';
+    lyricsSearchInfo = `${entry.lines} lines from LRCLIB: ${entry.artist} – ${entry.track}${length}${entry.synced ? ', line-synced' : ''}. Check them against the song; repeated choruses must be written out.`;
   }
 
   function applyColorToSelection(color) {
@@ -803,7 +828,33 @@
             {lyricsSearching ? '🔎 Searching…' : '🔎 Find lyrics online'}
           </button>
         </div>
-        {#if lyricsSearchInfo}<p class="hint lyrics-search-info">{lyricsSearchInfo}</p>{/if}
+        {#if lyricsSearchInfo}
+          <p class="hint lyrics-search-info">
+            {lyricsSearchInfo}
+            {#if chosenCandidateId !== null && lyricsCandidates.length > 1}
+              <button class="link-btn" on:click={() => showLyricsCandidates = !showLyricsCandidates}>
+                {showLyricsCandidates ? 'Hide other versions' : `Choose another version (${lyricsCandidates.length - 1})`}
+              </button>
+            {/if}
+          </p>
+        {/if}
+        {#if showLyricsCandidates}
+          <ul class="lyrics-candidates">
+            {#each lyricsCandidates as entry (entry.id)}
+              <li>
+                <button class="lyrics-candidate" class:chosen={entry.id === chosenCandidateId} on:click={() => useLyricsCandidate(entry)}>
+                  <span class="candidate-title">{entry.track} — {entry.artist}</span>
+                  <span class="candidate-meta">
+                    {#if entry.album}{entry.album} · {/if}{formatDuration(entry.duration)}
+                    {#if entry.length_match === true}<span class="length-ok" title="Same length as your song ({formatDuration(songDuration)})">✓ same length</span>{/if}
+                    {#if entry.length_match === false}<span class="length-off" title="Your song is {formatDuration(songDuration)}">other length</span>{/if}
+                    · {entry.lines} lines{entry.synced ? ' · synced' : ''}
+                  </span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
         <textarea
           id="comparison"
           bind:this={comparisonLyricsTextarea}
@@ -1049,6 +1100,51 @@
   }
   .lyrics-search-info {
     margin: 0.25rem 0 0.5rem;
+  }
+  .lyrics-candidates {
+    list-style: none;
+    margin: 0 0 0.5rem;
+    padding: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #444;
+    border-radius: 6px;
+  }
+  .lyrics-candidate {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: none;
+    border-bottom: 1px solid #333;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .lyrics-candidate:hover,
+  .lyrics-candidate:focus-visible {
+    background: rgba(79, 140, 255, 0.15);
+  }
+  .lyrics-candidate.chosen {
+    background: rgba(76, 175, 80, 0.18);
+  }
+  .candidate-title {
+    font-weight: 600;
+  }
+  .candidate-meta {
+    font-size: 0.85em;
+    opacity: 0.8;
+  }
+  .length-ok {
+    color: #4caf50;
+    margin-left: 0.25rem;
+  }
+  .length-off {
+    color: #e0a030;
+    margin-left: 0.25rem;
   }
   .warning-modal-overlay {
     position: fixed;
