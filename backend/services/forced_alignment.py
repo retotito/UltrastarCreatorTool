@@ -29,6 +29,10 @@ from utils.logger import log_step
 MODEL_ID = "MahmoudAshraf/mms-300m-1130-forced-aligner"
 MODEL_REVISION = "49402e9577b1158620820667c218cd494cc44486"
 
+# Experimental, evaluation only: the same model fine-tuned on singing by Tune Studio (ONNX, CC-BY-NC-4.0).
+SUNG_MODEL_ID = "tuneperfect/tunestudio-aligner"
+SUNG_MODEL_REVISION = "4c6edce202fae335e6239c09ea17ecddcf29b42e"
+
 SAMPLE_RATE = 16_000
 FRAME_SEC = 0.02            # one emission frame per 320 samples
 SAMPLES_PER_FRAME = 320
@@ -50,6 +54,15 @@ STAR = NUM_CLASSES
 
 # A word whose mean log-probability is below this is flagged for review in the editor.
 LOW_CONFIDENCE_SCORE = -2.0
+
+# Silence gate: frames this far below the song's loud singing (95th percentile) count as silent,
+# and no letter may be placed there. Separated vocals are near silent between lines.
+SILENCE_BELOW_LOUD_DB = 30.0
+SILENCE_FLOOR_DB = -50.0
+# Sounding regions are widened by this many frames on each side (soft consonants at word edges).
+SOUNDING_PAD_FRAMES = 3
+# Letters are made this unlikely in silent frames (log-probability).
+SILENT_LETTER_LOG_PROB = -1e4
 
 
 class AlignmentError(Exception):
@@ -110,7 +123,10 @@ def lyric_words(lyrics_text: str) -> List[Word]:
 
 
 def build_targets(words: List[Word]) -> tuple:
-    """Target ids for the CTC search: <star> before each word's letters.
+    """Target ids for the CTC search: <star> before each word's letters and after the last word.
+
+    The trailing <star> matters: without it, anything sung after the lyrics (an outro, ad-libs)
+    would have to be blank, and the last words would be pulled onto it.
 
     Returns (targets, owners): owners[k] = (word index, letter index) for letter targets, None for stars.
     Words without letters (e.g. "&") get no targets and are placed between their neighbours later.
@@ -125,6 +141,9 @@ def build_targets(words: List[Word]) -> tuple:
         for l_idx, letter in enumerate(letters):
             targets.append(VOCAB[letter])
             owners.append((w_idx, l_idx))
+    if targets:
+        targets.append(STAR)
+        owners.append(None)
     return targets, owners
 
 
@@ -134,6 +153,31 @@ def build_targets(words: List[Word]) -> tuple:
 def with_star_column(log_probs: np.ndarray) -> np.ndarray:
     """Append the <star> column (log-probability 0) to (frames × classes) log-probabilities."""
     return np.concatenate([log_probs, np.zeros((log_probs.shape[0], 1), dtype=log_probs.dtype)], axis=1)
+
+
+def sounding_frames(loudness_db: np.ndarray) -> np.ndarray:
+    """Which frames have something sung in them: not far below the loud parts, widened a little."""
+    loudness_db = np.asarray(loudness_db, dtype=np.float32)
+    if loudness_db.size == 0:
+        return np.zeros(0, dtype=bool)
+    loud = np.percentile(loudness_db, 95)
+    sounding = loudness_db >= max(SILENCE_FLOOR_DB, loud - SILENCE_BELOW_LOUD_DB)
+    if SOUNDING_PAD_FRAMES:
+        kernel = np.ones(2 * SOUNDING_PAD_FRAMES + 1)
+        sounding = np.convolve(sounding.astype(float), kernel, mode="same") > 0
+    return sounding
+
+
+def gate_silence(log_probs: np.ndarray, loudness_db: np.ndarray) -> np.ndarray:
+    """No letters in silent frames: only blank (and <star>) remain possible there."""
+    gated = log_probs.copy()
+    sounding = sounding_frames(loudness_db)
+    frames = min(len(sounding), len(gated))
+    silent = np.zeros(len(gated), dtype=bool)
+    silent[:frames] = ~sounding[:frames]
+    letters = [i for i in range(NUM_CLASSES) if i != BLANK]
+    gated[np.ix_(silent, letters)] = SILENT_LETTER_LOG_PROB
+    return gated
 
 
 def forced_align(log_probs: np.ndarray, targets: List[int]) -> np.ndarray:
@@ -281,11 +325,13 @@ def _syllable_spans(word: Word, timing: WordTiming) -> List[tuple]:
 
 
 def align_lyrics_to_emissions(lyrics_text: str, log_probs: np.ndarray, offset: float = 0.0,
-                              pitch_data: Optional[dict] = None, snap_voice: bool = True) -> List[dict]:
+                              pitch_data: Optional[dict] = None, snap_voice: bool = True,
+                              loudness_db: Optional[np.ndarray] = None) -> List[dict]:
     """Syllable timings for `lyrics_text` from the aligner's (frames × 31) log-probabilities.
 
     `offset` is the time of frame 0 in seconds. With `pitch_data` (from detect_pitches) and
-    `snap_voice`, word starts move to where singing begins.
+    `snap_voice`, word starts move to where singing begins. With `loudness_db` (per frame, see
+    `frame_loudness`), no syllable is placed where the vocals are silent.
     """
     words = lyric_words(lyrics_text)
     if not words:
@@ -293,7 +339,10 @@ def align_lyrics_to_emissions(lyrics_text: str, log_probs: np.ndarray, offset: f
     targets, owners = build_targets(words)
     if not targets:
         raise AlignmentError("The lyrics have no letters to align.")
-    log_probs = with_star_column(np.asarray(log_probs, dtype=np.float32))
+    log_probs = np.asarray(log_probs, dtype=np.float32)
+    if loudness_db is not None:
+        log_probs = gate_silence(log_probs, loudness_db)
+    log_probs = with_star_column(log_probs)
     path = forced_align(log_probs, targets)
     timings = word_timings(path, log_probs, targets, owners, words, offset)
 
@@ -375,30 +424,41 @@ def download_model() -> None:
                       allow_patterns=["config.json", "model.safetensors", "*.json"])
 
 
-def _cache_key(audio_path: str) -> str:
+def _cache_key(audio_path: str, revision: str) -> str:
     stat = os.stat(audio_path)
-    raw = f"{os.path.abspath(audio_path)}|{stat.st_size}|{stat.st_mtime_ns}|{MODEL_REVISION}"
+    raw = f"{os.path.abspath(audio_path)}|{stat.st_size}|{stat.st_mtime_ns}|{revision}"
     return hashlib.sha1(raw.encode()).hexdigest()
 
 
-def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[str] = None) -> np.ndarray:
+def _sung_session():
+    if "sung" not in _model_cache:
+        import onnxruntime
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(SUNG_MODEL_ID, "aligner.onnx", revision=SUNG_MODEL_REVISION)
+        log_step("CTC_ALIGN", f"Loading sung aligner {SUNG_MODEL_ID}@{SUNG_MODEL_REVISION[:8]}")
+        _model_cache["sung"] = onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
+    return _model_cache["sung"]
+
+
+def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[str] = None,
+                      model_name: str = "mms") -> np.ndarray:
     """The aligner's (frames × 31) log-probabilities for the audio, one frame per 20 ms.
 
     Runs in 30 s windows with 2 s of context on each side. With `cache_dir`, results are cached
-    per file (path, size, modification time) so re-generating a song is fast.
+    per file (path, size, modification time) so re-generating a song is fast. `model_name` "sung"
+    selects the experimental singing fine-tune (evaluation only).
     """
+    revision = SUNG_MODEL_REVISION if model_name == "sung" else MODEL_REVISION
     cache_path = None
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
-        cache_path = os.path.join(cache_dir, f"emissions_{_cache_key(audio_path)}.npy")
+        cache_path = os.path.join(cache_dir, f"emissions_{_cache_key(audio_path, revision)}.npy")
         if os.path.isfile(cache_path):
             return np.load(cache_path)
 
     import librosa
-    import torch
 
     audio, _ = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
-    model = _load_model(device)
     window = WINDOW_SEC * SAMPLE_RATE
     context = CONTEXT_SEC * SAMPLE_RATE
     total_frames = max(1, int(np.ceil(len(audio) / SAMPLES_PER_FRAME)))
@@ -410,15 +470,27 @@ def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[
 
     chunks = []
     windows = padded_len // window
-    log_step("CTC_ALIGN", f"Emissions for {len(audio) / SAMPLE_RATE:.1f}s in {windows} windows")
-    with torch.inference_mode():
+    log_step("CTC_ALIGN", f"Emissions ({model_name}) for {len(audio) / SAMPLE_RATE:.1f}s in {windows} windows")
+    if model_name == "sung":
+        session = _sung_session()
         for k in range(windows):
+            # Raw audio, no normalisation (as the model card says).
             chunk = padded[k * window:k * window + window + 2 * context]
-            # Same normalisation as Wav2Vec2FeatureExtractor(do_normalize=True).
-            chunk = (chunk - chunk.mean()) / np.sqrt(chunk.var() + 1e-7)
-            logits = model(torch.from_numpy(chunk)[None].to(device)).logits[0]
-            log_probs = torch.log_softmax(logits.float(), dim=-1).cpu().numpy()
-            chunks.append(log_probs[skip:skip + keep])
+            logits = session.run(["logits"], {"audio": chunk[None]})[0][0]
+            shifted = logits - logits.max(axis=-1, keepdims=True)
+            log_probs = shifted - np.log(np.exp(shifted).sum(axis=-1, keepdims=True))
+            chunks.append(log_probs[skip:skip + keep].astype(np.float32))
+    else:
+        import torch
+        model = _load_model(device)
+        with torch.inference_mode():
+            for k in range(windows):
+                chunk = padded[k * window:k * window + window + 2 * context]
+                # Same normalisation as Wav2Vec2FeatureExtractor(do_normalize=True).
+                chunk = (chunk - chunk.mean()) / np.sqrt(chunk.var() + 1e-7)
+                logits = model(torch.from_numpy(chunk)[None].to(device)).logits[0]
+                log_probs = torch.log_softmax(logits.float(), dim=-1).cpu().numpy()
+                chunks.append(log_probs[skip:skip + keep])
     emissions = np.concatenate(chunks)[:total_frames]
     if emissions.shape[0] < total_frames:
         pad = np.full((total_frames - emissions.shape[0], emissions.shape[1]), -1e4, np.float32)
@@ -429,11 +501,24 @@ def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[
     return emissions
 
 
+def frame_loudness(audio_path: str) -> np.ndarray:
+    """Loudness of the audio in dBFS per emission frame (20 ms)."""
+    import librosa
+    audio, _ = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
+    rms = librosa.feature.rms(y=audio, frame_length=2 * SAMPLES_PER_FRAME, hop_length=SAMPLES_PER_FRAME, center=True)[0]
+    return 20 * np.log10(rms + 1e-9)
+
+
 def align_lyrics(audio_path: str, lyrics_text: str, pitch_data: Optional[dict] = None,
-                 device: str = "cpu", cache_dir: Optional[str] = None, snap_voice: bool = True) -> List[dict]:
-    """Syllable timings for the user's lyrics in `audio_path`. Same format as `align_whisper()`."""
+                 device: str = "cpu", cache_dir: Optional[str] = None, snap_voice: bool = False) -> List[dict]:
+    """Syllable timings for the user's lyrics in `audio_path`. Same format as `align_whisper()`.
+
+    `snap_voice` is off by default: on the evaluation songs it made starts later than the charts
+    (bias +40 ms) without fixing any misplaced notes. See eval/run_eval.py.
+    """
     emissions = compute_emissions(audio_path, device=device, cache_dir=cache_dir)
-    results = align_lyrics_to_emissions(lyrics_text, emissions, pitch_data=pitch_data, snap_voice=snap_voice)
+    results = align_lyrics_to_emissions(lyrics_text, emissions, pitch_data=pitch_data, snap_voice=snap_voice,
+                                        loudness_db=frame_loudness(audio_path))
     low = sum(1 for r in results if r["low_confidence"])
     log_step("CTC_ALIGN", f"Aligned {len(results)} syllables, {low} low confidence")
     return results

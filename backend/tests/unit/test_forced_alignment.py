@@ -15,6 +15,7 @@ from services.forced_alignment import (
     forced_align,
     pull_in_edges,
     romanize,
+    sounding_frames,
     snap_to_voice,
 )
 
@@ -147,6 +148,29 @@ class TestAlignLyrics:
         assert result["start"] == pytest.approx(1.1, abs=0.02)
         (unsnapped,) = align_lyrics_to_emissions("sun", log_probs, pitch_data=pitch, snap_voice=False)
         assert unsnapped["start"] == pytest.approx(1.0)
+
+
+class TestSilenceGate:
+    def test_frames_far_below_the_loud_parts_are_silent(self):
+        loudness = np.array([-20.0] * 10 + [-70.0] * 20 + [-22.0] * 10)
+        sounding = sounding_frames(loudness)
+        assert sounding[:13].all() and sounding[-13:].all()  # widened by 3 frames
+        assert not sounding[13:27].any()
+
+    def test_quiet_but_sung_frames_stay_sounding(self):
+        assert sounding_frames(np.array([-20.0] * 10 + [-45.0] * 10)).all()
+
+    def test_no_syllable_is_placed_in_silence(self):
+        """A letter-like sound in the silent stretch (e.g. leftover band bleed) can't take the word."""
+        # the first "la" is the clearer one, so without the gate it wins
+        log_probs = np.concatenate([emissions((None, 10), ("la", 10), sure=0.97),
+                                    emissions((None, 40), ("la", 10), (None, 10), sure=0.8)])
+        loudness = np.full(len(log_probs), -20.0)
+        loudness[5:25] = -80.0  # the first "la" is not in the vocals
+        (ungated,) = align_lyrics_to_emissions("la", log_probs)
+        (gated,) = align_lyrics_to_emissions("la", log_probs, loudness_db=loudness)
+        assert ungated["start"] == pytest.approx(0.2)
+        assert gated["start"] == pytest.approx(1.2)
 
 
 class TestCleanups:

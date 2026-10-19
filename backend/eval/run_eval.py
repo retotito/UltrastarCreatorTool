@@ -11,8 +11,10 @@ eval/reports/.
 
 Engines:
   legacy        WhisperX words + chars → align_whisper → onset snapping (the app today)
-  ctc           forced alignment of the lyrics, snapped to voiced pitch
-  ctc-raw       forced alignment without any snapping
+  ctc           forced alignment of the lyrics, silence-gated, snapped to voiced pitch (the app)
+  ctc-sung      as ctc, with Tune Studio's singing fine-tune of the aligner (experimental)
+  ctc-ungated   as ctc, without the silence gate
+  ctc-raw       forced alignment (silence-gated) without any snapping
   ctc-onsets    forced alignment + the app's onset snapping instead of voice snapping
 """
 
@@ -36,7 +38,7 @@ from eval.reference import audio_file, lyrics_text, parse_reference  # noqa: E40
 
 CACHE = os.path.join(HERE, "cache")
 REPORTS = os.path.join(HERE, "reports")
-ENGINES = ["legacy", "ctc", "ctc-raw", "ctc-onsets"]
+ENGINES = ["legacy", "ctc", "ctc-sung", "ctc-ungated", "ctc-raw", "ctc-onsets"]
 
 
 def slug(name: str) -> str:
@@ -112,15 +114,22 @@ def run_engine(engine: str, song: dict, lyrics: str, vocals: str, whisper_model:
         results = align_whisper(lyrics, words, song.get("language", "en"), char_timestamps=chars, audio_path=vocals)
         return snap_to_onsets(vocals, results)
 
-    from services.forced_alignment import align_lyrics_to_emissions, compute_emissions
+    from services.forced_alignment import align_lyrics_to_emissions, compute_emissions, frame_loudness
     emissions = compute_emissions(vocals, cache_dir=os.path.join(CACHE, slug(song["name"])))
+    loudness = frame_loudness(vocals)
     if engine == "ctc":
+        return align_lyrics_to_emissions(lyrics, emissions, pitch_data=pitch_for(song, vocals), loudness_db=loudness)
+    if engine == "ctc-sung":
+        sung = compute_emissions(vocals, cache_dir=os.path.join(CACHE, slug(song["name"])), model_name="sung")
+        return align_lyrics_to_emissions(lyrics, sung, pitch_data=pitch_for(song, vocals), loudness_db=loudness)
+    if engine == "ctc-ungated":
         return align_lyrics_to_emissions(lyrics, emissions, pitch_data=pitch_for(song, vocals))
     if engine == "ctc-raw":
-        return align_lyrics_to_emissions(lyrics, emissions, snap_voice=False)
+        return align_lyrics_to_emissions(lyrics, emissions, snap_voice=False, loudness_db=loudness)
     if engine == "ctc-onsets":
         from services.onset_snapping import snap_to_onsets
-        return snap_to_onsets(vocals, align_lyrics_to_emissions(lyrics, emissions, snap_voice=False))
+        return snap_to_onsets(vocals, align_lyrics_to_emissions(lyrics, emissions, snap_voice=False,
+                                                                loudness_db=loudness))
     raise ValueError(f"Unknown engine {engine}")
 
 
