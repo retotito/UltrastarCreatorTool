@@ -71,6 +71,11 @@ def test_apostrophes_in_headers_are_kept():
     assert "#TITLE:Don't Stop" in content
 
 
+def test_formatting_a_download_again_changes_nothing(downloaded):
+    """A downloaded file imported and downloaded again must not get 'Beau--'."""
+    assert format_for_download(downloaded.replace("\r\n", "\n")) == downloaded
+
+
 def test_freestyle_and_rap_notes_get_hyphens_too():
     content = format_for_download("F 0 4 0 free\nR 4 4 0 rap\nE")
     assert lines(content)[:2] == ["F 0 4 0 free-", "R 4 4 0 rap-"]

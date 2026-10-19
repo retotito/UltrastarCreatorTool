@@ -41,9 +41,10 @@ def format_for_download(content: str, include_vocals: bool = True, include_instr
     content = re.sub(r'^[^#].*$', _fix_apostrophes, content, flags=re.MULTILINE)
 
     # Note lines: "PREFIX BEAT DUR PITCH SYLLABLE"; no trailing space = word continues.
+    # Already hyphenated syllables (a re-imported download) stay as they are.
     def _fix_hyphens(m):
         line = m.group(0)
-        if not line.endswith(' '):
+        if not line.endswith((' ', '-')):
             line = line + '-'
         return line
     content = re.sub(r'^[:*RF] \d+ \d+ \d+ .*$', _fix_hyphens, content, flags=re.MULTILINE)

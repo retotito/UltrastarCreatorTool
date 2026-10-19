@@ -10,9 +10,16 @@ produces misplaced notes ("hallucinations"), see [known-issues.md](../known-issu
 
 ## Decision
 
-Time the **user's final lyrics** directly against the vocal audio with CTC forced alignment, using
-[`ctc-forced-aligner`](https://github.com/MahmoudAshraf97/ctc-forced-aligner) (BSD-2) and the
-`MahmoudAshraf/mms-300m-1130-forced-aligner` model (Meta MMS). Whisper only provides the lyric suggestion.
+Time the **user's final lyrics** directly against the vocal audio with CTC forced alignment, using the
+`MahmoudAshraf/mms-300m-1130-forced-aligner` model (Meta MMS, pinned revision) loaded with `transformers`, and our
+own Viterbi search in numpy (`backend/services/forced_alignment.py`). Whisper only provides the lyric suggestion.
+
+We don't use a forced-alignment package:
+- `ctc-forced-aligner` on PyPI (1.0.2) is a different fork (Deskpai) with its own licence ("DOSL") and its own
+  ONNX model download, and it would upgrade librosa to 1.0.
+- The original [`ctc-forced-aligner`](https://github.com/MahmoudAshraf97/ctc-forced-aligner) is itself
+  CC-BY-NC-4.0, isn't on PyPI and needs a C++ build, which would complicate PyInstaller.
+- The search is about 50 lines of numpy and is unit-tested with synthetic emissions.
 
 The implementation plan is in [plans/forced-alignment.md](../plans/forced-alignment.md).
 
@@ -28,7 +35,9 @@ The implementation plan is in [plans/forced-alignment.md](../plans/forced-alignm
 - **Licence:** the MMS weights are **CC-BY-NC-4.0** (non-commercial). Accepted because the app is distributed free
   of charge. The model must be credited in the README and the setup screen. The app must not be sold while it
   uses these weights.
-- New model download (about 1.2 GB) and a new PyInstaller dependency.
-- Language support grows to the about 1,100 MMS languages (through romanisation).
-- The alignment engine is swappable (`alignment_engine` setting), so a singing-tuned or permissively licensed model can
+- New model download (about 1.3 GB) in the setup screen. No new Python dependency: torch and transformers
+  come with WhisperX.
+- Latin-script languages work now (accents are removed: "Mädchen" → "madchen"). Other scripts need
+  romanisation (uroman) and fall back to the old alignment until then.
+- The alignment engine is swappable (`ULTRASTAR_ALIGNMENT_ENGINE=ctc|legacy`), so a singing-tuned or permissively licensed model can
   replace it later.

@@ -2,7 +2,7 @@
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { checkSetupStatus, streamSetupDownload } from '../services/api.js';
 
-  export let status = null; // { ffmpeg, whisperx, demucs, ready }
+  export let status = null; // { ffmpeg, whisperx, demucs, wav2vec2, aligner, ready }
 
   const dispatch = createEventDispatcher();
 
@@ -12,6 +12,7 @@
     whisperx: { label: 'WhisperX speech model',       size: '~1.5 GB',  state: 'pending', message: '', elapsed: 0, percent: null },
     demucs:   { label: 'Demucs vocal model',          size: '~80 MB',   state: 'pending', message: '', elapsed: 0, percent: null },
     wav2vec2: { label: 'wav2vec2 alignment model',    size: '~360 MB',  state: 'pending', message: '', elapsed: 0, percent: null },
+    aligner:  { label: 'Lyrics aligner (MMS, non-commercial licence)', size: '~1.3 GB', state: 'pending', message: '', elapsed: 0, percent: null },
   };
 
   let downloading = false;
@@ -39,6 +40,7 @@
     if (status.whisperx)  steps.whisperx.state = 'done';
     if (status.demucs)    steps.demucs.state   = 'done';
     if (status.wav2vec2)  steps.wav2vec2.state = 'done';
+    if (status.aligner)   steps.aligner.state  = 'done';
     if (status.ready) allDone = true;
     steps = steps; // trigger reactivity
   }

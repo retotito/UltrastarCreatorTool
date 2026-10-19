@@ -522,12 +522,18 @@ def _check_model_status() -> dict:
     wav2vec2_ok = wav2vec2_size > 100_000_000
     log_step("MODEL_STATUS", f"wav2vec2: exists={os.path.isfile(wav2vec2_path)} size={wav2vec2_size:,} bytes ok={wav2vec2_ok}")
 
+    # MMS forced aligner (times the user's lyrics; see services/forced_alignment.py)
+    from services.forced_alignment import is_model_downloaded as _aligner_downloaded
+    aligner_ok = _aligner_downloaded()
+    log_step("MODEL_STATUS", f"aligner: ok={aligner_ok}")
+
     result = {
         "ffmpeg": ffmpeg_ok,
         "whisperx": whisperx_ok,
         "demucs": demucs_ok,
         "wav2vec2": wav2vec2_ok,
-        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok,
+        "aligner": aligner_ok,
+        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok and aligner_ok,
     }
     log_step("MODEL_STATUS", f"final: {result}")
     return result
@@ -728,6 +734,39 @@ async def setup_download():
                 yield send("error", "wav2vec2", f"Download failed: {e}")
         else:
             yield send("done", "wav2vec2", "Alignment model already downloaded")
+
+        await asyncio.sleep(0.05)
+
+        # ── MMS forced aligner ──
+        if not status.get("aligner"):
+            yield send("progress", "aligner", "Downloading lyrics aligner (~1.3 GB)…", percent=0)
+            await asyncio.sleep(0.05)
+            try:
+                from services.forced_alignment import download_model, MODEL_ID
+                ALIGNER_TOTAL_BYTES = 1_262_000_000
+                try:
+                    from huggingface_hub.constants import HF_HUB_CACHE as _hf_cache
+                except ImportError:
+                    _hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
+                _aligner_dir = os.path.join(_hf_cache, "models--" + MODEL_ID.replace("/", "--"))
+
+                loop = asyncio.get_event_loop()
+                fut = loop.run_in_executor(None, download_model)
+                while not fut.done():
+                    await asyncio.sleep(2.0)
+                    downloaded = _dir_bytes_accurate(_aligner_dir)
+                    pct = min(99, int(downloaded * 100 / ALIGNER_TOTAL_BYTES))
+                    yield send("progress", "aligner",
+                               f"Downloading… {downloaded / 1_000_000:.0f} / {ALIGNER_TOTAL_BYTES / 1_000_000:.0f} MB",
+                               percent=pct)
+                await fut
+                yield send("done", "aligner", "Lyrics aligner ready")
+            except ImportError as e:
+                yield send("done", "aligner", f"Aligner needs transformers — {e}", error=True)
+            except Exception as e:
+                yield send("error", "aligner", f"Download failed: {e}")
+        else:
+            yield send("done", "aligner", "Lyrics aligner already downloaded")
 
         await asyncio.sleep(0.05)
         import json
@@ -2232,30 +2271,18 @@ async def segment_generate(session_id: str, request: Request):
     try:
         _extract_segment_clip_to_wav(source_path, start_ms, end_ms, clip_path)
 
-        # Transcribe clip to get word/char timestamps (clip-relative, starting at 0)
-        whisper_words, whisper_chars = _transcribe_clip_for_alignment(clip_path, language)
-
         # Pitch detection on the clip (clip-relative times)
         from services.pitch_detection import detect_pitches, get_pitch_for_segment, get_pitch_subsegments
         pitch_data = detect_pitches(clip_path)
 
-        # Align hyphenated lyrics to ASR word timestamps
-        from services.alignment_whisper import align_whisper
-        from services.alignment import align_lyrics_to_audio
-
-        syllable_timings = None
-        if whisper_words:
-            syllable_timings = align_whisper(
-                lyrics,
-                whisper_words,
-                language,
-                char_timestamps=whisper_chars or None,
-                audio_path=clip_path,
-            )
-
-        if not syllable_timings:
-            log_step("SEG_GEN", "Falling back to energy-based alignment for segment")
-            syllable_timings = align_lyrics_to_audio(clip_path, lyrics, language)
+        # Align the confirmed lyrics to the clip. Whisper only runs if forced alignment has to fall back.
+        from services.syllable_alignment import align_syllables
+        syllable_timings, align_engine = align_syllables(
+            clip_path, lyrics, language,
+            pitch_data=pitch_data,
+            get_whisper=lambda: _transcribe_clip_for_alignment(clip_path, language),
+        )
+        log_step("SEG_GEN", f"Alignment engine: {align_engine}")
 
         log_step(
             "SEG_GEN",
@@ -3447,40 +3474,26 @@ def generate_ultrastar_files(session_id: str):
         whisper_chars = session.get("whisper_chars", [])
         whisper_method = session.get("whisper_method", "whisper")
         
-        # Primary: WhisperX-based alignment (phoneme-aligned ~50ms accuracy)
-        # Fallback: energy-based alignment
-        syllable_timings = None
-        if whisper_words:
-            log_step("GENERATE", f"Using {whisper_method} alignment ({len(whisper_words)} words, {len(whisper_chars)} chars)")
-            try:
-                from services.alignment_whisper import align_whisper
-                syllable_timings = align_whisper(
-                    lyrics, whisper_words, language,
-                    char_timestamps=whisper_chars,
-                    audio_path=vocal_path,
-                )
-                if syllable_timings:
-                    log_step("GENERATE", f"Alignment: {len(syllable_timings)} syllables")
-                else:
-                    log_step("GENERATE", "Alignment returned empty, falling back to energy-based")
-            except Exception as e:
-                log_step("GENERATE", f"Alignment failed: {e}, falling back to energy-based")
-                import traceback
-                traceback.print_exc()
-        
-        # Onset snapping: refine syllable boundaries using spectral onsets
-        if syllable_timings:
+        # Forced alignment of the user's lyrics, falling back to WhisperX matching, then energy.
+        # See docs/architecture/pipeline.md and services/syllable_alignment.py.
+        from services.syllable_alignment import align_syllables
+        syllable_timings, align_engine = align_syllables(
+            vocal_path, lyrics, language,
+            pitch_data=pitch_data,
+            whisper_words=whisper_words,
+            whisper_chars=whisper_chars,
+            cache_dir=os.path.join(SESSIONS_DIR, session_id, "cache"),
+        )
+        log_step("GENERATE", f"Alignment ({align_engine}, whisper={whisper_method}): {len(syllable_timings)} syllables")
+
+        # Onset snapping refines WhisperX boundaries; forced alignment snaps to the voice itself.
+        if align_engine == "legacy" and syllable_timings:
             try:
                 from services.onset_snapping import snap_to_onsets
                 syllable_timings = snap_to_onsets(vocal_path, syllable_timings)
                 log_step("GENERATE", "Onset snapping applied")
             except Exception as e:
                 log_step("GENERATE", f"Onset snapping skipped: {e}")
-        
-        if not syllable_timings:
-            log_step("GENERATE", "Using energy-based alignment (fallback)")
-            from services.alignment import align_lyrics_to_audio
-            syllable_timings = align_lyrics_to_audio(vocal_path, lyrics, language)
         
         # GAP = time of first vocal note, so beat 0 = first sung syllable.
         gap_ms = 0
@@ -3528,7 +3541,10 @@ def generate_ultrastar_files(session_id: str):
         # Check what method was actually used by looking at syllable_timings
         if syllable_timings:
             methods_used = set(t.get("method", "unknown") for t in syllable_timings)
-            if "whisperx" in methods_used:
+            if "ctc" in methods_used:
+                low = sum(1 for t in syllable_timings if t.get("low_confidence"))
+                align_method = f"Forced alignment (MMS, {len(syllable_timings)} syllables, {low} to check)"
+            elif "whisperx" in methods_used:
                 wx_count = sum(1 for t in syllable_timings if t.get("method") == "whisperx")
                 char_count = sum(1 for t in syllable_timings if t.get("split_method") == "char")
                 align_method = f"WhisperX ({wx_count}/{len(syllable_timings)} syllables, {char_count} char-split)"

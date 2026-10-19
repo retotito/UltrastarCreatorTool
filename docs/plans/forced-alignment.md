@@ -61,9 +61,9 @@ Properties:
 - **Language coverage** grows from the WhisperX alignment models to the ~1,100 MMS languages (via romanisation).
 - **Output format stays the same** as `align_whisper()`, so pitch, BPM, GAP and the UltraStar writer don't change.
 
-Implementation basis: the [`ctc-forced-aligner`](https://github.com/MahmoudAshraf97/ctc-forced-aligner) package
-(PyPI 1.0.2, BSD-2), default model `MahmoudAshraf/mms-300m-1130-forced-aligner`. Tune Studio uses the same
-approach with a singing fine-tune of this model.
+Implementation basis: model `MahmoudAshraf/mms-300m-1130-forced-aligner` (pinned) through `transformers`, with our
+own Viterbi search; no forced-alignment package (see [ADR 0002](../decisions/0002-forced-alignment-of-user-lyrics.md)
+for why). Tune Studio uses the same approach with a singing fine-tune of this model.
 
 ## 3. Decisions
 

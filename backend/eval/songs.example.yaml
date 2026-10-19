@@ -1,0 +1,10 @@
+# Evaluation songs. Copy to songs.yaml (gitignored) and point it at your local charts.
+# Each entry: a folder with a verified UltraStar .txt and the audio it refers to.
+# Use charts that were NOT made by this tool, otherwise you measure the tool against itself.
+
+songs:
+  - name: Beautiful Day
+    folder: ~/Music/UltraStar Deluxe/U2 - Beautiful Day [VIDEO]
+    language: en
+    # optional: txt: "U2 - Beautiful Day.txt"   (default: the only .txt in the folder)
+    # optional: vocals: /path/to/vocals.wav      (default: separated with Demucs and cached)
