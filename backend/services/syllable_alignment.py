@@ -41,7 +41,7 @@ def align_syllables(
     if engine == "ctc":
         try:
             from services.forced_alignment import align_lyrics
-            timings = align_lyrics(audio_path, lyrics, pitch_data=pitch_data, cache_dir=cache_dir)
+            timings = align_lyrics(audio_path, lyrics, pitch_data=pitch_data, cache_dir=cache_dir, language=language)
             if timings:
                 return timings, "ctc"
             log_step("ALIGN", "Forced alignment returned nothing, falling back to WhisperX matching")

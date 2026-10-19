@@ -12,6 +12,19 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   non-commercial licence)
 - Generating works without running "Generate Lyrics from Vocals" first; segment re-generation no longer runs Whisper
 - Previous behaviour available with `ULTRASTAR_ALIGNMENT_ENGINE=legacy`
+- Works for lyrics in every script (Cyrillic, Greek, Arabic, Chinese, Japanese, …) via uroman
+
+### 🔎 Find lyrics online
+- Step 2 can fetch the published lyrics from [LRCLIB](https://lrclib.net) into the right field
+- Choose which field (left: transcribed, right: original) is used for hyphenation and generation
+
+### 🌍 Hyphenation in more languages
+- Uses pyphen's dictionary for every language that has one (Russian, Greek, Ukrainian, Catalan, …), one syllable
+  per character for Chinese, Japanese and Korean, and a generic vowel rule otherwise. Before, all languages but 17
+  were silently hyphenated with English rules
+
+### 🎵 Pitch
+- Syllables without a detected pitch take the neighbouring note's pitch instead of C4 (no more octave jumps)
 
 ### 🐛 Bug Fixes
 - Downloading a re-imported song no longer turns mid-word syllables into `Beau--`

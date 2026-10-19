@@ -32,8 +32,11 @@ WhisperX then aligns **its own transcript** with a wav2vec2 model (English: `WAV
 and character timestamps, stored in the session. Fallback: vanilla Whisper with `word_timestamps=True` (word level
 only, about 200 ms accuracy).
 
-The transcript is shown to the user as a starting point. The user corrects words, line breaks and hyphenation
-(`services/hyphenation.py`, pyphen).
+The transcript is shown to the user as a starting point; "Find lyrics online" fetches the published lyrics from
+LRCLIB (`services/lyrics_search.py`) into the right field. The user picks which field is used, and corrects words,
+line breaks and hyphenation (`services/hyphenation.py`): a pyphen dictionary where one exists for the language,
+one syllable per character for Chinese, Japanese and Korean, else a generic vowel rule (Latin script) or no
+splitting (scripts without written vowels).
 
 ### 3. BPM detection
 `services/bpm_detection.py`: essentia when installed, otherwise librosa; octave correction; beat phase from the
@@ -49,8 +52,9 @@ and falls back in this order: **forced alignment → WhisperX matching → energ
 **Forced alignment** (`services/forced_alignment.py`, default): the user's final lyrics are timed directly
 against the vocals, so a word Whisper missed still gets its real position.
 
-1. Lyrics → words and syllables (`parse_lyrics`); each syllable romanised to the aligner's letters (a–z, `'`;
-   accents removed; non-Latin scripts raise `UnsupportedText` → fallback).
+1. Lyrics → words and syllables (`parse_lyrics`); each syllable romanised with **uroman** (any script, with the
+   language's rules: "Привет" → "privet", "Mädchen" → "maedchen", as in MMS training) and reduced to the
+   aligner's letters (a–z, `'`). Without uroman only Latin script works; others raise `UnsupportedText` → fallback.
 2. **Emissions**: Tune Studio's singing fine-tune of the MMS aligner (`tuneperfect/tunestudio-aligner`, ONNX,
    pinned) over the whole vocal track in 30 s windows with 2 s context → letter log-probabilities every 20 ms.
    Cached per audio file in the session's `cache/` folder.

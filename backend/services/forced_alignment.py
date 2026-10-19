@@ -83,11 +83,50 @@ _APOSTROPHES = "’‘ʼ`´"
 _SPECIAL = {"ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "đ": "d", "ł": "l", "þ": "th", "ð": "d"}
 
 
-def romanize(text: str) -> str:
-    """The aligner's letters for `text`: lowercase a–z and `'`, accents removed, everything else dropped.
+# App language (ISO 639-1, as Whisper names them) → ISO 639-3, for uroman's language-specific rules.
+ISO_639_3 = {
+    "af": "afr", "sq": "sqi", "am": "amh", "ar": "ara", "hy": "hye", "az": "aze", "ba": "bak", "eu": "eus",
+    "be": "bel", "bn": "ben", "bs": "bos", "br": "bre", "bg": "bul", "ca": "cat", "zh": "zho", "yue": "yue",
+    "hr": "hrv", "cs": "ces", "da": "dan", "nl": "nld", "en": "eng", "et": "est", "fo": "fao", "fi": "fin",
+    "fr": "fra", "gl": "glg", "ka": "kat", "de": "deu", "el": "ell", "gu": "guj", "ht": "hat", "ha": "hau",
+    "haw": "haw", "he": "heb", "hi": "hin", "hu": "hun", "is": "isl", "id": "ind", "it": "ita", "ja": "jpn",
+    "jw": "jav", "kn": "kan", "kk": "kaz", "km": "khm", "ko": "kor", "lo": "lao", "la": "lat", "lv": "lav",
+    "ln": "lin", "lt": "lit", "lb": "ltz", "mk": "mkd", "mg": "mlg", "ms": "msa", "ml": "mal", "mt": "mlt",
+    "mi": "mri", "mr": "mar", "mn": "mon", "my": "mya", "ne": "nep", "no": "nor", "nn": "nno", "oc": "oci",
+    "ps": "pus", "fa": "fas", "pl": "pol", "pt": "por", "pa": "pan", "ro": "ron", "ru": "rus", "sa": "san",
+    "sr": "srp", "sn": "sna", "sd": "snd", "si": "sin", "sk": "slk", "sl": "slv", "so": "som", "es": "spa",
+    "su": "sun", "sw": "swa", "sv": "swe", "tl": "tgl", "tg": "tgk", "ta": "tam", "tt": "tat", "te": "tel",
+    "th": "tha", "bo": "bod", "tr": "tur", "tk": "tuk", "uk": "ukr", "ur": "urd", "uz": "uzb", "vi": "vie",
+    "cy": "cym", "yi": "yid", "yo": "yor",
+}
 
-    Raises UnsupportedText for letters of other scripts (Cyrillic, CJK, ...), which need uroman.
+_uroman_cache: dict = {}
+
+
+def _uroman():
+    """The universal romanizer (uroman, by Ulf Hermjakob, USC ISI), or None if it isn't installed.
+
+    MMS was trained on uroman's romanization, so every script works through it ("Привет" → "privet").
     """
+    if "instance" not in _uroman_cache:
+        try:
+            import uroman
+            _uroman_cache["instance"] = uroman.Uroman()
+        except Exception as error:  # ImportError, or its data files missing in a broken install
+            log_step("CTC_ALIGN", f"uroman unavailable ({error}): only Latin script can be aligned")
+            _uroman_cache["instance"] = None
+    return _uroman_cache["instance"]
+
+
+def romanize(text: str, language: str = "en") -> str:
+    """The aligner's letters for `text`: lowercase a–z and `'`, everything else dropped.
+
+    Any script goes through uroman first (as in MMS training). Without uroman, accents are removed
+    and other scripts raise UnsupportedText.
+    """
+    romanizer = _uroman()
+    if romanizer is not None and text:
+        text = romanizer.romanize_string(text, lcode=ISO_639_3.get(language))
     out = []
     for char in unicodedata.normalize("NFKC", text).lower():
         if char in _APOSTROPHES:
@@ -97,7 +136,7 @@ def romanize(text: str) -> str:
             if base in VOCAB and VOCAB[base] >= 4:
                 out.append(base)
             elif unicodedata.category(base).startswith("L"):
-                raise UnsupportedText(f"Can't align '{text}': only Latin script is supported so far.")
+                raise UnsupportedText(f"Can't align '{text}': this script needs uroman (pip install uroman).")
     return "".join(out)
 
 
@@ -115,12 +154,12 @@ class Word:
         return "".join(self.letters)
 
 
-def lyric_words(lyrics_text: str) -> List[Word]:
+def lyric_words(lyrics_text: str, language: str = "en") -> List[Word]:
     """The lyrics as words with their syllables (same parsing as the rest of the pipeline)."""
     flat = [s for line in parse_lyrics(lyrics_text) for s in line]
     words = []
     for group in _build_word_groups(flat):
-        letters = [romanize(s["text"].strip().lstrip("~")) for s in group["syllables"]]
+        letters = [romanize(s["text"].strip().lstrip("~"), language) for s in group["syllables"]]
         words.append(Word(group["word"], group["syllables"], letters, group["line_index"], group["is_rap"]))
     return words
 
@@ -329,14 +368,14 @@ def _syllable_spans(word: Word, timing: WordTiming) -> List[tuple]:
 
 def align_lyrics_to_emissions(lyrics_text: str, log_probs: np.ndarray, offset: float = 0.0,
                               pitch_data: Optional[dict] = None, snap_voice: bool = True,
-                              loudness_db: Optional[np.ndarray] = None) -> List[dict]:
+                              loudness_db: Optional[np.ndarray] = None, language: str = "en") -> List[dict]:
     """Syllable timings for `lyrics_text` from the aligner's (frames × 31) log-probabilities.
 
     `offset` is the time of frame 0 in seconds. With `pitch_data` (from detect_pitches) and
     `snap_voice`, word starts move to where singing begins. With `loudness_db` (per frame, see
     `frame_loudness`), no syllable is placed where the vocals are silent.
     """
-    words = lyric_words(lyrics_text)
+    words = lyric_words(lyrics_text, language)
     if not words:
         return []
     targets, owners = build_targets(words)
@@ -512,7 +551,8 @@ def frame_loudness(audio_path: str) -> np.ndarray:
 
 
 def align_lyrics(audio_path: str, lyrics_text: str, pitch_data: Optional[dict] = None,
-                 device: str = "cpu", cache_dir: Optional[str] = None, snap_voice: bool = False) -> List[dict]:
+                 device: str = "cpu", cache_dir: Optional[str] = None, snap_voice: bool = False,
+                 language: str = "en") -> List[dict]:
     """Syllable timings for the user's lyrics in `audio_path`. Same format as `align_whisper()`.
 
     `snap_voice` is off by default: on the evaluation songs it made starts later than the charts
@@ -520,7 +560,7 @@ def align_lyrics(audio_path: str, lyrics_text: str, pitch_data: Optional[dict] =
     """
     emissions = compute_emissions(audio_path, device=device, cache_dir=cache_dir)
     results = align_lyrics_to_emissions(lyrics_text, emissions, pitch_data=pitch_data, snap_voice=snap_voice,
-                                        loudness_db=frame_loudness(audio_path))
+                                        loudness_db=frame_loudness(audio_path), language=language)
     low = sum(1 for r in results if r["low_confidence"])
     log_step("CTC_ALIGN", f"Aligned {len(results)} syllables, {low} low confidence")
     return results

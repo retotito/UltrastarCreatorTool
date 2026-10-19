@@ -118,8 +118,9 @@ def run_engine(engine: str, song: dict, lyrics: str, vocals: str, whisper_model:
     cache = os.path.join(CACHE, slug(song["name"]))
     emissions = compute_emissions(vocals, cache_dir=cache, model_name="mms" if engine == "ctc-mms" else "sung")
     loudness = frame_loudness(vocals)
+    language = song.get("language", "en")
     if engine in ("ctc", "ctc-mms"):
-        return align_lyrics_to_emissions(lyrics, emissions, snap_voice=False, loudness_db=loudness)
+        return align_lyrics_to_emissions(lyrics, emissions, snap_voice=False, loudness_db=loudness, language=language)
     if engine == "ctc-voice":
         return align_lyrics_to_emissions(lyrics, emissions, pitch_data=pitch_for(song, vocals), loudness_db=loudness)
     if engine == "ctc-ungated":

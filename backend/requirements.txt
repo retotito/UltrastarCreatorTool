@@ -26,6 +26,8 @@ numpy>=1.24.0
 
 # Lyrics forced alignment (services/forced_alignment.py) runs on onnxruntime (installed with
 # faster-whisper/whisperx). Model: tuneperfect/tunestudio-aligner (CC-BY-NC-4.0).
+# uroman romanizes every script for the aligner (without it, only Latin script is aligned).
+uroman==1.3.1.1
 
 # MIDI
 mido==1.3.2

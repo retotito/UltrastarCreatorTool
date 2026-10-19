@@ -170,7 +170,7 @@ for _hb_prefix in ('/opt/homebrew/lib', '/usr/local/lib'):
         print(f"[spec] overriding with Homebrew dylib: {os.path.basename(_hb_lib)}")
 
 # ── Optional AI packages (only if installed) ──────────────────────────────────
-for optional_pkg in ('onnxruntime', 'torch', 'torchaudio', 'demucs', 'whisperx', 'whisper', 'pyannote', 'pyannote.audio', 'pyannote.core', 'pyannote.database', 'pyannote.metrics', 'pyannote.pipeline', 'asteroid_filterbanks', 'speechbrain', 'faster_whisper', 'PIL', 'torchvision', 'transformers', 'Pillow', 'lightning_fabric', 'pytorch_lightning', 'matplotlib'):
+for optional_pkg in ('onnxruntime', 'uroman', 'torch', 'torchaudio', 'demucs', 'whisperx', 'whisper', 'pyannote', 'pyannote.audio', 'pyannote.core', 'pyannote.database', 'pyannote.metrics', 'pyannote.pipeline', 'asteroid_filterbanks', 'speechbrain', 'faster_whisper', 'PIL', 'torchvision', 'transformers', 'Pillow', 'lightning_fabric', 'pytorch_lightning', 'matplotlib'):
     try:
         _d, _b, _h = collect_all(optional_pkg)
         datas += _d; binaries += _b; hiddenimports += _h

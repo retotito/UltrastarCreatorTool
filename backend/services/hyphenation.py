@@ -5,6 +5,7 @@ Users can then review and correct the hyphenation.
 """
 
 import re
+import unicodedata
 from utils.logger import log_step
 
 try:
@@ -96,7 +97,8 @@ CUSTOM_HYPHENATION = {
     "area": "ar-ea",
 }
 
-# Supported languages (pyphen locale codes)
+# Preferred pyphen dictionaries where a language has several regional ones. Every other language uses
+# whatever dictionary pyphen has for its code (see `dictionary_for`).
 LANGUAGE_MAP = {
     "en": "en_US",
     "de": "de_DE",
@@ -117,10 +119,77 @@ LANGUAGE_MAP = {
     "sk": "sk_SK",
 }
 
+# Languages written without spaces between syllables: one syllable per character.
+CHARACTER_LANGUAGES = {"zh", "ja", "ko", "yue"}
+# Japanese small kana and the long-vowel mark belong to the character before them (きょ, っ, ー).
+JAPANESE_ATTACHED = set("ゃゅょぁぃぅぇぉっゎャュョァィゥェォッヮー")
+
+
+def dictionary_for(language: str):
+    """The pyphen dictionary for an app language code ("ru" → "ru"), or None if pyphen has none."""
+    if not PYPHEN_AVAILABLE:
+        return None
+    for code in (LANGUAGE_MAP.get(language), language):
+        if code:
+            found = pyphen.language_fallback(code)
+            if found:
+                return found
+    return None
+
+
+def split_characters(word: str) -> str:
+    """CJK word → one syllable per character ("我爱你" → "我-爱-你"); other characters stay together."""
+    parts = []
+    for char in word:
+        cjk = "\u3040" <= char <= "\u30ff" or "\u3400" <= char <= "\u9fff" or "\uac00" <= char <= "\ud7af"
+        if parts and (char in JAPANESE_ATTACHED or not cjk and not parts[-1][1]):
+            parts[-1] = (parts[-1][0] + char, parts[-1][1])
+        else:
+            parts.append((char, cjk))
+    return "-".join(text for text, _ in parts)
+
+
+VOWELS = set("aeiouyäöüåæøœéèêëáàâãíìîïóòôõúùûıəāēīōū")
+
+
+def split_vowel_groups(word: str) -> str:
+    """Generic syllables for Latin-script words without a dictionary: one vowel group per syllable,
+    a single consonant between vowels starts the next syllable, a cluster splits before its last
+    consonant ("habari" → "ha-ba-ri", "merhaba" → "mer-ha-ba"). Other scripts are left whole.
+    """
+    if not word.isascii() and not all(unicodedata.name(c, "").startswith("LATIN") for c in word if c.isalpha()):
+        return word
+    lower = word.lower()
+    nuclei = []  # (start, end) of each vowel group
+    i = 0
+    while i < len(lower):
+        if lower[i] in VOWELS:
+            j = i
+            while j < len(lower) and lower[j] in VOWELS:
+                j += 1
+            nuclei.append((i, j))
+            i = j
+        else:
+            i += 1
+    if len(nuclei) < 2:
+        return word
+    cuts = []
+    for (_, end), (next_start, _) in zip(nuclei, nuclei[1:]):
+        consonants = next_start - end
+        cuts.append(next_start - 1 if consonants >= 1 else next_start)
+    parts, last = [], 0
+    for cut in cuts:
+        parts.append(word[last:cut])
+        last = cut
+    parts.append(word[last:])
+    return "-".join(p for p in parts if p)
+
 
 def get_supported_languages():
-    """Return list of supported language codes."""
-    return list(LANGUAGE_MAP.keys())
+    """Language codes with automatic hyphenation (a pyphen dictionary or one syllable per character)."""
+    if not PYPHEN_AVAILABLE:
+        return sorted(CHARACTER_LANGUAGES)
+    return sorted({code.split("_")[0] for code in pyphen.LANGUAGES} | set(LANGUAGE_MAP) | CHARACTER_LANGUAGES)
 
 
 def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
@@ -138,17 +207,13 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
             - language: Language used
             - method: 'pyphen' or 'fallback'
     """
-    if not PYPHEN_AVAILABLE:
-        return _hyphenate_fallback(lyrics, language)
-
-    locale = LANGUAGE_MAP.get(language, "en_US")
-
-    try:
-        dic = pyphen.Pyphen(lang=locale)
-    except Exception:
-        # Locale not available, fall back to English
-        log_step("HYPHEN", f"Locale {locale} not available, using en_US")
-        dic = pyphen.Pyphen(lang="en_US")
+    by_character = language in CHARACTER_LANGUAGES
+    locale = None if by_character else dictionary_for(language)
+    generic = not by_character and not locale
+    if generic:
+        # No dictionary: a generic vowel rule is closer than another language's rules.
+        log_step("HYPHEN", f"No hyphenation dictionary for '{language}', using the generic vowel rule")
+    dic = pyphen.Pyphen(lang=locale) if locale else None
 
     result_lines = []
     total_syllables = 0
@@ -188,10 +253,14 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
         for word in line.split():
             # Preserve punctuation
             prefix, core, suffix = _split_punctuation(word)
-            if core:
-                # Check custom overrides first (case-insensitive)
+            if core and by_character:
+                hyphenated_words.append(f"{prefix}{split_characters(core)}{suffix}")
+            elif core and generic:
+                hyphenated_words.append(f"{prefix}{split_vowel_groups(core)}{suffix}")
+            elif core:
+                # Check custom overrides first (case-insensitive); they are English words
                 core_lower = core.lower()
-                if core_lower in CUSTOM_HYPHENATION:
+                if language == "en" and core_lower in CUSTOM_HYPHENATION:
                     custom = CUSTOM_HYPHENATION[core_lower]
                     # Preserve original casing of first letter
                     if core[0].isupper() and custom[0].islower():
@@ -221,7 +290,8 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
         "lines": result_lines,
         "total_syllables": total_syllables,
         "language": language,
-        "method": "pyphen",
+        "method": ("one syllable per character" if by_character
+                   else "generic vowel rule (no dictionary for this language)" if generic else f"pyphen ({locale})"),
     }
 
 
@@ -253,7 +323,7 @@ def _hyphenate_fallback(lyrics: str, language: str) -> dict:
         "lines": result_lines,
         "total_syllables": total_syllables,
         "language": language,
-        "method": "fallback (pyphen not installed)",
+        "method": "none: no hyphenation rules for this language, split syllables yourself",
     }
 
 

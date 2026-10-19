@@ -48,5 +48,31 @@ def test_marker_lines_and_empty_lines_are_kept_and_not_counted():
     assert result["total_syllables"] == 1
 
 
-def test_unknown_language_falls_back_to_english():
-    assert hyphenate("beautiful", "xx") == "beau-ti-ful"
+@pytest.mark.parametrize("language, text, expected", [
+    ("ru", "Привет любовь", "При-вет лю-бовь"),   # pyphen dictionaries beyond the old 17 languages
+    ("zh", "我爱你", "我-爱-你"),                   # one syllable per character
+    ("ko", "안녕하세요", "안-녕-하-세-요"),
+    ("ja", "きょう", "きょ-う"),                   # small kana stay with the character before
+])
+def test_more_languages(language, text, expected):
+    assert hyphenate(text, language) == expected
+
+
+@pytest.mark.parametrize("language, text, expected", [
+    ("tr", "merhaba", "mer-ha-ba"),
+    ("sw", "habari yako", "ha-ba-ri ya-ko"),
+    ("fi", "rakkaus", "rak-kaus"),
+])
+def test_languages_without_a_dictionary_use_the_vowel_rule(language, text, expected):
+    result = hyphenate_lyrics(text, language)
+    assert result["hyphenated"] == expected
+    assert result["method"].startswith("generic")
+
+
+def test_scripts_without_written_vowels_are_left_whole():
+    assert hyphenate("مرحبا", "ar") == "مرحبا"
+
+
+def test_english_special_cases_only_apply_to_english():
+    assert hyphenate("away", "en") == "a-way"
+    assert hyphenate("away", "de") == "away"

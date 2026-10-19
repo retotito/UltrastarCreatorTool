@@ -52,7 +52,7 @@ The stock MMS model stays available for evaluation (`model_name="mms"`).
   README and the setup screen. The app must not be sold while it uses these weights.
 - New model download (about 1.2 GB) in the setup screen. No new Python dependency: onnxruntime comes with
   faster-whisper (and is now bundled by `backend.spec`).
-- Latin-script languages work now (accents are removed: "Mädchen" → "madchen"). Other scripts need
-  romanisation (uroman) and fall back to the old alignment until then.
+- All 98 app languages can be aligned: lyrics are romanised with uroman (as MMS was trained). Only English is
+  measured so far; the singing fine-tune saw English and German charts only, so other languages may be weaker.
 - The alignment engine is swappable (`ULTRASTAR_ALIGNMENT_ENGINE=ctc|legacy`), so a singing-tuned or permissively licensed model can
   replace it later.

@@ -3,6 +3,8 @@
 import numpy as np
 import pytest
 
+import services.forced_alignment as fa
+
 from services.forced_alignment import (
     BLANK,
     FRAME_SEC,
@@ -44,22 +46,33 @@ def starts(results):
 
 
 class TestRomanize:
-    @pytest.mark.parametrize("text, expected", [
-        ("Beau", "beau"),
-        ("don’t", "don't"),
-        ("Hello,", "hello"),
-        ("Mädchen", "madchen"),
-        ("Straße", "strasse"),
-        ("café", "cafe"),
-        ("123", ""),
-        ("&", ""),
+    @pytest.mark.parametrize("text, language, expected", [
+        ("Beau", "en", "beau"),
+        ("don\u2019t", "en", "don't"),
+        ("Hello,", "en", "hello"),
+        ("Mädchen", "de", "maedchen"),   # as uroman romanized MMS's training text
+        ("café", "fr", "cafe"),
+        ("123", "en", ""),
+        ("&", "en", ""),
+        ("Привет", "ru", "privet"),
+        ("我爱你", "zh", "woaini"),
+        ("ありがとう", "ja", "arigatou"),
     ])
-    def test_letters(self, text, expected):
-        assert romanize(text) == expected
+    def test_letters(self, text, language, expected):
+        assert romanize(text, language) == expected
 
-    def test_other_scripts_are_rejected_for_now(self):
+    def test_without_uroman_accents_are_removed_and_other_scripts_rejected(self, monkeypatch):
+        monkeypatch.setitem(fa._uroman_cache, "instance", None)
+        assert romanize("Mädchen", "de") == "madchen"
         with pytest.raises(UnsupportedText):
-            romanize("Привет")
+            romanize("Привет", "ru")
+
+    def test_every_app_language_has_an_iso_639_3_code(self):
+        import re
+        from pathlib import Path
+        source = Path(__file__).parents[3] / "frontend" / "src" / "lib" / "languages.ts"
+        codes = re.findall(r'code: "([a-z]+)"', source.read_text())
+        assert codes and not [c for c in codes if c not in fa.ISO_639_3]
 
 
 class TestForcedAlign:
