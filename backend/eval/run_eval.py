@@ -33,7 +33,7 @@ import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from eval.metrics import summarize, timing_errors  # noqa: E402
+from eval.metrics import pitch_summary, summarize, timing_errors  # noqa: E402
 from eval.reference import audio_file, lyrics_text, parse_reference  # noqa: E402
 
 CACHE = os.path.join(HERE, "cache")
@@ -131,10 +131,20 @@ def run_engine(engine: str, song: dict, lyrics: str, vocals: str, whisper_model:
     raise ValueError(f"Unknown engine {engine}")
 
 
+def pitch_for_results(song: dict, vocals: str, results: list, ref) -> dict:
+    """Our pitch per aligned syllable (as the writer picks it) against the chart's."""
+    from services.pitch_detection import fill_unvoiced, syllable_pitch
+    pitch = pitch_for(song, vocals)
+    raw = [syllable_pitch(pitch, r["start"], r["end"]) for r in results]
+    return pitch_summary(fill_unvoiced(raw), [p == 0 for p in raw], [s.pitch for s in ref], [s.sung for s in ref])
+
+
 # ── report ──────────────────────────────────────────────────
 COLUMNS = [("median_ms", "median ms", "{:.0f}"), ("median_ms_unbiased", "median ms (no bias)", "{:.0f}"),
            ("within_100ms", "≤100 ms %", "{:.0f}"), ("within_250ms", "≤250 ms %", "{:.0f}"),
-           ("gross", "gross >500 ms", "{}"), ("gross_pct", "gross %", "{:.1f}"), ("bias_ms", "bias ms", "{:+.0f}")]
+           ("gross", "gross >500 ms", "{}"), ("gross_pct", "gross %", "{:.1f}"), ("bias_ms", "bias ms", "{:+.0f}"),
+           ("pitch_class_pct", "pitch class %", "{:.0f}"), ("within_1_pct", "pitch ±1 %", "{:.0f}"),
+           ("unvoiced_pct", "no pitch %", "{:.0f}")]
 
 
 def table(rows: list) -> str:
@@ -196,9 +206,11 @@ def main() -> int:
                 rows.append({"song": song["name"], "engine": engine, "error": f"{type(error).__name__}: {error}"})
                 continue
             summary = summarize(errors)
+            summary.update(pitch_for_results(song, vocals, results, ref))
             rows.append({"song": song["name"], "engine": engine, "summary": summary, "seconds": time.time() - started})
             log(f"  {engine}: median {summary['median_ms']:.0f} ms, gross {summary['gross']} "
-                f"({summary['gross_pct']:.1f} %), bias {summary['bias_ms']:+.0f} ms")
+                f"({summary['gross_pct']:.1f} %), bias {summary['bias_ms']:+.0f} ms | pitch class "
+                f"{summary['pitch_class_pct']:.0f} %, ±1 {summary['within_1_pct']:.0f} %, unvoiced {summary['unvoiced_pct']:.0f} %")
             details.append(f"### {engine}: worst syllables\n\n{worst(results, ref, errors)}\n")
 
     os.makedirs(REPORTS, exist_ok=True)

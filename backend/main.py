@@ -2261,8 +2261,9 @@ async def segment_generate(session_id: str, request: Request):
         _extract_segment_clip_to_wav(source_path, start_ms, end_ms, clip_path)
 
         # Pitch detection on the clip (clip-relative times)
-        from services.pitch_detection import detect_pitches, get_pitch_for_segment, get_pitch_subsegments
+        from services.pitch_detection import detect_pitches, get_pitch_subsegments, syllable_pitch
         pitch_data = detect_pitches(clip_path)
+        last_pitch = None
 
         # Align the confirmed lyrics to the clip. Whisper only runs if forced alignment has to fall back.
         from services.syllable_alignment import align_syllables
@@ -2321,13 +2322,12 @@ async def segment_generate(session_id: str, request: Request):
                             }
                         )
                 else:
-                    pitch = get_pitch_for_segment(pitch_data, timing["start"], timing["end"])
+                    pitch = syllable_pitch(pitch_data, timing["start"], timing["end"])
                     if pitch == 0:
-                        mid = (timing["start"] + timing["end"]) / 2
-                        pitch = get_pitch_for_segment(pitch_data, mid - 0.1, mid + 0.1)
-                    if pitch == 0:
-                        pitch = 60  # C4 fallback
+                        pitch = last_pitch or 60  # unvoiced: the previous note's pitch, not a fixed C4
                     subnotes = [{"start": timing["start"], "end": timing["end"], "pitch": pitch, "syllable": timing["syllable"]}]
+                if subnotes and subnotes[-1]["pitch"]:
+                    last_pitch = subnotes[-1]["pitch"]
 
             for sub in subnotes:
                 sub_abs_start = sub["start"] + offset_sec

@@ -22,7 +22,7 @@ def generate_midi(
     Returns:
         Path to the generated MIDI file
     """
-    from services.pitch_detection import get_pitch_for_segment
+    from services.pitch_detection import syllable_pitches
     
     log_step("MIDI", f"Generating MIDI: {len(syllable_timings)} notes")
     
@@ -39,19 +39,15 @@ def generate_midi(
     track.append(MetaMessage('track_name', name='Vocals', time=0))
     
     prev_end_tick = 0
-    
-    for timing in syllable_timings:
+    pitches = syllable_pitches(pitch_data, syllable_timings)
+
+    for timing, pitch in zip(syllable_timings, pitches):
         start_sec = timing["start"]
         end_sec = timing["end"]
         is_rap = timing.get("is_rap", False)
         
         # Get pitch
-        if is_rap:
-            midi_note = 60  # C4 for rap
-        else:
-            midi_note = get_pitch_for_segment(pitch_data, start_sec, end_sec)
-            if midi_note == 0:
-                midi_note = 60
+        midi_note = 60 if is_rap else pitch  # rap notes have no pitch: C4 in the MIDI
         
         # Clamp to valid MIDI range
         midi_note = max(0, min(127, midi_note))

@@ -127,6 +127,40 @@ def get_pitch_for_segment(pitch_data: dict, start_time: float, end_time: float) 
     return int(np.median(segment_notes))
 
 
+def syllable_pitch(pitch_data: dict, start_time: float, end_time: float) -> int:
+    """MIDI pitch of a syllable: the median over its span, else over ±0.1 s around its middle; 0 if unvoiced."""
+    pitch = get_pitch_for_segment(pitch_data, start_time, end_time)
+    if pitch == 0:
+        middle = (start_time + end_time) / 2
+        pitch = get_pitch_for_segment(pitch_data, middle - 0.1, middle + 0.1)
+    return pitch
+
+
+def fill_unvoiced(pitches: list, default: int = 60) -> list:
+    """Replace 0 (no pitch found) with the previous sung pitch, or the next one before the first.
+
+    A fixed C4 is usually far off the melody; a neighbour is much closer (Tune Studio does the same).
+    `None` entries (rap notes) are kept and skipped.
+    """
+    out = list(pitches)
+    last = None
+    for i, pitch in enumerate(out):
+        if pitch is None:
+            continue
+        if pitch > 0:
+            last = pitch
+        elif last is not None:
+            out[i] = last
+    first = next((p for p in out if p), default)
+    return [first if p == 0 else p for p in out]
+
+
+def syllable_pitches(pitch_data: dict, syllable_timings: list) -> list:
+    """MIDI pitch per syllable (None for rap), with unvoiced syllables taking a neighbour's pitch."""
+    raw = [None if t.get("is_rap") else syllable_pitch(pitch_data, t["start"], t["end"]) for t in syllable_timings]
+    return fill_unvoiced(raw)
+
+
 def get_pitch_subsegments(
     pitch_data: dict,
     start_time: float,

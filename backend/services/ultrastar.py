@@ -125,7 +125,7 @@ def generate_ultrastar(
     Returns:
         Complete Ultrastar .txt file content as string
     """
-    from services.pitch_detection import get_pitch_for_segment
+    from services.pitch_detection import syllable_pitches
     
     log_step("ULTRASTAR", f"Generating file: {len(syllable_timings)} syllables, BPM={bpm:.2f}, GAP={gap_ms}ms")
     
@@ -144,6 +144,7 @@ def generate_ultrastar(
     
     note_lines = []
     gap_sec = gap_ms / 1000.0
+    pitches = syllable_pitches(pitch_data, syllable_timings)
     prev_line_index = None
     last_end_beat = 0
     
@@ -173,13 +174,7 @@ def generate_ultrastar(
             midi_pitch = 0
             prefix = "R"
         else:
-            midi_pitch = get_pitch_for_segment(pitch_data, start_sec, end_sec)
-            if midi_pitch == 0:
-                # Try wider window
-                mid_time = (start_sec + end_sec) / 2
-                midi_pitch = get_pitch_for_segment(pitch_data, mid_time - 0.1, mid_time + 0.1)
-            if midi_pitch == 0:
-                midi_pitch = 60  # Default to C4 if no pitch detected
+            midi_pitch = pitches[i]
             prefix = ":"
         
         # Add break line between phrases (YASS-style: single number = end of last line)

@@ -68,3 +68,19 @@ def test_metrics_need_one_to_one_syllables():
     with pytest.raises(ValueError):
         timing_errors([{"start": 1.0}], [1.0, 2.0])
     assert isinstance(timing_errors([], []), np.ndarray)
+
+
+def test_reference_keeps_pitch_and_note_kind(syllables):
+    assert [(s.pitch, s.sung) for s in syllables] == [
+        (60, True), (60, True), (60, True), (60, True), (0, False), (0, False), (64, True),
+    ]
+
+
+def test_pitch_summary_ignores_octaves_and_rap():
+    from eval.metrics import pitch_summary
+    summary = pitch_summary(midi=[72, 61, 60, 50], unvoiced=[False, False, True, False],
+                            reference=[0, 0, 0, 5], sung=[True, True, True, False])
+    assert summary["compared"] == 3
+    assert summary["pitch_class_pct"] == pytest.approx(200 / 3)   # 72 and 60 are both C
+    assert summary["within_1_pct"] == pytest.approx(100)
+    assert summary["unvoiced_pct"] == pytest.approx(100 / 3)

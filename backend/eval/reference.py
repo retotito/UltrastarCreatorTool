@@ -18,6 +18,8 @@ class RefSyllable:
     end: float
     word_start: bool
     line: int
+    pitch: int = 0      # chart pitch of the syllable's first note (UltraStar: 0 = C4)
+    sung: bool = True   # False for rap / freestyle notes (no pitch to compare)
 
 
 def _header(content: str, key: str) -> str:
@@ -50,14 +52,15 @@ def parse_reference(content: str) -> List[RefSyllable]:
         match = NOTE.match(raw)
         if not match:
             continue
-        _, start_beat, length, _, text = match.groups()
+        kind, start_beat, length, pitch, text = match.groups()
         start = gap + int(start_beat) * beat
         end = start + int(length) * beat
         if text.strip() == "~" or text.strip().startswith("~") and syllables and line_has_notes:
             syllables[-1].end = end
             continue
         word_start = (not line_has_notes) or text.startswith(" ") or (syllables and syllables[-1].text.endswith(" "))
-        syllables.append(RefSyllable(text=text, start=start, end=end, word_start=bool(word_start), line=line))
+        syllables.append(RefSyllable(text=text, start=start, end=end, word_start=bool(word_start), line=line,
+                                     pitch=int(pitch), sung=kind in (":", "*")))
         line_has_notes = True
     for syllable in syllables:
         syllable.text = syllable.text.strip()

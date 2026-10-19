@@ -81,3 +81,15 @@ def test_lyrics_only_file_has_headers_and_end_marker_only():
     content = generate_lyrics_only_txt(artist="A", title="T", bpm=300, gap_ms=0, language="en")
     assert content.endswith("#MP3:song.mp3\nE")
     assert "#LANGUAGE:English" in content
+
+
+def test_unvoiced_syllable_takes_the_previous_pitch(make_pitch_data):
+    pitch = make_pitch_data([(1.0, 1.5, 64)])
+    content = generate_ultrastar([syl("la ", 1.0, 1.5), syl("ah ", 2.0, 2.5)], pitch, 240, 1000)
+    assert note_lines(content)[:2] == [": 0 8 64 la ", ": 16 8 64 ah "]
+
+
+def test_unvoiced_first_syllables_take_the_next_pitch(make_pitch_data):
+    pitch = make_pitch_data([(2.0, 2.5, 67)])
+    content = generate_ultrastar([syl("ah ", 1.0, 1.5), syl("la ", 2.0, 2.5)], pitch, 240, 1000)
+    assert [ln.split(" ")[3] for ln in note_lines(content)[:2]] == ["67", "67"]

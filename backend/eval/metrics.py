@@ -14,6 +14,24 @@ def timing_errors(results: List[dict], reference_starts: List[float]) -> np.ndar
     return np.array([r["start"] for r in results]) - np.array(reference_starts)
 
 
+def pitch_summary(midi: List[int], unvoiced: List[bool], reference: List[int], sung: List[bool]) -> Dict[str, float]:
+    """Pitch against the chart, octave ignored (charts are often an octave off the audio).
+
+    `midi`: our MIDI pitch per syllable; `unvoiced`: no pitch was found (neighbour used);
+    `reference`: chart pitch (0 = C4); `sung`: syllables to compare (not rap/freestyle).
+    """
+    pairs = [(m, r, u) for m, r, u, s in zip(midi, reference, unvoiced, sung) if s and m]
+    if not pairs:
+        return {"compared": 0, "pitch_class_pct": 0.0, "within_1_pct": 0.0, "unvoiced_pct": 0.0}
+    distance = np.array([min((m - 60 - r) % 12, (r - m + 60) % 12) for m, r, _ in pairs])
+    return {
+        "compared": len(pairs),
+        "pitch_class_pct": float(np.mean(distance == 0) * 100),
+        "within_1_pct": float(np.mean(distance <= 1) * 100),
+        "unvoiced_pct": float(np.mean([u for _, _, u in pairs]) * 100),
+    }
+
+
 def summarize(errors: np.ndarray) -> Dict[str, float]:
     """Median absolute error, share within 50 / 100 / 250 ms, gross errors (> 500 ms), bias."""
     absolute = np.abs(errors)
