@@ -33,12 +33,13 @@ import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from eval.metrics import big_jumps, pitch_summary, summarize, timing_errors  # noqa: E402
+from eval.metrics import big_jumps, melisma_summary, note_parts, pitch_summary, summarize, timing_errors  # noqa: E402
 from eval.reference import audio_file, lyrics_text, parse_reference  # noqa: E402
 
 CACHE = os.path.join(HERE, "cache")
 REPORTS = os.path.join(HERE, "reports")
-ENGINES = ["legacy", "ctc", "ctc-mms", "ctc-voice", "ctc-ungated", "ctc-onsets"]
+ENGINES = ["legacy", "ctc", "ctc-split", "ctc-split-old", "ctc-mms", "ctc-voice", "ctc-ungated", "ctc-onsets"]
+SPLITTING = {"ctc-split": "new", "ctc-split-old": "old"}
 
 
 def slug(name: str) -> str:
@@ -123,7 +124,7 @@ def run_engine(engine: str, song: dict, lyrics: str, vocals: str, whisper_model:
     emissions = compute_emissions(vocals, cache_dir=cache, model_name="mms" if engine == "ctc-mms" else "sung")
     loudness = frame_loudness(vocals)
     language = song.get("language", "en")
-    if engine in ("ctc", "ctc-mms"):
+    if engine in ("ctc", "ctc-mms", "ctc-split", "ctc-split-old"):
         return align_lyrics_to_emissions(lyrics, emissions, snap_voice=False, loudness_db=loudness, language=language)
     if engine == "ctc-voice":
         return align_lyrics_to_emissions(lyrics, emissions, pitch_data=pitch_for(song, vocals), loudness_db=loudness)
@@ -136,14 +137,38 @@ def run_engine(engine: str, song: dict, lyrics: str, vocals: str, whisper_model:
     raise ValueError(f"Unknown engine {engine}")
 
 
-def pitch_for_results(song: dict, vocals: str, results: list, ref) -> dict:
-    """Our pitch per aligned syllable (as the writer picks it) against the chart's."""
+def split_notes(engine: str, results: list, pitch: dict) -> list:
+    """The notes the writer gets: syllables, split into melisma parts for the split engines."""
+    if SPLITTING.get(engine) == "new":
+        from services.melisma import split_melismas
+        return split_melismas(results, pitch)
+    if SPLITTING.get(engine) == "old":
+        from services.pitch_detection import get_pitch_subsegments
+        out = []
+        for r in results:
+            parts = [] if r.get("is_rap") else get_pitch_subsegments(pitch, r["start"], r["end"])
+            if len(parts) < 2:
+                out.append(r)
+                continue
+            for k, part in enumerate(parts):
+                text = r["syllable"].rstrip(" ") if k == 0 else ("~ " if k == len(parts) - 1 and r["syllable"].endswith(" ") else "~")
+                out.append({**r, "start": part["start"], "end": part["end"], "pitch": int(part["pitch"]), "syllable": text})
+        return out
+    return results
+
+
+def pitch_for_results(song: dict, vocals: str, results: list, ref, engine: str = "ctc") -> dict:
+    """Our pitch per note (as the writer picks it) against the chart's, and the note splitting."""
     from services.pitch_detection import syllable_pitch, syllable_pitches
     pitch = pitch_for(song, vocals)
+    notes = split_notes(engine, results, pitch)
+    final = syllable_pitches(pitch, notes)  # as the writer picks them
+    groups = note_parts(notes, final)
+    first = [parts[0][2] for parts in groups]  # each syllable's first note, as the chart's syllable pitch
     raw = [syllable_pitch(pitch, r["start"], r["end"]) for r in results]
-    final = syllable_pitches(pitch, results)  # as the writer picks them
-    summary = pitch_summary(final, [p == 0 for p in raw], [s.pitch for s in ref], [s.sung for s in ref])
-    summary["big_jumps"] = big_jumps(final, [r["line_index"] for r in results])
+    summary = pitch_summary(first, [p == 0 for p in raw], [s.pitch for s in ref], [s.sung for s in ref])
+    summary["big_jumps"] = big_jumps(final, [n["line_index"] for n in notes])
+    summary.update(melisma_summary(groups, ref))
     return summary
 
 
@@ -153,7 +178,8 @@ COLUMNS = [("median_ms", "median ms", "{:.0f}"), ("median_ms_unbiased", "median 
            ("gross", "gross >500 ms", "{}"), ("gross_pct", "gross %", "{:.1f}"), ("bias_ms", "bias ms", "{:+.0f}"),
            ("pitch_class_pct", "pitch class %", "{:.0f}"), ("within_1_pct", "pitch ±1 %", "{:.0f}"),
            ("unvoiced_pct", "no pitch %", "{:.0f}"), ("octave_err_pct", "octave err %", "{:.1f}"),
-           ("big_jumps", "jumps >8ve", "{}")]
+           ("big_jumps", "jumps >8ve", "{}"), ("split_f1", "split F1", "{:.0f}"),
+           ("frame_pitch_pct", "frame pitch %", "{:.0f}"), ("frame_pitch_1_pct", "frame ±1 %", "{:.0f}")]
 
 
 def table(rows: list) -> str:
@@ -215,12 +241,15 @@ def main() -> int:
                 rows.append({"song": song["name"], "engine": engine, "error": f"{type(error).__name__}: {error}"})
                 continue
             summary = summarize(errors)
-            summary.update(pitch_for_results(song, vocals, results, ref))
+            summary.update(pitch_for_results(song, vocals, results, ref, engine))
             rows.append({"song": song["name"], "engine": engine, "summary": summary, "seconds": time.time() - started})
             log(f"  {engine}: median {summary['median_ms']:.0f} ms, gross {summary['gross']} "
                 f"({summary['gross_pct']:.1f} %), bias {summary['bias_ms']:+.0f} ms | pitch class "
                 f"{summary['pitch_class_pct']:.0f} %, ±1 {summary['within_1_pct']:.0f} %, unvoiced {summary['unvoiced_pct']:.0f} %, "
-                f"octave errors {summary['octave_err_pct']:.1f} %, jumps >octave {summary['big_jumps']}")
+                f"octave errors {summary['octave_err_pct']:.1f} %, jumps >octave {summary['big_jumps']} | splits "
+                f"{summary['splits_ours']}/{summary['splits_chart']} P {summary['split_precision']:.0f} R "
+                f"{summary['split_recall']:.0f} F1 {summary['split_f1']:.0f} | frame pitch {summary['frame_pitch_pct']:.0f} % "
+                f"±1 {summary['frame_pitch_1_pct']:.0f} %")
             details.append(f"### {engine}: worst syllables\n\n{worst(results, ref, errors)}\n")
 
     os.makedirs(REPORTS, exist_ok=True)

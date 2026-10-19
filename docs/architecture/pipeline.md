@@ -99,7 +99,18 @@ against the vocals, so a word Whisper missed still gets its real position.
 `services/onset_snapping.py`: moves each syllable start to the nearest spectral onset within a window. Only
 applied after WhisperX matching; forced alignment snaps to the voice itself (onset snapping measured worse on it).
 
-### 7. Output
+### 7. Melisma (`~` notes)
+`services/melisma.py` `split_melismas`: after GAP, BPM refinement and line assignment (so those see syllables),
+long syllables whose pitch moves are split into several timing entries: the syllable's text, then `~` (`~ ` at a
+word end). A new note starts only where the pitch stays at least 1 semitone away from the current note for
+0.12 s (hysteresis: vibrato doesn't split); first/last parts under 0.25 s are slides into or off the note and
+are merged. Each part carries its own `pitch`. One timing entry per note keeps the .txt, MIDI and the editor's
+re-quantisation (`rawTimings`) in step. Off with `ULTRASTAR_MELISMA=off`.
+
+Measured on 6 reference songs: frame pitch (right pitch class over time) 42.3 → 44.9 %, within a semitone
+53.3 → 56.1 %, syllable pitch 57.4 → 59.0 %; 218 `~` notes against 212 in the charts.
+
+### 8. Output
 `main.py` `generate_ultrastar_files` → `services/ultrastar.py`:
 
 - **GAP** = start of the first syllable (beat 0 = first sung syllable).
@@ -107,7 +118,7 @@ applied after WhisperX matching; forced alignment snaps to the voice itself (ons
   [ultrastar-grid-gap.md](ultrastar-grid-gap.md).
 - Pitch per note from the PYIN track over the note's time span.
 - Line breaks from the lyric lines; trailing spaces after words; apostrophes normalised to `’`; mid-word syllables
-  get a trailing `-` on download.
+  get a trailing `-` on download (after the last `~` of a melisma, never before a `~`).
 - Also written: MIDI (`services/midi_export.py`) and a processing summary.
 
 If a reference `.txt` is stored for the song, the result is compared to it automatically
@@ -119,5 +130,5 @@ If a reference `.txt` is stored for the song, the result is compared to it autom
 |---|---|---|
 | Lyrics-only generation | `generate` (lyrics-only path) | Text and timing placeholders, no audio analysis |
 | Segment preview | `segment-preview` | Whisper on a clip, text only |
-| Segment regenerate | `segment-generate` | Pitch + alignment on a clip (Whisper only if forced alignment falls back), see [segment-regenerate.md](../features/segment-regenerate.md) |
+| Segment regenerate | `segment-generate` | Pitch + alignment + melisma on a clip (Whisper only if forced alignment falls back), see [segment-regenerate.md](../features/segment-regenerate.md) |
 | Analyze 5s | Step 4 | Pitch + local Whisper, see [vocal-tracing-strategy.md](../features/vocal-tracing-strategy.md) |

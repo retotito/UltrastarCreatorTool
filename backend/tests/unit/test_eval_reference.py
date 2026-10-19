@@ -84,3 +84,21 @@ def test_pitch_summary_ignores_octaves_and_rap():
     assert summary["pitch_class_pct"] == pytest.approx(200 / 3)   # 72 and 60 are both C
     assert summary["within_1_pct"] == pytest.approx(100)
     assert summary["unvoiced_pct"] == pytest.approx(100 / 3)
+
+
+def test_reference_keeps_each_syllables_notes(syllables):
+    day = syllables[3]
+    assert [p[2] for p in day.parts] == [60, 62]         # "day" and its ~ note
+    assert day.parts[1][0] == pytest.approx(1.75)
+
+
+def test_melisma_summary_counts_split_points_and_frame_pitch():
+    from eval.metrics import melisma_summary, note_parts
+    from eval.reference import RefSyllable
+    ref = [RefSyllable("gas", 1.0, 2.0, True, 0, pitch=0, parts=[(1.0, 1.5, 0), (1.5, 2.0, 2)])]
+    notes = [{"syllable": "gas", "start": 1.0, "end": 1.55}, {"syllable": "~ ", "start": 1.55, "end": 2.0}]
+    summary = melisma_summary(note_parts(notes, [60, 62]), ref)
+    assert (summary["split_precision"], summary["split_recall"]) == (100.0, 100.0)
+    assert summary["frame_pitch_pct"] > 90
+    unsplit = melisma_summary(note_parts(notes[:1], [60]), ref)
+    assert unsplit["split_recall"] == 0.0 and unsplit["frame_pitch_pct"] < 60

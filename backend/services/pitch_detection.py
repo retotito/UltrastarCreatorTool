@@ -298,7 +298,10 @@ def syllable_pitches(pitch_data: dict, syllable_timings: list) -> list:
     the pitch tracker are corrected."""
     if not syllable_timings:
         return []
-    raw = [None if t.get("is_rap") else syllable_pitch(pitch_data, t["start"], t["end"]) for t in syllable_timings]
+    raw = [None if t.get("is_rap")
+           else int(t["pitch"]) if t.get("pitch")          # a melisma part brings its own pitch
+           else syllable_pitch(pitch_data, t["start"], t["end"])
+           for t in syllable_timings]
     return fix_octaves(fill_unvoiced(raw), syllable_timings)
 
 

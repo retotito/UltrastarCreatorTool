@@ -2282,7 +2282,7 @@ async def segment_generate(session_id: str, request: Request):
         _extract_segment_clip_to_wav(source_path, start_ms, end_ms, clip_path)
 
         # Pitch detection on the clip (clip-relative times)
-        from services.pitch_detection import detect_pitches, get_pitch_subsegments, syllable_pitch
+        from services.pitch_detection import detect_pitches, syllable_pitch
         pitch_data = detect_pitches(clip_path)
         last_pitch = None
 
@@ -2330,16 +2330,17 @@ async def segment_generate(session_id: str, request: Request):
             if is_rap:
                 subnotes = [{"start": timing["start"], "end": timing["end"], "pitch": 0, "syllable": timing["syllable"]}]
             else:
-                pitch_segments = get_pitch_subsegments(pitch_data, timing["start"], timing["end"])
+                from services import melisma
+                parts = melisma.split_melismas([timing], pitch_data) if melisma.enabled() else [timing]
 
-                if pitch_segments:
-                    for idx, seg in enumerate(pitch_segments):
+                if len(parts) > 1:
+                    for part in parts:
                         subnotes.append(
                             {
-                                "start": seg["start"],
-                                "end": seg["end"],
-                                "pitch": int(seg["pitch"]),
-                                "syllable": timing["syllable"] if idx == 0 else "~",
+                                "start": part["start"],
+                                "end": part["end"],
+                                "pitch": int(part["pitch"]),
+                                "syllable": part["syllable"],
                             }
                         )
                 else:
@@ -3555,6 +3556,14 @@ def generate_ultrastar_files(session_id: str):
                 if syllable_idx < len(syllable_timings):
                     syllable_timings[syllable_idx]["line_index"] = line_idx
                 syllable_idx += 1
+
+        # Melisma: long syllables whose pitch moves become several notes (gas ~ ~). Done last, on
+        # timings, so GAP/BPM/lines above saw syllables and the editor gets one timing per note.
+        from services import melisma
+        if melisma.enabled():
+            syllable_count = len(syllable_timings)
+            syllable_timings = melisma.split_melismas(syllable_timings, pitch_data)
+            log_step("GENERATE", f"Melisma: {len(syllable_timings) - syllable_count} extra notes")
         
         # Step 3d: Generate files
         log_step("GENERATE", "Step 4/4: Generating output files")

@@ -76,6 +76,14 @@ def test_formatting_a_download_again_changes_nothing(downloaded):
     assert format_for_download(downloaded.replace("\r\n", "\n")) == downloaded
 
 
+def test_melisma_notes_get_no_hyphen_before_their_continuation():
+    content = format_for_download(": 0 4 49 gas\n: 4 4 47 ~\n: 8 4 45 ~ \n: 12 2 50 beau\n: 14 2 52 ~\n: 16 2 50 ti\n: 18 2 50 ful \nE")
+    assert lines(content)[:7] == [
+        ": 0 4 49 gas", ": 4 4 47 ~", ": 8 4 45 ~ ",          # one word: no hyphens
+        ": 12 2 50 beau", ": 14 2 52 ~-", ": 16 2 50 ti-", ": 18 2 50 ful ",  # mid-word: hyphen after the ~
+    ]
+
+
 def test_freestyle_and_rap_notes_get_hyphens_too():
     content = format_for_download("F 0 4 0 free\nR 4 4 0 rap\nE")
     assert lines(content)[:2] == ["F 0 4 0 free-", "R 4 4 0 rap-"]

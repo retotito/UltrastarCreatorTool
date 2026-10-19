@@ -41,6 +41,7 @@ See [ADR 0001](../decisions/0001-keep-python-sidecar.md) for why the backend sta
 | `services/forced_alignment.py` | Forced alignment of the lyrics (Tune Studio aligner, uroman) |
 | `services/syllable_alignment.py` | Chooses the alignment engine, with fallbacks |
 | `services/lyrics_search.py` | Lyrics from LRCLIB |
+| `services/melisma.py` | Splits long syllables into `~` notes where the pitch moves |
 | `services/alignment_whisper.py` | Syllable timing from WhisperX word/char timestamps (current primary aligner) |
 | `services/alignment.py` | Energy-based fallback aligner |
 | `services/onset_snapping.py` | Moves syllable starts to nearby spectral onsets |

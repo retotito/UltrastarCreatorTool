@@ -5,7 +5,7 @@ compare one to one. Melisma notes (`~`) belong to the syllable before them.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 NOTE = re.compile(r"^([:*FRG]):?\s(-?\d+)\s(\d+)\s(-?\d+)\s?(.*)$")
@@ -20,6 +20,7 @@ class RefSyllable:
     line: int
     pitch: int = 0      # chart pitch of the syllable's first note (UltraStar: 0 = C4)
     sung: bool = True   # False for rap / freestyle notes (no pitch to compare)
+    parts: list = field(default_factory=list)  # (start, end, pitch) of each note, the syllable's first and its ~
 
 
 def _header(content: str, key: str) -> str:
@@ -57,10 +58,11 @@ def parse_reference(content: str) -> List[RefSyllable]:
         end = start + int(length) * beat
         if text.strip() == "~" or text.strip().startswith("~") and syllables and line_has_notes:
             syllables[-1].end = end
+            syllables[-1].parts.append((start, end, int(pitch)))
             continue
         word_start = (not line_has_notes) or text.startswith(" ") or (syllables and syllables[-1].text.endswith(" "))
         syllables.append(RefSyllable(text=text, start=start, end=end, word_start=bool(word_start), line=line,
-                                     pitch=int(pitch), sung=kind in (":", "*")))
+                                     pitch=int(pitch), sung=kind in (":", "*"), parts=[(start, end, int(pitch))]))
         line_has_notes = True
     for syllable in syllables:
         syllable.text = syllable.text.strip()

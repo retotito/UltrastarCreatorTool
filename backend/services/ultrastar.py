@@ -40,14 +40,21 @@ def format_for_download(content: str, include_vocals: bool = True, include_instr
         return re.sub(r"['`´ʼ‘‚]", "’", m.group(0))
     content = re.sub(r'^[^#].*$', _fix_apostrophes, content, flags=re.MULTILINE)
 
-    # Note lines: "PREFIX BEAT DUR PITCH SYLLABLE"; no trailing space = word continues.
-    # Already hyphenated syllables (a re-imported download) stay as they are.
-    def _fix_hyphens(m):
-        line = m.group(0)
-        if not line.endswith((' ', '-')):
-            line = line + '-'
-        return line
-    content = re.sub(r'^[:*RF] \d+ \d+ \d+ .*$', _fix_hyphens, content, flags=re.MULTILINE)
+    # Note lines: "PREFIX BEAT DUR PITCH SYLLABLE"; no trailing space = word continues ("beau-").
+    # Already hyphenated syllables (a re-imported download) stay as they are, and a note followed by
+    # its own "~" melisma notes doesn't continue into another syllable yet: no hyphen there either.
+    note_line = re.compile(r'^[:*RF] \d+ \d+ -?\d+ (.*)$')
+    lines = content.split('\n')
+    notes = [i for i, ln in enumerate(lines) if note_line.match(ln)]
+    for k, i in enumerate(notes):
+        line = lines[i]
+        if line.endswith((' ', '-')):
+            continue
+        following = note_line.match(lines[notes[k + 1]]).group(1) if k + 1 < len(notes) else ''
+        if following.lstrip().startswith('~'):
+            continue
+        lines[i] = line + '-'
+    content = '\n'.join(lines)
 
     if not include_vocals:
         content = _remove_header(content, "VOCALS")

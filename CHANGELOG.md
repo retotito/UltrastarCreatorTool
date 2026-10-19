@@ -29,6 +29,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - The slide into a note no longer pulls its pitch down
 - Octave check: notes the pitch detection put one to three octaves off are moved back next to their
   neighbours (no more jumps of more than an octave inside a line)
+- **Melisma:** long syllables whose melody moves are split into `~` notes (e.g. "gas ~ ~"), also in segment
+  regenerate; vibrato and slides into a note don't split. Off with `ULTRASTAR_MELISMA=off`
 - Syllables without a detected pitch take the neighbouring note's pitch instead of C4 (no more octave jumps)
 
 ### 🐛 Bug Fixes
