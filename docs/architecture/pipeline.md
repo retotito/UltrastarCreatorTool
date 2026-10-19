@@ -43,7 +43,15 @@ splitting (scripts without written vowels).
 original mix. After alignment, `refine_bpm` adjusts the BPM to fit the syllable onsets.
 
 ### 4. Pitch detection
-`services/pitch_detection.py`: librosa PYIN, confidence threshold 0.4, converted to MIDI note numbers.
+`services/pitch_detection.py` `detect_pitches`: **FCPE** (neural pitch estimator for singing, ONNX, MIT, pinned)
+over the whole vocal track, a pitch every 10 ms; librosa PYIN as fallback (`ULTRASTAR_PITCH_ENGINE=pyin`).
+
+A syllable's pitch (`syllable_pitch`) is the median of the unrounded pitch over its **last two thirds** (singers
+slide into notes from below), rounded to a semitone. Syllables without any pitch take the previous sung
+syllable's pitch (`fill_unvoiced`), not a fixed C4.
+
+Measured on 6 reference songs (pitch class, octave ignored): FCPE 57.6 % exact / 77.3 % within a semitone;
+PYIN 52.7 % / 70.5 %. Melisma syllables can't match yet: one note per syllable (see `~` notes, plan step 4).
 
 ### 5. Syllable alignment
 `services/syllable_alignment.py` `align_syllables` picks the engine (`ULTRASTAR_ALIGNMENT_ENGINE`, default `ctc`)

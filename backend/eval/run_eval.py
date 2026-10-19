@@ -93,14 +93,18 @@ def whisper_for(song: dict, vocals: str, model_name: str) -> tuple:
     return words, chars
 
 
-def pitch_for(song: dict, vocals: str) -> dict:
-    path = os.path.join(CACHE, slug(song["name"]), "pitch.npz")
+PITCH_ENGINE = os.environ.get("EVAL_PITCH", "fcpe")  # as the app (services/pitch_detection.py)
+
+
+def pitch_for(song: dict, vocals: str, engine: str = None) -> dict:
+    engine = engine or PITCH_ENGINE
+    path = os.path.join(CACHE, slug(song["name"]), "pitch.npz" if engine == "pyin" else f"pitch_{engine}.npz")
     if os.path.isfile(path):
         data = np.load(path)
         return {k: data[k] for k in data.files}
-    from services.pitch_detection import detect_pitches
-    log("  pitch (PYIN) ...")
-    pitch = detect_pitches(vocals)
+    from services.pitch_detection import detect_pitches_fcpe, detect_pitches_pyin
+    log(f"  pitch ({engine}) ...")
+    pitch = detect_pitches_fcpe(vocals) if engine == "fcpe" else detect_pitches_pyin(vocals)
     np.savez(path, **{k: v for k, v in pitch.items() if isinstance(v, np.ndarray)})
     return pitch
 

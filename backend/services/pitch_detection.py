@@ -1,4 +1,4 @@
-"""Pitch detection using librosa PYIN."""
+"""Pitch detection: FCPE (neural, default) or librosa PYIN, and the pitch of each syllable."""
 
 import time
 import numpy as np
@@ -7,7 +7,7 @@ from utils.logger import log_step
 
 # Settings
 CONFIDENCE_THRESHOLD = 0.4
-log_step("INIT", "Using librosa PYIN for pitch detection")
+log_step("INIT", "Pitch detection: FCPE (PYIN as fallback)")
 
 
 def hz_to_midi(frequency: float) -> int:
@@ -28,6 +28,21 @@ def midi_to_note_name(midi_note: int) -> str:
 
 
 def detect_pitches(audio_path: str) -> dict:
+    """Pitch track of the vocals: FCPE by default, PYIN if FCPE can't run or ULTRASTAR_PITCH_ENGINE=pyin.
+
+    On 6 reference songs FCPE found the chart's pitch class for 57.6 % of syllables (PYIN 52.7 %),
+    77.5 % within a semitone (PYIN 70.5 %), and a pitch for every sung syllable (PYIN: up to 44 % none).
+    """
+    import os
+    if os.environ.get("ULTRASTAR_PITCH_ENGINE", "fcpe").strip().lower() != "pyin":
+        try:
+            return detect_pitches_fcpe(audio_path)
+        except Exception as error:  # model can't be downloaded/loaded, audio too short, ...
+            log_step("PITCH", f"FCPE failed ({type(error).__name__}: {error}), using PYIN")
+    return detect_pitches_pyin(audio_path)
+
+
+def detect_pitches_pyin(audio_path: str) -> dict:
     """Detect pitches using librosa PYIN.
 
     Args:
@@ -73,6 +88,64 @@ def detect_pitches(audio_path: str) -> dict:
 
 # Keep old name as alias for backward compatibility
 detect_pitches_crepe = detect_pitches
+
+# FCPE: a neural pitch estimator for singing (MIT), ONNX export with its mel spectrogram and decoding
+# inside the graph. Input 16 kHz mono, output Hz every 10 ms (0 = unvoiced). Pinned revision.
+FCPE_MODEL_ID = "tuneperfect/fcpe-onnx"
+FCPE_MODEL_REVISION = "f99224c40e48c8c84fa9935ff2cc6c3e92ec6ccf"
+FCPE_MODEL_FILE = "fcpe.onnx"
+FCPE_MODEL_BYTES = 47_805_126
+FCPE_SAMPLE_RATE = 16_000
+FCPE_HOP = 160
+_fcpe_cache: dict = {}
+
+
+def fcpe_model_downloaded() -> bool:
+    try:
+        import os
+        from huggingface_hub import try_to_load_from_cache
+        path = try_to_load_from_cache(FCPE_MODEL_ID, FCPE_MODEL_FILE, revision=FCPE_MODEL_REVISION)
+        return isinstance(path, str) and os.path.isfile(path) and os.path.getsize(path) == FCPE_MODEL_BYTES
+    except Exception:
+        return False
+
+
+def download_fcpe_model() -> None:
+    from huggingface_hub import hf_hub_download
+    hf_hub_download(FCPE_MODEL_ID, FCPE_MODEL_FILE, revision=FCPE_MODEL_REVISION)
+
+
+def _fcpe_session():
+    if "session" not in _fcpe_cache:
+        import onnxruntime
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(FCPE_MODEL_ID, FCPE_MODEL_FILE, revision=FCPE_MODEL_REVISION)
+        _fcpe_cache["session"] = onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
+    return _fcpe_cache["session"]
+
+
+def detect_pitches_fcpe(audio_path: str) -> dict:
+    """Pitch with FCPE, in the same format as `detect_pitches` (PYIN): 10 ms frames.
+
+    FCPE gives no probability, so voiced frames get confidence 1.0 and unvoiced 0.0.
+    """
+    log_step("PITCH", "Detecting pitch (FCPE)")
+    start_time = time.time()
+    audio, _ = librosa.load(audio_path, sr=FCPE_SAMPLE_RATE, mono=True)
+    if len(audio) < 1024:
+        raise ValueError("Audio too short for pitch detection")
+    f0 = _fcpe_session().run(["f0"], {"audio": audio.astype(np.float32)[None]})[0][0]
+    frequency = np.where(f0 > 0, f0, 0.0).astype(float)
+    midi_notes = np.array([hz_to_midi(f) for f in frequency])
+    voiced = frequency > 0
+    log_step("PITCH", f"FCPE complete in {time.time() - start_time:.1f}s, voiced frames {voiced.mean() * 100:.0f}%")
+    return {
+        "times": np.arange(len(f0)) * (FCPE_HOP / FCPE_SAMPLE_RATE),
+        "frequencies": frequency,
+        "confidences": voiced.astype(float),
+        "midi_notes": midi_notes,
+        "sample_rate": FCPE_SAMPLE_RATE,
+    }
 
 
 def get_pitch_at_time(pitch_data: dict, time_sec: float, window: float = 0.05) -> int:
@@ -127,13 +200,31 @@ def get_pitch_for_segment(pitch_data: dict, start_time: float, end_time: float) 
     return int(np.median(segment_notes))
 
 
+# Singers often slide up into a note; the first part of a syllable is left out of its pitch.
+SLIDE_IN_SKIP = 1 / 3
+
+
+def _fractional_midi(pitch_data: dict) -> np.ndarray:
+    """Unrounded MIDI per frame, NaN where unvoiced or unsure."""
+    frequencies = np.asarray(pitch_data["frequencies"], dtype=float)
+    sure = (frequencies > 0) & (np.asarray(pitch_data["confidences"], dtype=float) >= CONFIDENCE_THRESHOLD)
+    midi = np.full(frequencies.shape, np.nan)
+    midi[sure] = 69 + 12 * np.log2(frequencies[sure] / 440.0)
+    return midi
+
+
 def syllable_pitch(pitch_data: dict, start_time: float, end_time: float) -> int:
-    """MIDI pitch of a syllable: the median over its span, else over ±0.1 s around its middle; 0 if unvoiced."""
-    pitch = get_pitch_for_segment(pitch_data, start_time, end_time)
-    if pitch == 0:
-        middle = (start_time + end_time) / 2
-        pitch = get_pitch_for_segment(pitch_data, middle - 0.1, middle + 0.1)
-    return pitch
+    """MIDI pitch of a syllable: median of the unrounded pitch over its last two thirds (skipping the slide
+    in), else over the whole syllable, else ±0.1 s around its middle; 0 if nothing is voiced there."""
+    midi = _fractional_midi(pitch_data)
+    times = np.asarray(pitch_data["times"], dtype=float)
+    middle = (start_time + end_time) / 2
+    for lo, hi in ((start_time + (end_time - start_time) * SLIDE_IN_SKIP, end_time),
+                   (start_time, end_time), (middle - 0.1, middle + 0.1)):
+        selected = (times >= lo) & (times <= hi) & ~np.isnan(midi)
+        if selected.any():
+            return int(round(float(np.median(midi[selected]))))
+    return 0
 
 
 def fill_unvoiced(pitches: list, default: int = 60) -> list:
@@ -157,6 +248,8 @@ def fill_unvoiced(pitches: list, default: int = 60) -> list:
 
 def syllable_pitches(pitch_data: dict, syllable_timings: list) -> list:
     """MIDI pitch per syllable (None for rap), with unvoiced syllables taking a neighbour's pitch."""
+    if not syllable_timings:
+        return []
     raw = [None if t.get("is_rap") else syllable_pitch(pitch_data, t["start"], t["end"]) for t in syllable_timings]
     return fill_unvoiced(raw)
 

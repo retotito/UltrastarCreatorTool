@@ -25,7 +25,7 @@
 | UI | Svelte + Vite | `frontend/src/` | Wizard steps, piano-roll editor, playback, mic sing-along |
 | API client | JavaScript | `frontend/src/services/api.js` | All backend calls; `http://localhost:8001/api` in Tauri, `/api` (Vite proxy) in the browser |
 | Backend | Python 3.12, FastAPI | `backend/main.py` | HTTP endpoints, session management, orchestration of the pipeline |
-| Pipeline services | librosa, WhisperX, Demucs, pyphen, mido | `backend/services/` | One module per stage, see [pipeline.md](pipeline.md) |
+| Pipeline services | onnxruntime, librosa, WhisperX, Demucs, pyphen, uroman, mido | `backend/services/` | One module per stage, see [pipeline.md](pipeline.md) |
 
 The UI only talks to the backend over HTTP. It doesn't know the backend is written in Python.
 See [ADR 0001](../decisions/0001-keep-python-sidecar.md) for why the backend stays a Python sidecar.
@@ -37,7 +37,10 @@ See [ADR 0001](../decisions/0001-keep-python-sidecar.md) for why the backend sta
 | `services/vocal_separation.py` | Demucs v4 (`htdemucs`, two stems): vocals + instrumental |
 | `services/hyphenation.py` | Syllable splitting of lyrics with pyphen |
 | `services/bpm_detection.py` | BPM (essentia if available, else librosa), beat phase, BPM refinement from syllable times |
-| `services/pitch_detection.py` | PYIN pitch track and pitch lookup per segment |
+| `services/pitch_detection.py` | Pitch track (FCPE, PYIN fallback) and the pitch of each syllable |
+| `services/forced_alignment.py` | Forced alignment of the lyrics (Tune Studio aligner, uroman) |
+| `services/syllable_alignment.py` | Chooses the alignment engine, with fallbacks |
+| `services/lyrics_search.py` | Lyrics from LRCLIB |
 | `services/alignment_whisper.py` | Syllable timing from WhisperX word/char timestamps (current primary aligner) |
 | `services/alignment.py` | Energy-based fallback aligner |
 | `services/onset_snapping.py` | Moves syllable starts to nearby spectral onsets |

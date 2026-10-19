@@ -516,13 +516,19 @@ def _check_model_status() -> dict:
     aligner_ok = _aligner_downloaded()
     log_step("MODEL_STATUS", f"aligner: ok={aligner_ok}")
 
+    # FCPE pitch model (services/pitch_detection.py)
+    from services.pitch_detection import fcpe_model_downloaded
+    pitch_ok = fcpe_model_downloaded()
+    log_step("MODEL_STATUS", f"pitch (FCPE): ok={pitch_ok}")
+
     result = {
         "ffmpeg": ffmpeg_ok,
         "whisperx": whisperx_ok,
         "demucs": demucs_ok,
         "wav2vec2": wav2vec2_ok,
         "aligner": aligner_ok,
-        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok and aligner_ok,
+        "pitch": pitch_ok,
+        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok and aligner_ok and pitch_ok,
     }
     log_step("MODEL_STATUS", f"final: {result}")
     return result
@@ -756,6 +762,21 @@ async def setup_download():
                 yield send("error", "aligner", f"Download failed: {e}")
         else:
             yield send("done", "aligner", "Lyrics aligner already downloaded")
+
+        await asyncio.sleep(0.05)
+
+        # ── FCPE pitch model (small, ~48 MB) ──
+        if not status.get("pitch"):
+            yield send("progress", "pitch", "Downloading pitch model (~48 MB)…", percent=0)
+            await asyncio.sleep(0.05)
+            try:
+                from services.pitch_detection import download_fcpe_model
+                await asyncio.get_event_loop().run_in_executor(None, download_fcpe_model)
+                yield send("done", "pitch", "Pitch model ready")
+            except Exception as e:
+                yield send("error", "pitch", f"Download failed: {e}")
+        else:
+            yield send("done", "pitch", "Pitch model already downloaded")
 
         await asyncio.sleep(0.05)
         import json
