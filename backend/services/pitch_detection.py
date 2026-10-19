@@ -246,12 +246,60 @@ def fill_unvoiced(pitches: list, default: int = 60) -> list:
     return [first if p == 0 else p for p in out]
 
 
+# Octave check weights (Tune Studio's fixOctaves): a leap beyond a fifth costs LEAP per semitone, less
+# after a pause; moving a note costs STAY per octave; leaving the song's range (median ± 9) costs CENTER
+# per semitone. Notes may move up to three octaves: FCPE sometimes lands that far off on noisy frames
+# (Freak Power: "out" at 80 in a line around 43).
+OCTAVE_LEAP = 0.6
+OCTAVE_STAY = 2.0
+OCTAVE_CENTER = 0.3
+OCTAVE_PAUSE_SEC = 0.5
+
+
+def fix_octaves(pitches: list, syllable_timings: list) -> list:
+    """Move notes an octave up or down where the pitch tracker jumped an octave (in a copy).
+
+    For every sung note one of {-12, 0, +12} is chosen so that the whole song costs the least: big
+    leaps between neighbouring notes are expensive (cheaper after a pause, where a phrase may start
+    elsewhere), moving a note and leaving the song's range cost a little. `None` (rap) is skipped.
+    """
+    sung = [i for i, p in enumerate(pitches) if p]
+    if len(sung) < 2:
+        return list(pitches)
+    shifts = (-36, -24, -12, 0, 12, 24, 36)
+    middle = float(np.median([pitches[i] for i in sung]))
+
+    def own(i, shift):
+        return OCTAVE_STAY * abs(shift) / 12 + OCTAVE_CENTER * max(0.0, abs(pitches[i] + shift - middle) - 9)
+
+    def move(prev, i, s0, s1):
+        jump = abs(pitches[i] + s1 - pitches[prev] - s0)
+        pause = max(0.0, syllable_timings[i]["start"] - syllable_timings[prev]["end"])
+        return OCTAVE_LEAP * max(0, jump - 7) / (1 + pause / OCTAVE_PAUSE_SEC)
+
+    cost = [own(sung[0], s) for s in shifts]
+    back = []
+    for prev, i in zip(sung, sung[1:]):
+        options = [[cost[a] + move(prev, i, s0, s1) for a, s0 in enumerate(shifts)] for s1 in shifts]
+        best = [min(range(len(shifts)), key=row.__getitem__) for row in options]
+        back.append(best)
+        cost = [options[k][best[k]] + own(i, s) for k, s in enumerate(shifts)]
+    out = list(pitches)
+    k = min(range(len(shifts)), key=cost.__getitem__)
+    for n in range(len(sung) - 1, -1, -1):
+        out[sung[n]] = pitches[sung[n]] + shifts[k]
+        if n:
+            k = back[n - 1][k]
+    return out
+
+
 def syllable_pitches(pitch_data: dict, syllable_timings: list) -> list:
-    """MIDI pitch per syllable (None for rap), with unvoiced syllables taking a neighbour's pitch."""
+    """MIDI pitch per syllable (None for rap): unvoiced syllables take a neighbour's pitch, octave jumps of
+    the pitch tracker are corrected."""
     if not syllable_timings:
         return []
     raw = [None if t.get("is_rap") else syllable_pitch(pitch_data, t["start"], t["end"]) for t in syllable_timings]
-    return fill_unvoiced(raw)
+    return fix_octaves(fill_unvoiced(raw), syllable_timings)
 
 
 def get_pitch_subsegments(

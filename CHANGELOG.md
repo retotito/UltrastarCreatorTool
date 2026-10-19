@@ -27,6 +27,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - New neural pitch detection (FCPE, ~48 MB download in setup): more notes on the right pitch (within a semitone of
   the reference charts 77 % instead of 71 %), a pitch for every sung syllable, and about 10× faster than before
 - The slide into a note no longer pulls its pitch down
+- Octave check: notes the pitch detection put one to three octaves off are moved back next to their
+  neighbours (no more jumps of more than an octave inside a line)
 - Syllables without a detected pitch take the neighbouring note's pitch instead of C4 (no more octave jumps)
 
 ### 🐛 Bug Fixes

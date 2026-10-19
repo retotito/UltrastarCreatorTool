@@ -50,8 +50,14 @@ A syllable's pitch (`syllable_pitch`) is the median of the unrounded pitch over 
 slide into notes from below), rounded to a semitone. Syllables without any pitch take the previous sung
 syllable's pitch (`fill_unvoiced`), not a fixed C4.
 
+Then the **octave check** (`fix_octaves`, after Tune Studio's `fixOctaves`) picks for every note a shift of up to
+±3 octaves so the whole song costs least: leaps beyond a fifth between neighbours are expensive (cheaper after a
+pause), moving a note costs per octave, and leaving the song's range costs a little. It removes the pitch
+tracker's octave slips (e.g. "out" at 80 in a line around 43).
+
 Measured on 6 reference songs (pitch class, octave ignored): FCPE 57.6 % exact / 77.3 % within a semitone;
-PYIN 52.7 % / 70.5 %. Melisma syllables can't match yet: one note per syllable (see `~` notes, plan step 4).
+PYIN 52.7 % / 70.5 %. Octave check: notes in the wrong octave 5.2 % → 4.4 %, jumps of more than an octave
+inside a line 27 → 0. Melisma syllables can't match yet: one note per syllable (see `~` notes, plan step 4).
 
 ### 5. Syllable alignment
 `services/syllable_alignment.py` `align_syllables` picks the engine (`ULTRASTAR_ALIGNMENT_ENGINE`, default `ctc`)
