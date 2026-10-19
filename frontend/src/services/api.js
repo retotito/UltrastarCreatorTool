@@ -202,6 +202,11 @@ export async function submitLyrics(sessionId, lyrics, artist, title, language) {
   return request('POST', `/lyrics/${sessionId}`, form, true);
 }
 
+export async function searchLyricsOnline(sessionId, artist, title) {
+  const params = new URLSearchParams({ artist, title });
+  return request('GET', `/lyrics-search/${sessionId || 'none'}?${params}`);
+}
+
 export async function hyphenateLyrics(lyrics, language = 'en') {
   const form = new FormData();
   form.append('lyrics', lyrics);

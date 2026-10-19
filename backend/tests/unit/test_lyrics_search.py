@@ -1,0 +1,84 @@
+"""LRCLIB lyrics: picking the right entry and cleaning its text (no network)."""
+
+import pytest
+
+import services.lyrics_search as lyrics
+
+
+def entry(title="Turn On, Tune In, Cop Out", artist="Freak Power", duration=265.0, synced=None, plain=None,
+          instrumental=False, id=1):
+    return {"id": id, "trackName": title, "artistName": artist, "duration": duration, "instrumental": instrumental,
+            "syncedLyrics": synced, "plainLyrics": plain}
+
+
+SYNCED = "[00:07.30] Turn on\n[00:14.50] I'm on the fast lane\n[00:20.00] \n[00:30.00][01:30.00] Turn on, tune in, cop out"
+
+
+class TestParsing:
+    def test_lrc_lines_repeat_per_timestamp_and_sort_by_time(self):
+        lines = lyrics.parse_lrc(SYNCED)
+        assert [(line["start"], line["text"]) for line in lines] == [
+            (7.3, "Turn on"), (14.5, "I'm on the fast lane"), (30.0, "Turn on, tune in, cop out"),
+            (90.0, "Turn on, tune in, cop out"),
+        ]
+
+    def test_section_labels_and_empty_lines_are_dropped_but_rap_markers_kept(self):
+        assert lyrics.clean_lines(["[Chorus]", "", "  la   la ", "(Verse 2)", "[RAP]", "yo", "[/RAP]"]) == [
+            "la la", "[RAP]", "yo", "[/RAP]",
+        ]
+
+    def test_synced_lyrics_give_every_sung_line_in_order(self):
+        found = lyrics.entry_lyrics(entry(synced=SYNCED, plain="Turn on\nI'm on the fast lane\nTurn on, tune in, cop out"))
+        assert found["text"].split("\n") == [
+            "Turn on", "I'm on the fast lane", "Turn on, tune in, cop out", "Turn on, tune in, cop out",
+        ]
+        assert found["synced"] is True
+        assert found["line_starts"] == [7.3, 14.5, 30.0, 90.0]
+
+    def test_plain_lyrics_when_not_synced(self):
+        found = lyrics.entry_lyrics(entry(plain="[Intro]\nLa la\n\nDa da"))
+        assert (found["text"], found["synced"], found["line_starts"]) == ("La la\nDa da", False, [])
+
+
+class TestPick:
+    def test_same_title_ignoring_punctuation_and_version_labels(self):
+        best = lyrics.pick([entry(title="Something Else", id=1), entry(title="Turn On Tune In Cop Out (Remastered)", id=2,
+                                                                         plain="x")],
+                           "Turn On, Tune In, Cop Out", "Freak Power")
+        assert best["id"] == 2
+
+    def test_synced_beats_plain_and_closest_length_wins(self):
+        entries = [entry(id=1, plain="x", duration=265), entry(id=2, synced=SYNCED, duration=300),
+                   entry(id=3, synced=SYNCED, duration=262)]
+        assert lyrics.pick(entries, "Turn On, Tune In, Cop Out", "Freak Power", duration=264)["id"] == 3
+
+    def test_instrumentals_and_empty_entries_are_skipped(self):
+        assert lyrics.pick([entry(instrumental=True, plain="x"), entry()], "Turn On, Tune In, Cop Out", "Freak Power") is None
+
+    def test_a_different_song_is_not_returned(self):
+        assert lyrics.pick([entry(title="Rush", plain="x")], "Turn On, Tune In, Cop Out", "Freak Power") is None
+
+
+def test_search_retries_without_version_label(monkeypatch):
+    calls = []
+
+    def fake_fetch(params):
+        calls.append(params)
+        return [] if len(calls) == 1 else [entry(synced=SYNCED)]
+
+    monkeypatch.setattr(lyrics, "fetch", fake_fetch)
+    found = lyrics.search("Freak Power", "Turn On, Tune In, Cop Out (Remastered 2011)")
+    assert found["synced"] is True
+    assert calls[1]["track_name"] == "turn on tune in cop out"
+
+
+def test_search_finds_nothing(monkeypatch):
+    monkeypatch.setattr(lyrics, "fetch", lambda params: [])
+    assert lyrics.search("Nobody", "Nothing") is None
+
+
+@pytest.mark.slow
+def test_live_lrclib():
+    """Real request (network): run with -m slow."""
+    found = lyrics.search("Freak Power", "Turn On, Tune In, Cop Out")
+    assert found and "fast lane" in found["text"]

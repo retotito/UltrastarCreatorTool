@@ -11,7 +11,7 @@
   }
 
   async function handleAutoHyphenate() {
-    if (!lyricsText.trim()) {
+    if (!activeLyrics.trim()) {
       errorMessage.set('Enter lyrics first');
       return;
     }
@@ -19,9 +19,9 @@
     isProcessing.set(true);
     processingStatus.set('Auto-hyphenating lyrics...');
     try {
-      const result = await hyphenateLyrics(lyricsText, language);
+      const result = await hyphenateLyrics(activeLyrics, language);
       hyphenationResult = result;
-      lyricsText = result.hyphenated;
+      setActiveLyrics(result.hyphenated);
       processingStatus.set(`✅ Auto-hyphenated: ${result.total_syllables} syllables (${result.method})`);
     } catch (err) {
       errorMessage.set(err.message);
@@ -51,7 +51,8 @@
   }
 
   async function handleSubmit(useCleaned = false) {
-    if (!lyricsText.trim()) {
+    const lyricsForGeneration = activeLyrics;
+    if (!lyricsForGeneration.trim()) {
       errorMessage.set('Please enter lyrics');
       return;
     }
@@ -63,9 +64,9 @@
     isProcessing.set(true);
     processingStatus.set('Validating lyrics...');
     try {
-      const result = await submitLyrics($sessionId, lyricsText, artist, title, language);
+      const result = await submitLyrics($sessionId, lyricsForGeneration, artist, title, language);
       lyricsData.set({
-        text: lyricsText,
+        text: lyricsForGeneration,
         artist,
         title,
         language,
@@ -102,7 +103,8 @@
   import 'codemirror/lib/codemirror.css';
   import { sessionId, lyricsData, uploadData, currentStep, isProcessing, processingStatus, errorMessage, generationModalOpen, generationUseCleaned, generationResult } from '../stores/appStore.js';
   import { SUPPORTED_LANGUAGES } from '../lib/languages';
-  import { submitLyrics, getTestLyrics, loadTestSession, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata, getEditorData, generateCleanedAudio, generateEmptyUltrastar } from '../services/api.js';
+  import { showConfirm } from '../stores/dialogStore.js';
+  import { submitLyrics, searchLyricsOnline, getTestLyrics, loadTestSession, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata, getEditorData, generateCleanedAudio, generateEmptyUltrastar } from '../services/api.js';
 
   async function syncMetadata() {
     if (!$sessionId) return;
@@ -123,6 +125,12 @@
   let title = $lyricsData.title || '';
   let language = $lyricsData.language || '';
   let comparisonLyrics = '';  // Original/reference lyrics for comparison
+  // Which field Auto-Hyphenate and Generate use: 'generated' (left) or 'original' (right).
+  let lyricsSource = 'generated';
+  let lyricsSourceLoadedForSession = null;
+  let lyricsSearching = false;
+  let lyricsSearchInfo = '';
+  $: activeLyrics = (lyricsSource === 'original' ? comparisonLyrics : lyricsText) || '';
   let comparisonState = null; // { text, marks: [{ from, to, color }] }
   let comparisonLyricsLoadedForSession = null;
   let generatedLyricsTextarea = null;
@@ -233,6 +241,65 @@
         });
       }
     });
+  }
+
+  function setActiveLyrics(text) {
+    if (lyricsSource === 'original' && comparisonEditor) {
+      comparisonEditor.setValue(text);
+      // Highlights point into the old text; they'd land on the wrong words.
+      comparisonEditor.getAllMarks().forEach(mark => mark.clear());
+      saveComparisonLyrics();
+    } else {
+      lyricsText = text;
+    }
+  }
+
+  function lyricsSourceKey() {
+    return $sessionId ? `lyrics_source_${$sessionId}` : null;
+  }
+
+  function setLyricsSource(source) {
+    lyricsSource = source;
+    const key = lyricsSourceKey();
+    try { if (key) localStorage.setItem(key, source); } catch {}
+  }
+
+  $: if ($sessionId && lyricsSourceLoadedForSession !== $sessionId) {
+    lyricsSourceLoadedForSession = $sessionId;
+    let stored = null;
+    try { stored = localStorage.getItem(`lyrics_source_${$sessionId}`); } catch {}
+    lyricsSource = stored === 'original' ? 'original' : 'generated';
+  }
+
+  async function handleFindLyrics() {
+    if (!artist.trim() || !title.trim()) {
+      errorMessage.set('Enter Artist and Title to search for lyrics');
+      return;
+    }
+    if (comparisonLyrics.trim() && !(await showConfirm(
+      'Replace the text in the right field with the lyrics found online?',
+      { title: 'Find lyrics online', confirmLabel: 'Replace' },
+    ))) return;
+    errorMessage.set('');
+    lyricsSearchInfo = '';
+    lyricsSearching = true;
+    try {
+      const found = await searchLyricsOnline($sessionId, artist.trim(), title.trim());
+      if (!found.found) {
+        lyricsSearchInfo = `No lyrics found on LRCLIB for "${artist.trim()} – ${title.trim()}". Check the spelling, or paste them yourself.`;
+        return;
+      }
+      comparisonEditor.setValue(found.text);
+      comparisonEditor.getAllMarks().forEach(mark => mark.clear());
+      saveComparisonLyrics();
+      setLyricsSource('original');
+      const length = found.duration ? `, ${Math.floor(found.duration / 60)}:${String(Math.round(found.duration % 60)).padStart(2, '0')}` : '';
+      lyricsSearchInfo = `${found.lines} lines from LRCLIB: ${found.artist} – ${found.track}${length}${found.synced ? ', line-synced' : ''}. Check them against the song; repeated choruses must be written out.`;
+    } catch (err) {
+      errorMessage.set(err.message);
+    } finally {
+      lyricsSearching = false;
+    }
   }
 
   function applyColorToSelection(color) {
@@ -701,8 +768,20 @@
       </div>
     </div>
 
+    <div class="lyrics-source" role="radiogroup" aria-label="Lyrics for generation">
+      <span class="lyrics-source-label">Lyrics for generation:</span>
+      <label class="lyrics-source-option">
+        <input type="radio" name="lyrics-source" value="generated" checked={lyricsSource === 'generated'} on:change={() => setLyricsSource('generated')} />
+        Generated lyrics (left)
+      </label>
+      <label class="lyrics-source-option">
+        <input type="radio" name="lyrics-source" value="original" checked={lyricsSource === 'original'} on:change={() => setLyricsSource('original')} />
+        Original lyrics (right)
+      </label>
+    </div>
+
     <div class="lyrics-comparison-container">
-      <div class="form-group lyrics-column">
+      <div class="form-group lyrics-column" class:selected-source={lyricsSource === 'generated'}>
         <label for="lyrics">
           Generated Lyrics
           <span class="hint">(one line per phrase, use - for syllable splits: beau-ti-ful)</span>
@@ -715,8 +794,16 @@
         >{lyricsText}</textarea>
       </div>
 
-      <div class="form-group lyrics-column">
-        <label for="comparison">Original Lyrics (for comparison)</label>
+      <div class="form-group lyrics-column" class:selected-source={lyricsSource === 'original'}>
+        <div class="column-header">
+          <label for="comparison">Original Lyrics</label>
+          <button class="btn btn-secondary small" on:click={handleFindLyrics}
+                  disabled={lyricsSearching || $isProcessing || !artist.trim() || !title.trim()}
+                  title="Search the published lyrics on lrclib.net by artist and title">
+            {lyricsSearching ? '🔎 Searching…' : '🔎 Find lyrics online'}
+          </button>
+        </div>
+        {#if lyricsSearchInfo}<p class="hint lyrics-search-info">{lyricsSearchInfo}</p>{/if}
         <textarea
           id="comparison"
           bind:this={comparisonLyricsTextarea}
@@ -734,25 +821,25 @@
     </div>
 
     <div class="action-row">
-      <button class="btn btn-hyphen small" on:click={handleAutoHyphenate} disabled={$isProcessing || !lyricsText.trim()}>
+      <button class="btn btn-hyphen small" on:click={handleAutoHyphenate} disabled={$isProcessing || !activeLyrics.trim()}>
         ✂️ Auto-Hyphenate
       </button>
     </div>
     <div class="generate-row">
-      <button class="btn btn-primary btn-generate" on:click={() => handleSubmit(false)} disabled={$isProcessing || !lyricsText.trim() || !artist.trim() || !title.trim() || !$sessionId}>
+      <button class="btn btn-primary btn-generate" on:click={() => handleSubmit(false)} disabled={$isProcessing || !activeLyrics.trim() || !artist.trim() || !title.trim() || !$sessionId}>
         🚀 Generate Full Ultrastar Files
       </button>
       <button class="btn btn-secondary btn-generate" on:click={handleGenerateEmpty} disabled={$isProcessing || !$sessionId || !artist.trim() || !title.trim()} title="Skip note alignment — open editor with empty file">
         📄 Generate Empty Ultrastar File
       </button>
       {#if cleanedAudioAvailable}
-        <button class="btn btn-generate-cleaned btn-generate" on:click={() => handleSubmit(true)} disabled={$isProcessing || !lyricsText.trim() || !artist.trim() || !title.trim() || !$sessionId}>
+        <button class="btn btn-generate-cleaned btn-generate" on:click={() => handleSubmit(true)} disabled={$isProcessing || !activeLyrics.trim() || !artist.trim() || !title.trim() || !$sessionId}>
           ✨ Generate from Cleaned Vocals
         </button>
       {/if}
     </div>
     {#if !$isProcessing}
-      {@const missing = [!artist.trim() && 'Artist', !title.trim() && 'Title', !lyricsText.trim() && 'Lyrics'].filter(Boolean)}
+      {@const missing = [!artist.trim() && 'Artist', !title.trim() && 'Title', !activeLyrics.trim() && 'Lyrics'].filter(Boolean)}
       {#if missing.length > 0}
         <p class="missing-hint">Required for full generate: {missing.join(', ')}</p>
       {/if}
@@ -933,6 +1020,36 @@
 {/if}
 
 <style>
+  .lyrics-column.selected-source :global(.CodeMirror) {
+    border-color: #4caf50;
+    box-shadow: 0 0 0 1px #4caf50;
+  }
+  .lyrics-source {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.25rem;
+    margin: 0.5rem 0 0.75rem;
+  }
+  .lyrics-source-label {
+    font-weight: 600;
+  }
+  .lyrics-source-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    font-weight: normal;
+  }
+  .column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .lyrics-search-info {
+    margin: 0.25rem 0 0.5rem;
+  }
   .warning-modal-overlay {
     position: fixed;
     inset: 0;

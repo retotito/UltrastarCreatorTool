@@ -3129,6 +3129,34 @@ async def submit_lyrics(
     }
 
 
+@app.get("/api/lyrics-search/{session_id}")
+async def lyrics_search(session_id: str, artist: str = "", title: str = ""):
+    """Published lyrics for the song from LRCLIB (lrclib.net), for Step 2's "Find lyrics online"."""
+    import asyncio
+    artist, title = artist.strip(), title.strip()
+    if not artist or not title:
+        raise HTTPException(status_code=400, detail="Artist and title are required")
+    session = sessions.get(session_id) or {}
+    duration = None
+    audio = session.get("original_audio") or session.get("vocal_audio")
+    if audio and os.path.exists(audio):
+        try:
+            from services.bpm_detection import get_audio_duration
+            duration = get_audio_duration(audio)
+        except Exception:
+            pass
+    from services.lyrics_search import search
+    try:
+        found = await asyncio.to_thread(search, artist, title, duration)
+    except OSError as e:
+        # No network, timeout, or LRCLIB itself is down (HTTP 5xx).
+        raise ServiceError("Lyrics search failed",
+                           f"LRCLIB (lrclib.net) isn't available right now ({e}). Try again later.")
+    if not found:
+        return {"found": False}
+    return {"found": True, **found}
+
+
 @app.post("/api/hyphenate")
 async def hyphenate_lyrics(
     lyrics: str = Form(...),
