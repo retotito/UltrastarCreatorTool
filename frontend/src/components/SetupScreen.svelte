@@ -12,7 +12,7 @@
     whisperx: { label: 'WhisperX speech model',       size: '~1.5 GB',  state: 'pending', message: '', elapsed: 0, percent: null },
     demucs:   { label: 'Demucs vocal model',          size: '~80 MB',   state: 'pending', message: '', elapsed: 0, percent: null },
     wav2vec2: { label: 'wav2vec2 alignment model',    size: '~360 MB',  state: 'pending', message: '', elapsed: 0, percent: null },
-    aligner:  { label: 'Lyrics aligner (MMS, non-commercial licence)', size: '~1.3 GB', state: 'pending', message: '', elapsed: 0, percent: null },
+    aligner:  { label: 'Lyrics aligner (Tune Studio, non-commercial licence)', size: '~1.2 GB', state: 'pending', message: '', elapsed: 0, percent: null },
   };
 
   let downloading = false;

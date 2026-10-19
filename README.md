@@ -175,7 +175,7 @@ See [docs/architecture/overview.md](docs/architecture/overview.md) and [docs/arc
 | Model | Purpose | Status |
 |-------|---------|--------|
 | PYIN (librosa) | Pitch detection | Built-in |
-| [MMS forced aligner](https://huggingface.co/MahmoudAshraf/mms-300m-1130-forced-aligner) (Meta MMS) | Syllable timing: aligns your lyrics to the vocals | Downloaded in setup. Weights licensed **CC-BY-NC-4.0** (non-commercial) |
+| [Tune Studio aligner](https://huggingface.co/tuneperfect/tunestudio-aligner) by [Tune Studio](https://github.com/ZerNico/tunestudio): Meta's [MMS forced aligner](https://huggingface.co/MahmoudAshraf/mms-300m-1130-forced-aligner) fine-tuned on singing | Syllable timing: aligns your lyrics to the vocals | Downloaded in setup. Weights licensed **CC-BY-NC-4.0** (non-commercial) |
 | WhisperX | Lyric suggestions from the vocals; fallback timing | Optional (falls back to vanilla Whisper, then user lyrics) |
 | openai-whisper | Transcription fallback | Optional (if WhisperX unavailable) |
 | Demucs v4 | Vocal separation | Optional (can upload vocals directly) |

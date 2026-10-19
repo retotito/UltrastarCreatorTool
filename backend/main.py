@@ -522,7 +522,7 @@ def _check_model_status() -> dict:
     wav2vec2_ok = wav2vec2_size > 100_000_000
     log_step("MODEL_STATUS", f"wav2vec2: exists={os.path.isfile(wav2vec2_path)} size={wav2vec2_size:,} bytes ok={wav2vec2_ok}")
 
-    # MMS forced aligner (times the user's lyrics; see services/forced_alignment.py)
+    # Lyrics aligner (Tune Studio's singing fine-tune of MMS; see services/forced_alignment.py)
     from services.forced_alignment import is_model_downloaded as _aligner_downloaded
     aligner_ok = _aligner_downloaded()
     log_step("MODEL_STATUS", f"aligner: ok={aligner_ok}")
@@ -737,18 +737,18 @@ async def setup_download():
 
         await asyncio.sleep(0.05)
 
-        # ── MMS forced aligner ──
+        # ── Lyrics aligner ──
         if not status.get("aligner"):
-            yield send("progress", "aligner", "Downloading lyrics aligner (~1.3 GB)…", percent=0)
+            yield send("progress", "aligner", "Downloading lyrics aligner (~1.2 GB)…", percent=0)
             await asyncio.sleep(0.05)
             try:
-                from services.forced_alignment import download_model, MODEL_ID
-                ALIGNER_TOTAL_BYTES = 1_262_000_000
+                from services.forced_alignment import download_model, SUNG_MODEL_ID, SUNG_MODEL_BYTES
+                ALIGNER_TOTAL_BYTES = SUNG_MODEL_BYTES
                 try:
                     from huggingface_hub.constants import HF_HUB_CACHE as _hf_cache
                 except ImportError:
                     _hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
-                _aligner_dir = os.path.join(_hf_cache, "models--" + MODEL_ID.replace("/", "--"))
+                _aligner_dir = os.path.join(_hf_cache, "models--" + SUNG_MODEL_ID.replace("/", "--"))
 
                 loop = asyncio.get_event_loop()
                 fut = loop.run_in_executor(None, download_model)
@@ -762,7 +762,7 @@ async def setup_download():
                 await fut
                 yield send("done", "aligner", "Lyrics aligner ready")
             except ImportError as e:
-                yield send("done", "aligner", f"Aligner needs transformers — {e}", error=True)
+                yield send("done", "aligner", f"Aligner needs onnxruntime — {e}", error=True)
             except Exception as e:
                 yield send("error", "aligner", f"Download failed: {e}")
         else:
@@ -3543,7 +3543,7 @@ def generate_ultrastar_files(session_id: str):
             methods_used = set(t.get("method", "unknown") for t in syllable_timings)
             if "ctc" in methods_used:
                 low = sum(1 for t in syllable_timings if t.get("low_confidence"))
-                align_method = f"Forced alignment (MMS, {len(syllable_timings)} syllables, {low} to check)"
+                align_method = f"Forced alignment (Tune Studio aligner, {len(syllable_timings)} syllables, {low} to check)"
             elif "whisperx" in methods_used:
                 wx_count = sum(1 for t in syllable_timings if t.get("method") == "whisperx")
                 char_count = sum(1 for t in syllable_timings if t.get("split_method") == "char")

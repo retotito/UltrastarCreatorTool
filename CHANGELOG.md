@@ -2,6 +2,20 @@
 
 All notable changes to Ultrastar Creator Tool. Newest first.
 
+## Unreleased
+
+### 🎯 Lyrics timing without hallucinated notes
+- **Forced alignment of your lyrics**: syllable timing now comes from aligning the lyrics you confirmed directly to
+  the vocals, instead of matching Whisper's transcript. Words Whisper didn't hear no longer get guessed positions.
+  On six test songs, misplaced syllables (> 0.5 s off) dropped from 57 % to 7 %.
+- Uses [Tune Studio](https://github.com/ZerNico/tunestudio)'s singing-tuned aligner (new ~1.2 GB download in setup,
+  non-commercial licence)
+- Generating works without running "Generate Lyrics from Vocals" first; segment re-generation no longer runs Whisper
+- Previous behaviour available with `ULTRASTAR_ALIGNMENT_ENGINE=legacy`
+
+### 🐛 Bug Fixes
+- Downloading a re-imported song no longer turns mid-word syllables into `Beau--`
+
 ## v4.1.0
 
 ### 🎵 Freestyle Note Support

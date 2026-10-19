@@ -25,13 +25,16 @@ import numpy as np
 from services.alignment_whisper import _build_word_groups, parse_lyrics
 from utils.logger import log_step
 
-# Meta MMS-300m fine-tuned for forced alignment (CC-BY-NC-4.0, see ADR 0002). Pinned revision.
-MODEL_ID = "MahmoudAshraf/mms-300m-1130-forced-aligner"
-MODEL_REVISION = "49402e9577b1158620820667c218cd494cc44486"
-
-# Experimental, evaluation only: the same model fine-tuned on singing by Tune Studio (ONNX, CC-BY-NC-4.0).
+# Default aligner: Tune Studio's singing fine-tune of Meta's MMS-300m forced aligner (ONNX, CC-BY-NC-4.0,
+# see ADR 0002). Pinned revision. Runs on onnxruntime; no torch needed.
 SUNG_MODEL_ID = "tuneperfect/tunestudio-aligner"
 SUNG_MODEL_REVISION = "4c6edce202fae335e6239c09ea17ecddcf29b42e"
+SUNG_MODEL_FILE = "aligner.onnx"
+SUNG_MODEL_BYTES = 1262284621
+
+# The stock speech model it was fine-tuned from (torch + transformers). Kept for evaluation (`model_name="mms"`).
+MODEL_ID = "MahmoudAshraf/mms-300m-1130-forced-aligner"
+MODEL_REVISION = "49402e9577b1158620820667c218cd494cc44486"
 
 SAMPLE_RATE = 16_000
 FRAME_SEC = 0.02            # one emission frame per 320 samples
@@ -391,7 +394,7 @@ def align_lyrics_to_emissions(lyrics_text: str, log_probs: np.ndarray, offset: f
 
 
 # ────────────────────────────────────────────────────────────
-# Model (slow part)
+# Models (slow part)
 # ────────────────────────────────────────────────────────────
 _model_cache: dict = {}
 
@@ -407,21 +410,20 @@ def _load_model(device: str):
 
 
 def is_model_downloaded() -> bool:
-    """Whether the aligner weights are in the Hugging Face cache (no network access)."""
+    """Whether the default (sung) aligner is in the Hugging Face cache (no network access)."""
     try:
         from huggingface_hub import try_to_load_from_cache
-        path = try_to_load_from_cache(MODEL_ID, "model.safetensors", revision=MODEL_REVISION)
+        path = try_to_load_from_cache(SUNG_MODEL_ID, SUNG_MODEL_FILE, revision=SUNG_MODEL_REVISION)
         # Size check: on Windows a failed hardlink can leave an empty snapshot file.
-        return isinstance(path, str) and os.path.isfile(path) and os.path.getsize(path) > 1_000_000_000
+        return isinstance(path, str) and os.path.isfile(path) and os.path.getsize(path) == SUNG_MODEL_BYTES
     except Exception:
         return False
 
 
 def download_model() -> None:
-    """Download the pinned aligner weights into the Hugging Face cache."""
-    from huggingface_hub import snapshot_download
-    snapshot_download(MODEL_ID, revision=MODEL_REVISION,
-                      allow_patterns=["config.json", "model.safetensors", "*.json"])
+    """Download the pinned default aligner into the Hugging Face cache."""
+    from huggingface_hub import hf_hub_download
+    hf_hub_download(SUNG_MODEL_ID, SUNG_MODEL_FILE, revision=SUNG_MODEL_REVISION)
 
 
 def _cache_key(audio_path: str, revision: str) -> str:
@@ -434,19 +436,19 @@ def _sung_session():
     if "sung" not in _model_cache:
         import onnxruntime
         from huggingface_hub import hf_hub_download
-        path = hf_hub_download(SUNG_MODEL_ID, "aligner.onnx", revision=SUNG_MODEL_REVISION)
+        path = hf_hub_download(SUNG_MODEL_ID, SUNG_MODEL_FILE, revision=SUNG_MODEL_REVISION)
         log_step("CTC_ALIGN", f"Loading sung aligner {SUNG_MODEL_ID}@{SUNG_MODEL_REVISION[:8]}")
         _model_cache["sung"] = onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
     return _model_cache["sung"]
 
 
 def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[str] = None,
-                      model_name: str = "mms") -> np.ndarray:
+                      model_name: str = "sung") -> np.ndarray:
     """The aligner's (frames × 31) log-probabilities for the audio, one frame per 20 ms.
 
     Runs in 30 s windows with 2 s of context on each side. With `cache_dir`, results are cached
-    per file (path, size, modification time) so re-generating a song is fast. `model_name` "sung"
-    selects the experimental singing fine-tune (evaluation only).
+    per file (path, size, modification time) so re-generating a song is fast. `model_name`: "sung"
+    (default, the singing fine-tune) or "mms" (the stock speech model, for comparison).
     """
     revision = SUNG_MODEL_REVISION if model_name == "sung" else MODEL_REVISION
     cache_path = None

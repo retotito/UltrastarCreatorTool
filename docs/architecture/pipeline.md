@@ -12,7 +12,7 @@ song.mp3 ──► Demucs ──► vocals.wav ──┬─► WhisperX ASR ─�
                                      │        └─► wav2vec2 align ─► whisper_words (fallback only)       │
                                      ├─► BPM + beat phase                                               ▼
                                      ├─► PYIN pitch ─────────────►  syllable alignment ◄───── final lyrics
-                                     └─► MMS aligner emissions ──►  (forced alignment)
+                                     └─► aligner emissions ──────►  (forced alignment)
                                                                                │
                                                      GAP, BPM refinement, notes ─► .txt  .mid  summary
 ```
@@ -51,15 +51,15 @@ against the vocals, so a word Whisper missed still gets its real position.
 
 1. Lyrics → words and syllables (`parse_lyrics`); each syllable romanised to the aligner's letters (a–z, `'`;
    accents removed; non-Latin scripts raise `UnsupportedText` → fallback).
-2. **Emissions**: the MMS aligner (`MahmoudAshraf/mms-300m-1130-forced-aligner`, pinned) over the whole vocal
-   track in 30 s windows with 2 s context → letter log-probabilities every 20 ms. Cached per audio file in the
-   session's `cache/` folder.
+2. **Emissions**: Tune Studio's singing fine-tune of the MMS aligner (`tuneperfect/tunestudio-aligner`, ONNX,
+   pinned) over the whole vocal track in 30 s windows with 2 s context → letter log-probabilities every 20 ms.
+   Cached per audio file in the session's `cache/` folder.
 3. **Silence gate**: frames more than 30 dB below the song's loud singing (widened by 60 ms) can't hold letters.
 4. **Viterbi search** (`forced_align`) for the best path of all letters, in order. A free `<star>` token before
    every word and after the last absorbs sound that isn't in the lyrics (ad-libs, outros).
 5. Word times from the letter spikes; syllables split where their first letter is; a line's first or last word
-   more than 0.8 s from its neighbour is pulled back (`pull_in_edges`); word starts moved to the first voiced
-   pitch frame (`snap_to_voice`).
+   more than 0.8 s from its neighbour is pulled back (`pull_in_edges`). (`snap_to_voice` exists but is off: it
+   measured worse.)
 6. `confidence` = exp(mean log-probability) per word; `low_confidence` when it is below −2.
 
 **WhisperX matching** (`services/alignment_whisper.py`, `legacy`):
@@ -73,8 +73,9 @@ against the vocals, so a word Whisper missed still gets its real position.
 > Whisper missed or misheard words, step 2 guesses their positions, which causes misplaced notes.
 >
 > **Known limitation (forced alignment).** Repetitive vocalise ("la la dee", "ooh") and backing vocals that
-> repeat the lead can make whole sections drift until the next clearly sung words. See
-> [known-issues.md](../known-issues.md).
+> repeat the lead can still make a section drift until the next clearly sung words, much less with the singing
+> model than with the stock one. Lyrics that differ from what is sung ("la la dee" typed, "la da dee" sung) make it
+> worse. See [known-issues.md](../known-issues.md).
 
 ### 6. Onset snapping
 `services/onset_snapping.py`: moves each syllable start to the nearest spectral onset within a window. Only

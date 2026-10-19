@@ -4,6 +4,13 @@
 
 ## Alignment Issues
 
+> **Since forced alignment (2026-10-19)** issues 1 and 2 below are much reduced: the aligner times the typed lyrics
+> against the vocals instead of matching Whisper's transcript, so missed words no longer get guessed positions.
+> Gypsy Woman: 75 % → 8 % misplaced syllables. What remains: long repetitive vocalise ("la la dee", "ooh") can
+> drift by a few seconds until the next clearly sung words, especially when the typed syllables differ from what is
+> sung, and backing vocals that repeat the lead can pull words by about a second. Lines the aligner is unsure about
+> are counted as "to check" in the processing summary.
+
 ### 1. Repetitive nonsense syllables (La-da-dee, Ah!, etc.)
 **Status**: Known limitation
 **Songs affected**: Crystal Waters - Gypsy Woman

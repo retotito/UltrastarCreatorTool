@@ -10,12 +10,12 @@ in eval/cache/, so re-runs after an alignment change take seconds. Writes a Mark
 eval/reports/.
 
 Engines:
-  legacy        WhisperX words + chars → align_whisper → onset snapping (the app today)
-  ctc           forced alignment of the lyrics, silence-gated, snapped to voiced pitch (the app)
-  ctc-sung      as ctc, with Tune Studio's singing fine-tune of the aligner (experimental)
+  legacy        WhisperX words + chars → align_whisper → onset snapping (the app before forced alignment)
+  ctc           forced alignment with the singing aligner, silence-gated (the app today)
+  ctc-mms       as ctc, with the stock MMS speech aligner
+  ctc-voice     as ctc, plus snapping word starts to voiced pitch
   ctc-ungated   as ctc, without the silence gate
-  ctc-raw       forced alignment (silence-gated) without any snapping
-  ctc-onsets    forced alignment + the app's onset snapping instead of voice snapping
+  ctc-onsets    as ctc, plus the app's onset snapping
 """
 
 import argparse
@@ -38,7 +38,7 @@ from eval.reference import audio_file, lyrics_text, parse_reference  # noqa: E40
 
 CACHE = os.path.join(HERE, "cache")
 REPORTS = os.path.join(HERE, "reports")
-ENGINES = ["legacy", "ctc", "ctc-sung", "ctc-ungated", "ctc-raw", "ctc-onsets"]
+ENGINES = ["legacy", "ctc", "ctc-mms", "ctc-voice", "ctc-ungated", "ctc-onsets"]
 
 
 def slug(name: str) -> str:
@@ -115,17 +115,15 @@ def run_engine(engine: str, song: dict, lyrics: str, vocals: str, whisper_model:
         return snap_to_onsets(vocals, results)
 
     from services.forced_alignment import align_lyrics_to_emissions, compute_emissions, frame_loudness
-    emissions = compute_emissions(vocals, cache_dir=os.path.join(CACHE, slug(song["name"])))
+    cache = os.path.join(CACHE, slug(song["name"]))
+    emissions = compute_emissions(vocals, cache_dir=cache, model_name="mms" if engine == "ctc-mms" else "sung")
     loudness = frame_loudness(vocals)
-    if engine == "ctc":
-        return align_lyrics_to_emissions(lyrics, emissions, pitch_data=pitch_for(song, vocals), loudness_db=loudness)
-    if engine == "ctc-sung":
-        sung = compute_emissions(vocals, cache_dir=os.path.join(CACHE, slug(song["name"])), model_name="sung")
-        return align_lyrics_to_emissions(lyrics, sung, pitch_data=pitch_for(song, vocals), loudness_db=loudness)
-    if engine == "ctc-ungated":
-        return align_lyrics_to_emissions(lyrics, emissions, pitch_data=pitch_for(song, vocals))
-    if engine == "ctc-raw":
+    if engine in ("ctc", "ctc-mms"):
         return align_lyrics_to_emissions(lyrics, emissions, snap_voice=False, loudness_db=loudness)
+    if engine == "ctc-voice":
+        return align_lyrics_to_emissions(lyrics, emissions, pitch_data=pitch_for(song, vocals), loudness_db=loudness)
+    if engine == "ctc-ungated":
+        return align_lyrics_to_emissions(lyrics, emissions, snap_voice=False)
     if engine == "ctc-onsets":
         from services.onset_snapping import snap_to_onsets
         return snap_to_onsets(vocals, align_lyrics_to_emissions(lyrics, emissions, snap_voice=False,

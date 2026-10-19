@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted, in progress (docs restructure and test foundation done) |
+| **Status** | Phases 0–3 done (2026-10-19), ready for testing in the app. Phases 4–5 open |
 | **Owner** | Reto Küpfer |
 | **Created** | 2026-10-19 |
 | **Goal** | Remove invented note placements by timing the user's corrected lyrics directly against the audio |
@@ -77,7 +77,17 @@ for why). Tune Studio uses the same approach with a singing fine-tune of this mo
 
 Each phase ends in a working, releasable state.
 
-### Phase 0: Spike (go / no-go)
+### Phase 0: Spike (go / no-go) ✅
+
+**Result (2026-10-19)**: go. On 6 reference songs (1,799 syllables), syllables more than 500 ms off: WhisperX
+matching 56.6 %, forced alignment with stock MMS 27.7 %, with Tune Studio's singing fine-tune 6.8 %. Details in
+[ADR 0002](../decisions/0002-forced-alignment-of-user-lyrics.md). Findings on the way:
+- A free `<star>` filler before every word and after the last word, a silence gate (no letters 30 dB below the
+  loud singing) and no snapping gave the best results; onset or voice snapping didn't help.
+- Anchoring words to WhisperX matches made it much worse (the matching itself is wrong on hard songs). Dropped.
+- Remaining errors: repetitive vocalise, backing vocals repeating the lead, chart lyrics that differ from what's sung.
+
+Original plan:
 
 Goal: prove the gain on real songs before changing the app.
 
@@ -116,7 +126,7 @@ Goal: measure every later change, and stop regressions.
    release build.
 5. ✅ Old script-style tests: `test_alignment.py` moved to `backend/scripts/manual_energy_alignment.py`, `test_hyphenation.py` replaced by real tests.
 
-### Phase 2: Forced alignment engine
+### Phase 2: Forced alignment engine ✅
 
 New module `backend/services/forced_alignment.py`, public API:
 
@@ -143,7 +153,7 @@ Internal steps (each a small, tested function):
 Optional, behind a setting: when the lyrics include line times (e.g. from a future LRCLIB import), re-align only
 the lines that land far from their expected time, inside a padded window.
 
-### Phase 3: Integration
+### Phase 3: Integration ✅ (setting is the env var `ULTRASTAR_ALIGNMENT_ENGINE`; UI toggle not built)
 
 - Setting `alignment_engine`: `ctc` (default once Phase 0/eval agree) or `legacy` (current code).
 - Wire into the generate step ([main.py](../../backend/main.py) "Step 3c: Alignment") and `segment_generate`.

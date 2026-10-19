@@ -1,6 +1,6 @@
 # 0002: Forced alignment of user lyrics
 
-> **Status:** Accepted · **Date:** 2026-10-19
+> **Status:** Accepted · **Date:** 2026-10-19 (model choice updated the same day, see "Model")
 
 ## Context
 
@@ -23,6 +23,21 @@ We don't use a forced-alignment package:
 
 The implementation plan is in [plans/forced-alignment.md](../plans/forced-alignment.md).
 
+### Model
+
+The default model is **Tune Studio's singing fine-tune** of the MMS aligner,
+[`tuneperfect/tunestudio-aligner`](https://huggingface.co/tuneperfect/tunestudio-aligner) (ONNX, pinned revision,
+CC-BY-NC-4.0, same terms as the base model), run with onnxruntime. Measured on 6 reference songs (1,799 syllables),
+share of syllables more than 500 ms off the reference chart:
+
+| Engine | Misplaced |
+|---|---|
+| WhisperX matching (before) | 56.6 % |
+| Forced alignment, stock MMS | 27.7 % |
+| Forced alignment, singing fine-tune | **6.8 %** |
+
+The stock MMS model stays available for evaluation (`model_name="mms"`).
+
 ## Alternatives considered
 
 - **Better matching heuristics in `alignment_whisper.py`.** Can't fix missing information: words Whisper didn't
@@ -32,11 +47,11 @@ The implementation plan is in [plans/forced-alignment.md](../plans/forced-alignm
 
 ## Consequences
 
-- **Licence:** the MMS weights are **CC-BY-NC-4.0** (non-commercial). Accepted because the app is distributed free
-  of charge. The model must be credited in the README and the setup screen. The app must not be sold while it
-  uses these weights.
-- New model download (about 1.3 GB) in the setup screen. No new Python dependency: torch and transformers
-  come with WhisperX.
+- **Licence:** the aligner weights (MMS and Tune Studio's fine-tune) are **CC-BY-NC-4.0** (non-commercial).
+  Accepted because the app is distributed free of charge. Tune Studio and the base model are credited in the
+  README and the setup screen. The app must not be sold while it uses these weights.
+- New model download (about 1.2 GB) in the setup screen. No new Python dependency: onnxruntime comes with
+  faster-whisper (and is now bundled by `backend.spec`).
 - Latin-script languages work now (accents are removed: "Mädchen" → "madchen"). Other scripts need
   romanisation (uroman) and fall back to the old alignment until then.
 - The alignment engine is swappable (`ULTRASTAR_ALIGNMENT_ENGINE=ctc|legacy`), so a singing-tuned or permissively licensed model can
