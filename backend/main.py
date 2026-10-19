@@ -14,29 +14,13 @@ import os
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 import sys
 
-# On Windows, Tauri spawns the backend with piped stdout/stderr.
-# Python's logging StreamHandler.flush() raises OSError [Errno 22] when the pipe
-# read-end is dropped by Rust, which eventually crashes the uvicorn event loop.
-# Wrap sys.stdout/stderr so those errors are silently swallowed.
-if getattr(sys, 'frozen', False) and sys.platform == 'win32':
-    class _PipeSafeStream:
-        def __init__(self, stream):
-            self._s = stream
-        def write(self, data):
-            try: return self._s.write(data)
-            except OSError: return 0
-        def flush(self):
-            try: self._s.flush()
-            except OSError: pass
-        def fileno(self):
-            try: return self._s.fileno()
-            except Exception: return -1
-        def isatty(self): return False
-        def readable(self): return False
-        def writable(self): return True
-        def __getattr__(self, name): return getattr(self._s, name)
-    sys.stdout = _PipeSafeStream(sys.stdout)
-    sys.stderr = _PipeSafeStream(sys.stderr)
+# Tauri spawns the packaged backend with piped stdout/stderr. When the app ends without stopping us
+# (Cmd+Q, crash, update), the pipe loses its reader: writes then fail with BrokenPipe / Errno 22, and
+# we would keep blocking port 8001. So: ignore dead-pipe errors, and exit once the app is gone.
+if getattr(sys, 'frozen', False):
+    from utils.process_guard import make_streams_pipe_safe, watch_parent
+    make_streams_pipe_safe()
+    watch_parent()
 
 # Fix SSL certificate verification on macOS when running as a frozen PyInstaller app.
 # Python bundles certifi but doesn't always point SSL_CERT_FILE at it automatically.
@@ -397,6 +381,11 @@ load_sessions()
 # ────────────────────────────────────────────────────────────
 # Health check
 # ────────────────────────────────────────────────────────────
+def _alignment_engine_label() -> str:
+    from services.syllable_alignment import configured_engine
+    return "Forced alignment (Tune Studio aligner)" if configured_engine() == "ctc" else "WhisperX"
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
@@ -407,7 +396,7 @@ async def health_check():
         "version": "2.0.0",
         "models": {
             "pitch": "PYIN",
-            "alignment": "WhisperX",
+            "alignment": _alignment_engine_label(),
             "demucs": DEMUCS_AVAILABLE,
         }
     }
