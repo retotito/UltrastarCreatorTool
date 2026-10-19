@@ -303,7 +303,7 @@
   // msToBeat(ms)  = Math.round((ms - gapMs) * bpm / 15000)  — rounded for discrete positions
   // msToFracBeat  = (ms - gapMs) * bpm / 15000              — unrounded for continuous positions
 
-  // See docs/RECALCULATION.md for the design rules.
+  // See docs/architecture/recalculation.md for the design rules.
   function resyncAllToGrid(previousTimingRef = null) {
     const oldBpm = Math.max(1, Number(previousTimingRef?.bpm) || bpm);
 
@@ -4166,7 +4166,7 @@
       if (canvasEl) canvasEl.style.cursor = '';
       recalcMetronomeFromControls('handle-drag');
 
-      // Snap GAP to nearest beat on the new grid (RECALCULATION.md: Grid Offset Change)
+      // Snap GAP to nearest beat on the new grid (docs/architecture/recalculation.md: Grid Offset Change)
       // downbeatOffsetMs is the new beat-1 position; GAP must land on a grid beat
       const beatDur = 15000 / bpm;
       const offsetMs = gapMs + metronomeManualDownbeatAnchorBeat * beatDur;

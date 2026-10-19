@@ -1,5 +1,8 @@
 # Refactoring Summary - Systematic Development Implementation
 
+> **Status:** Archived · **Last updated:** 2025-10-14  
+> Describes a 2025 refactoring; the code has changed since.
+
 ## Problem Solved
 **Circular Debugging Loops**: The original monolithic `main.py` (~739 lines) led to circular debugging where timing/BPM/GAP parameter changes caused regressions, losing track of working configurations.
 

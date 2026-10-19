@@ -1,5 +1,7 @@
 # Keyboard Shortcuts
 
+> **Status:** Current · **Last updated:** 2026-06-16
+
 ## Selection
 
 | Shortcut | Action |

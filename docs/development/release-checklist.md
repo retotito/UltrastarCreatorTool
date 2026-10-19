@@ -1,5 +1,7 @@
 # Test Checklist v2.0.4
 
+> **Status:** Current · **Last updated:** 2026-05-16
+
 Legend: ⏳ not tested · ✅ pass · ❌ fail
 
 ---

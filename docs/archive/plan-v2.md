@@ -1,5 +1,8 @@
 # Ultrastar Song Generator v2 — Project Plan
 
+> **Status:** Archived · **Last updated:** 2026-04-03  
+> Historical v2 project plan; kept for context.
+
 ## Why Starting Fresh
 
 The v1 codebase had:

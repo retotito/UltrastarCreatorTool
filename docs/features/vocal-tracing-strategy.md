@@ -1,5 +1,7 @@
 # New Vocal Tracing Strategy
 
+> **Status:** Current · **Last updated:** 2026-06-08
+
 ## Goal
 
 Build a Step 4 editor workflow that analyzes a short window of vocals and proposes usable Ultrastar notes directly in the editor, without depending on the full-song generation pipeline.

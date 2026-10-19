@@ -1,7 +1,73 @@
 """Ultrastar .txt file generation."""
 
+import re
 from typing import List, Optional
 from utils.logger import log_step
+
+# Headers recognised by USDB/animux.de; everything else is dropped on download.
+USDB_KNOWN_HEADERS = {
+    'TITLE', 'ARTIST', 'BPM', 'GAP', 'LANGUAGE', 'MP3', 'VOCALS',
+    'INSTRUMENTAL', 'COVER', 'BACKGROUND', 'VIDEO', 'VIDEOGAP',
+    'GENRE', 'YEAR', 'EDITION', 'CREATOR', 'COMMENT', 'YOUTUBE',
+    'END', 'PREVIEWSTART', 'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT',
+    'RELATIVE', 'ENCODING', 'TAGS',
+}
+
+
+def _remove_header(content: str, key: str) -> str:
+    """Remove all #KEY:... lines from Ultrastar .txt content."""
+    lines = [ln for ln in content.split("\n") if not re.match(rf"^#{key}:[^\n]*$", ln)]
+    return "\n".join(lines)
+
+
+def format_for_download(content: str, include_vocals: bool = True, include_instrumental: bool = True) -> str:
+    """Turn a stored .txt into the file the user downloads (USDB conventions).
+
+    - YASS-style line breaks (``- 12 14`` → ``- 12``)
+    - ``#MP3`` / ``#VOCALS`` always point to ``.mp3``
+    - apostrophes in note lines normalised to ``’`` (U+2019)
+    - mid-word syllables (no trailing space) get a trailing ``-``
+    - unknown and duplicate headers removed; CRLF line endings
+    """
+    content = re.sub(r'^(- \d+) \d+$', r'\1', content, flags=re.MULTILINE)
+
+    def _force_mp3_ext(m):
+        return m.group(1) + re.sub(r'\.[^.]+$', '.mp3', m.group(2))
+    content = re.sub(r'^(#MP3:)(.+)$', _force_mp3_ext, content, flags=re.MULTILINE)
+    content = re.sub(r'^(#VOCALS:)(.+)$', _force_mp3_ext, content, flags=re.MULTILINE)
+
+    def _fix_apostrophes(m):
+        return re.sub(r"['`´ʼ‘‚]", "’", m.group(0))
+    content = re.sub(r'^[^#].*$', _fix_apostrophes, content, flags=re.MULTILINE)
+
+    # Note lines: "PREFIX BEAT DUR PITCH SYLLABLE"; no trailing space = word continues.
+    def _fix_hyphens(m):
+        line = m.group(0)
+        if not line.endswith(' '):
+            line = line + '-'
+        return line
+    content = re.sub(r'^[:*RF] \d+ \d+ \d+ .*$', _fix_hyphens, content, flags=re.MULTILINE)
+
+    if not include_vocals:
+        content = _remove_header(content, "VOCALS")
+    if not include_instrumental:
+        content = _remove_header(content, "INSTRUMENTAL")
+
+    seen_keys = set()
+    filtered_lines = []
+    for ln in content.splitlines():
+        if ln.startswith('#'):
+            key_part = ln[1:].split(':')[0].upper()
+            if key_part not in USDB_KNOWN_HEADERS:
+                continue
+            if key_part in seen_keys:
+                continue
+            seen_keys.add(key_part)
+        filtered_lines.append(ln)
+    content = '\r\n'.join(filtered_lines)
+    if not content.endswith('\r\n'):
+        content += '\r\n'
+    return content
 
 
 def _fmt_bpm(bpm: float) -> str:

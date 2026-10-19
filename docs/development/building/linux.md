@@ -1,5 +1,7 @@
 # Linux Build & Debug
 
+> **Status:** Current · **Last updated:** 2026-05-21
+
 ## Prerequisites
 
 1. **Rust** — [rustup.rs](https://rustup.rs) (includes `cargo`)

@@ -1,5 +1,7 @@
 # Ultrastar Grid, Beats & GAP — Domain Knowledge
 
+> **Status:** Current · **Last updated:** 2026-04-07
+
 ## Ultrastar Beat System
 
 - Ultrastar BPM = 2× musical BPM (e.g., 120 musical BPM → 240 Ultrastar BPM)

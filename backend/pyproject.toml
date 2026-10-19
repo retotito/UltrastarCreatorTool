@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: loads AI models (torch, WhisperX, aligner); not part of the default run",
+    "eval: needs local songs from eval/songs.yaml; not part of the default run",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

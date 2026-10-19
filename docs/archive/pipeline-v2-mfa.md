@@ -1,5 +1,8 @@
 # Pipeline V2 — Syllable-First Alignment
 
+> **Status:** Archived · **Last updated:** 2026-04-04  
+> Design for an MFA-based pipeline that was never built as described. Superseded by [architecture/pipeline.md](../architecture/pipeline.md).
+
 ## Overview
 
 The core idea: **find each syllable in the audio first, then extract pitch**.

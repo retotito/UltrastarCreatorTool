@@ -4782,53 +4782,12 @@ async def download_file(
     if file_type == "txt":
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
-        import re as _re_dl
-        content = _re_dl.sub(r'^(- \d+) \d+$', r'\1', content, flags=_re_dl.MULTILINE)
-        # Force .mp3 extension in #MP3 and #VOCALS headers regardless of internal storage format
-        def _force_mp3_ext(m):
-            return m.group(1) + _re_dl.sub(r'\.[^.]+$', '.mp3', m.group(2))
-        content = _re_dl.sub(r'^(#MP3:)(.+)$', _force_mp3_ext, content, flags=_re_dl.MULTILINE)
-        content = _re_dl.sub(r'^(#VOCALS:)(.+)$', _force_mp3_ext, content, flags=_re_dl.MULTILINE)
-        # Normalize apostrophes in note lines to typographic apostrophe (U+2019)
-        def _fix_apostrophes(m):
-            return _re_dl.sub(r"['\u0060\u00b4\u02bc\u2018\u201a]", "\u2019", m.group(0))
-        content = _re_dl.sub(r'^[^#].*$', _fix_apostrophes, content, flags=_re_dl.MULTILINE)
-        # Convert mid-word syllables to use trailing '-' instead of no trailing space
-        # Note lines: ": beat dur pitch syllable" — no trailing space = word continues
-        def _fix_hyphens(m):
-            line = m.group(0)
-            # Note lines have format: PREFIX BEAT DUR PITCH SYLLABLE
-            # If syllable does NOT end with a space, it's mid-word → append '-'
-            if not line.endswith(' '):
-                line = line + '-'
-            return line
-        content = _re_dl.sub(r'^[:*RF] \d+ \d+ \d+ .*$', _fix_hyphens, content, flags=_re_dl.MULTILINE)
-        if include_vocals != "1":
-            content = _remove_header(content, "VOCALS")
-        if include_instrumental != "1":
-            content = _remove_header(content, "INSTRUMENTAL")
-        # Strip non-standard headers not recognised by USDB/animux.de and deduplicate
-        _USDB_KNOWN_HEADERS = {
-            'TITLE', 'ARTIST', 'BPM', 'GAP', 'LANGUAGE', 'MP3', 'VOCALS',
-            'INSTRUMENTAL', 'COVER', 'BACKGROUND', 'VIDEO', 'VIDEOGAP',
-            'GENRE', 'YEAR', 'EDITION', 'CREATOR', 'COMMENT', 'YOUTUBE',
-            'END', 'PREVIEWSTART', 'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT',
-            'RELATIVE', 'ENCODING', 'TAGS',
-        }
-        seen_keys = set()
-        filtered_lines = []
-        for ln in content.splitlines():
-            if ln.startswith('#'):
-                key_part = ln[1:].split(':')[0].upper()
-                if key_part not in _USDB_KNOWN_HEADERS:
-                    continue  # drop non-standard header
-                if key_part in seen_keys:
-                    continue  # drop duplicate
-                seen_keys.add(key_part)
-            filtered_lines.append(ln)
-        content = '\r\n'.join(filtered_lines)
-        if not content.endswith('\r\n'):
-            content += '\r\n'
+        from services.ultrastar import format_for_download
+        content = format_for_download(
+            content,
+            include_vocals=include_vocals == "1",
+            include_instrumental=include_instrumental == "1",
+        )
         # Build a user-friendly download name from artist/title
         artist = session.get("artist", "").strip()
         title = session.get("title", "").strip()

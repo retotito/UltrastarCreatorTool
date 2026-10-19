@@ -1,5 +1,7 @@
 # Tauri App — Build & Debug
 
+> **Status:** Current · **Last updated:** 2026-06-06
+
 ## Build
 
 Run from project root:

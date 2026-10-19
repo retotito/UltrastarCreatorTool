@@ -1,5 +1,7 @@
 # Cleanup Sections — Design & Implementation
 
+> **Status:** Current · **Last updated:** 2026-06-18
+
 ---
 
 ## The Concept (Intended Design)

@@ -1,5 +1,7 @@
 # Windows Build & Debug
 
+> **Status:** Current · **Last updated:** 2026-06-06
+
 ## Prerequisites
 
 1. **Rust** — [rustup.rs](https://rustup.rs) (includes `cargo`)

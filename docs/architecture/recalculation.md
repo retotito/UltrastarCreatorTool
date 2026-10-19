@@ -1,5 +1,7 @@
 # BPM / GAP Change — Recalculation Rules
 
+> **Status:** Current · **Last updated:** 2026-06-19
+
 ---
 
 ## Test Checklist

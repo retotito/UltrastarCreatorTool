@@ -1,5 +1,7 @@
 # Known Issues & Future Improvements
 
+> **Status:** Current · **Last updated:** 2026-04-07
+
 ## Alignment Issues
 
 ### 1. Repetitive nonsense syllables (La-da-dee, Ah!, etc.)

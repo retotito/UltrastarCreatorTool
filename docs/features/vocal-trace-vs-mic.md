@@ -1,5 +1,7 @@
 # Vocal Trace (Pink) vs Mic Lines (Green) — Design Reference
 
+> **Status:** Current · **Last updated:** 2026-06-22
+
 _Last updated: 2026-06-22. Pink line is fully implemented and working. Green line should be updated to mirror the pink architecture — differences noted in the Green section below._
 
 ---

@@ -1,4 +1,8 @@
 # Pipeline Definition
+
+> **Status:** Archived · **Last updated:** 2026-04-03  
+> Superseded by [architecture/pipeline.md](../architecture/pipeline.md).
+
 To ensure consistency and avoid breaking changes, here's a clear definition of the processing pipeline for generating Ultrastar files. This covers the `/reprocess_with_corrected` endpoint (and aligns with `/process_audio2` where applicable). All changes must be checked against this plan.
 
 ## Processing Pipeline Steps:

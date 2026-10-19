@@ -1,5 +1,8 @@
 # Project Checklist
 
+> **Status:** Archived · **Last updated:** 2026-04-25  
+> Initial scaffolding checklist; no longer relevant.
+
 - [x] Verify that the copilot-instructions.md file in the .github directory is created.
 
 - [x] Clarify Project Requirements

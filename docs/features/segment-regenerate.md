@@ -1,5 +1,7 @@
 # Segment Local Regenerate Workflow (Design)
 
+> **Status:** Current · **Last updated:** 2026-06-12
+
 ## Goal
 
 Regenerate lyrics and notes for a selected area directly in Step 4, with better local accuracy and lower hallucination risk by processing an isolated audio clip.

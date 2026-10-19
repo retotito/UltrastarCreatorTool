@@ -47,3 +47,13 @@ frontendTest/*.mp3
 
 # Session data
 backend/sessions/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Evaluation: local song manifest and reports (audio is copyrighted, never commit it)
+backend/eval/songs.yaml
+backend/eval/reports/
+backend/eval/cache/

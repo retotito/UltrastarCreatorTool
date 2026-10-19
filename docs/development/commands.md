@@ -1,5 +1,7 @@
 # Server Commands
 
+> **Status:** Current · **Last updated:** 2026-07-17
+
 ## Prerequisites
 
 Make sure you're in the project root:
@@ -147,7 +149,7 @@ Output: `frontend/src-tauri/target/release/bundle/` — produces `.app` + `.dmg`
 
 > **Platform note for `tauri.conf.json` `targets`:**
 > - **Mac**: keep `"targets": "all"` (produces `.app` + `.dmg`; requires `brew install create-dmg`)
-> - **Windows**: change to `"targets": ["msi"]` — the NSIS `.exe` installer cannot handle the large Python sidecar binary due to file size limits. See [WINDOWS.md](WINDOWS.md) for details.
+> - **Windows**: change to `"targets": ["msi"]` — the NSIS `.exe` installer cannot handle the large Python sidecar binary due to file size limits. See [building/windows.md](building/windows.md) for details.
 
 ---
 

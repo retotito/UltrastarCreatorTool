@@ -1,5 +1,7 @@
 # Backup Feature — Design Spec
 
+> **Status:** Current · **Last updated:** 2026-06-23
+
 ## What is a backup?
 
 A backup is a snapshot of the UltraStar `.txt` file at a point in time —
