@@ -23,7 +23,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Artist, title and language at the top; for file uploads taken from the file's tags or name
 - Two sides with tabs for the lyrics sources: **LRCLIB** (published lyrics, searched automatically), **Vocals**
   (Whisper) and **Cleaned vocals** (Whisper on your Step 4 cleanup) — compare any two side by side
-- Each side has its own "Generate UltraStar file"; with a cleanup, the timing uses the cleaned vocals (checkbox)
+- Each side has its own "Generate UltraStar file"; the timing audio follows the tab (Vocals or Cleaned vocals;
+  LRCLIB uses the cleaned vocals when there is a cleanup)
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 

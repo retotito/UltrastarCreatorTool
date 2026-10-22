@@ -18,7 +18,6 @@ Artist [          ]  Title [          ]  Language [ ▾ ]
 │ └───────────────────────────────┘ │ │ └───────────────────────────────┘ │
 │ [🚀 Generate UltraStar file]       │ │ [🚀 Generate UltraStar file]       │
 └───────────────────────────────────┘ └───────────────────────────────────┘
-☑ Use cleaned vocals for timing        (only when a cleanup exists)
                 [📄 Generate empty UltraStar file]
 ```
 
@@ -28,7 +27,8 @@ Artist [          ]  Title [          ]  Language [ ▾ ]
    Cleaned vocals (Whisper on the Step 4 cleanup, tab only when one exists). Showing the same source on both sides
    shows the same text.
 2. **Generate per side** replaces "Lyrics for generation: left / right" and the separate "Generate from Cleaned
-   Vocals" button. Timing uses the cleaned vocals when a cleanup exists, with a checkbox to use the original.
+   Vocals" button. The timing audio follows the tab: Vocals → vocals, Cleaned vocals → cleaned vocals, LRCLIB
+   (no audio of its own) → cleaned vocals when a cleanup exists, else vocals. No checkbox.
 3. **Hyphenation is automatic and invisible**: the text is hyphenated right before generating; the tab's text
    isn't changed. Hyphens the user wrote are kept **per word** (before: a whole line was skipped if it contained
    one `-`). Wrong splits are fixed in the editor.

@@ -102,7 +102,6 @@
   let cleanedAudioAvailable = false;
   let hasOriginalDemucs = false; // legacy sessions
   let hasEditedVocal = false;
-  let useCleanedForTiming = true;
 
   async function loadCleanupSegments() {
     if (!$sessionId || !$generationResult) return; // no chart yet, so no cleanup either
@@ -301,6 +300,12 @@
   $: canGenerate = !!$sessionId && missing.length === 0;
   $: generateHint = missing.length ? `Needs ${missing.join(', ')}` : '';
 
+  /** The audio the timing is made from follows the tab: Vocals → vocals, Cleaned vocals → cleaned vocals,
+   * LRCLIB (no audio of its own) → the cleaned vocals when there is a cleanup, else the vocals. */
+  function timesWithCleanedVocals(source) {
+    return hasCleaned && source !== 'vocals';
+  }
+
   async function handleGenerate(event) {
     const text = sources[event.detail.source]?.text || '';
     if (!text.trim() || !canGenerate) return;
@@ -320,7 +325,7 @@
         syllableCount: result.syllable_count, lineCount: result.line_count, preview: result.preview,
       });
       processingStatus.set(`✅ ${result.syllable_count} syllables across ${result.line_count} lines`);
-      generationUseCleaned.set(hasCleaned && useCleanedForTiming);
+      generationUseCleaned.set(timesWithCleanedVocals(event.detail.source));
       generationModalOpen.set(true);
     } catch (err) {
       errorMessage.set(err.message);
@@ -567,13 +572,6 @@
     {/each}
   </div>
 
-  {#if hasCleaned}
-    <label class="cleaned-toggle">
-      <input type="checkbox" bind:checked={useCleanedForTiming} />
-      Use the cleaned vocals (your Step 4 cleanup) for the timing
-    </label>
-  {/if}
-
   <div class="generate-row">
     <button class="btn btn-secondary btn-generate" on:click={handleGenerateEmpty} disabled={$isProcessing || !$sessionId || !artist.trim() || !title.trim()} title="Skip note alignment — open editor with empty file">
       📄 Generate empty UltraStar file
@@ -663,7 +661,6 @@
   .player-row { display: flex; align-items: center; gap: 0.75rem; }
   .player-label { flex: 0 0 130px; color: #bbb; font-size: 0.85rem; }
   .player-row audio { flex: 1; min-width: 0; height: 34px; }
-  .cleaned-toggle { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0; color: #ccc; cursor: pointer; }
 
   .warning-modal {
     background: #1e2330;
