@@ -224,6 +224,11 @@ export async function submitLyrics(sessionId, lyrics, artist, title, language) {
   return request('POST', `/lyrics/${sessionId}`, form, true);
 }
 
+/** "Which song is this?": a proposal and matching songs online, from the song's names (or `query`). */
+export async function identifySong(sessionId, query = '') {
+  return request('POST', `/song-identify/${sessionId}`, query ? { query } : {});
+}
+
 export async function getLyricsSources(sessionId) {
   return request('GET', `/lyrics-sources/${sessionId}`, null, false, true);
 }

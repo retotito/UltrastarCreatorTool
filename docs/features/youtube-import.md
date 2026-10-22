@@ -16,7 +16,10 @@ separation and everything after work as with an uploaded file.
 | `youtube_url` | written as the `#YOUTUBE` header on export |
 | `youtube_thumbnail` | thumbnail URL (for a cover later) |
 
-Artist, title and language are passed to Step 2 when its fields are still empty.
+Artist and title are a proposal: Step 1 then opens "Which song is this?" (`SongNameModal.svelte`), which checks
+the video title against lrclib.net (`services/song_identify.py`) and lets the user correct the names. Uploaded files
+get the same window (names from their tags and file name). Step 2's automatic LRCLIB search waits until the names
+are confirmed (`song_confirmed`).
 
 ## Tools: yt-dlp and QuickJS
 

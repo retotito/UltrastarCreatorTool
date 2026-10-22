@@ -1667,13 +1667,20 @@ def _ffprobe_path() -> Optional[str]:
 
 
 def _apply_song_details(session: dict, path: str, filename: str) -> dict:
-    """Artist/title from an uploaded file's tags or name, set on the session where it has none yet."""
+    """Artist/title from an uploaded file's tags or name, set on the session where it has none yet.
+
+    A new song (the session had no artist/title) is unconfirmed until the user checks the names (Step 1's
+    song window, or editing them in Step 2): Step 2 waits with its LRCLIB search until then."""
     from services.song_details import song_details
     found = song_details(path, filename, _ffprobe_path())
+    if not (session.get("artist") or session.get("title")):
+        session["song_name_sources"] = {"filename": found["filename"], "tags_name": found["tags_name"]}
+        session["song_confirmed"] = False
     for key in ("artist", "title"):
         if found[key] and not session.get(key):
             session[key] = found[key]
-    return {"artist": session.get("artist", ""), "title": session.get("title", "")}
+    return {"artist": session.get("artist", ""), "title": session.get("title", ""),
+            "song_confirmed": session.get("song_confirmed", True)}
 
 
 def _youtube():
@@ -1783,6 +1790,9 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
         session["filename"] = outcome["filename"]
         session["youtube_url"] = details["url"]
         session["youtube_thumbnail"] = details["thumbnail"]
+        if not (session.get("artist") or session.get("title")):
+            session["song_name_sources"] = {"youtube_title": details["video_title"]}
+            session["song_confirmed"] = False
         for key in ("artist", "title"):
             if details[key] and not session.get(key):
                 session[key] = details[key]
@@ -1793,6 +1803,7 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
         log_step("YOUTUBE", f"Session {target_id}: audio from {details['url']} → {outcome['filename']}")
         yield send("done", "Audio downloaded.", session_id=target_id, filename=outcome["filename"],
                    artist=session.get("artist", ""), title=session.get("title", ""),
+                   song_confirmed=session.get("song_confirmed", True),
                    language=session.get("language"), url=details["url"], thumbnail=details["thumbnail"])
 
     return StreamingResponse(events(), media_type="text/event-stream",
@@ -1960,6 +1971,7 @@ async def upload_corrected_vocals(session_id: str, vocals: UploadFile = File(...
         content = await vocals.read()
         f.write(content)
 
+    details = _apply_song_details(session, vocal_path, vocals.filename)  # only fills what the session lacks
     vocal_path, orig_vocal_filename = _normalize_audio_to_wav(vocal_path, orig_vocal_filename)
 
     session["vocal_audio"] = vocal_path
@@ -1970,7 +1982,7 @@ async def upload_corrected_vocals(session_id: str, vocals: UploadFile = File(...
     log_step("UPLOAD", f"Session {session_id}: uploaded corrected vocals ({len(content)} bytes)")
     save_session(session_id)
     
-    return {"status": "ok", "session_id": session_id}
+    return {"status": "ok", "session_id": session_id, **details}
 
 
 @app.post("/api/upload-mix/{session_id}")
@@ -3312,6 +3324,37 @@ async def submit_lyrics(
     }
 
 
+@app.post("/api/song-identify/{session_id}")
+async def song_identify(session_id: str, request: Request):
+    """Step 1's "Which song is this?": a proposal and matching songs on LRCLIB, from the names the song came
+    with (file name, tags, YouTube title) or from `query` (what the user typed)."""
+    import asyncio
+    from services.lyrics_search import LyricsServiceBusy, fetch
+    from services.song_identify import identify, raw_names
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    body = await request.json() if (await request.body()) else {}
+    query = str(body.get("query") or "").strip()
+    raw = [query] if query else raw_names(session)
+    duration = None
+    audio = session.get("original_audio") or session.get("vocal_audio")
+    if audio and os.path.exists(audio):
+        try:
+            from services.bpm_detection import get_audio_duration
+            duration = get_audio_duration(audio)
+        except Exception:
+            pass
+    guess = {"artist": session.get("artist", ""), "title": session.get("title", "")}
+    try:
+        found = await asyncio.to_thread(identify, raw, guess, duration, fetch)
+    except LyricsServiceBusy:
+        raise ServiceError("Song lookup", "LRCLIB (lrclib.net) is overloaded right now. Type the names, or try again in a minute.")
+    except OSError as e:
+        raise ServiceError("Song lookup", f"LRCLIB (lrclib.net) couldn't be reached ({e}). Type the names yourself.")
+    return {**found, "song_duration": round(duration, 1) if duration else None}
+
+
 @app.get("/api/lyrics-sources/{session_id}")
 async def get_lyrics_sources(session_id: str):
     """Step 2's lyric sources (LRCLIB, vocals, cleaned vocals) and which tab each side shows."""
@@ -3321,7 +3364,7 @@ async def get_lyrics_sources(session_id: str):
     stored = session.get("lyrics_sources") or {}
     return {"sources": stored.get("sources", {}), "tabs": stored.get("tabs", {}),
             "artist": session.get("artist", ""), "title": session.get("title", ""),
-            "language": session.get("language")}
+            "language": session.get("language"), "song_confirmed": session.get("song_confirmed", True)}
 
 
 @app.put("/api/lyrics-sources/{session_id}")
@@ -4965,6 +5008,7 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
 
     session["artist"] = artist
     session["title"] = title
+    session["song_confirmed"] = True  # the user saw and kept (or corrected) the names
     if language is not None:
         session["language"] = language
     # Clear derived headers so _update_txt_asset_headers recomputes them from new artist/title

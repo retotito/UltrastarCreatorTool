@@ -42,7 +42,10 @@ def details_from_tags(path: str, ffprobe: Optional[str]) -> dict:
 
 
 def song_details(path: str, filename: str, ffprobe: Optional[str]) -> dict:
-    """Tags first (each field on its own), the file name for what the tags don't have."""
+    """Tags first (each field on its own), the file name for what the tags don't have. Also returns the raw
+    names (`filename`, `tags_name`) for checking the song online (services/song_identify.py)."""
     tagged = details_from_tags(path, ffprobe)
     named = details_from_filename(filename)
-    return {"artist": tagged["artist"] or named["artist"], "title": tagged["title"] or named["title"]}
+    tags_name = " - ".join(part for part in (tagged["artist"], tagged["title"]) if part)
+    return {"artist": tagged["artist"] or named["artist"], "title": tagged["title"] or named["title"],
+            "filename": os.path.splitext(os.path.basename(filename or ""))[0], "tags_name": tags_name}

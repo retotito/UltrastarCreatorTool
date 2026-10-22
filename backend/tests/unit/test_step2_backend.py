@@ -48,8 +48,9 @@ class TestSongDetails:
     def test_tags_win_field_by_field(self, monkeypatch):
         import services.song_details as sd
         monkeypatch.setattr(sd, "details_from_tags", lambda path, ffprobe: {"artist": "Tagged Artist", "title": ""})
-        assert song_details("x.mp3", "Name Artist - Name Title.mp3", "ffprobe") == {
-            "artist": "Tagged Artist", "title": "Name Title"}
+        found = song_details("x.mp3", "Name Artist - Name Title.mp3", "ffprobe")
+        assert (found["artist"], found["title"]) == ("Tagged Artist", "Name Title")
+        assert (found["filename"], found["tags_name"]) == ("Name Artist - Name Title", "Tagged Artist")
 
     def test_real_tags_with_ffprobe(self, tmp_path):
         import shutil
@@ -60,4 +61,41 @@ class TestSongDetails:
         path = tmp_path / "tagged.mp3"
         subprocess.run([ffmpeg, "-v", "quiet", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "0.5",
                         "-metadata", "artist=The Police", "-metadata", "title=Roxanne", str(path)], check=True)
-        assert song_details(str(path), "whatever.mp3", ffprobe) == {"artist": "The Police", "title": "Roxanne"}
+        found = song_details(str(path), "whatever.mp3", ffprobe)
+        assert (found["artist"], found["title"], found["tags_name"]) == ("The Police", "Roxanne", "The Police - Roxanne")
+
+
+class TestSongIdentify:
+    ENTRIES = [
+        {"artistName": "Ben Harper", "trackName": "She's Only Happy In The Sun", "albumName": "Diamonds", "duration": 236.0},
+        {"artistName": "Ben Harper", "trackName": "She's Only Happy in the Sun", "albumName": "Live", "duration": 290.0},
+        {"artistName": "Twinkle Twinkle Little Rock Star", "trackName": "She's Only Happy In The Sun", "duration": 203.0},
+        {"artistName": "Sierra C", "trackName": "Something Else", "duration": 200.0},
+    ]
+
+    def fetch(self, params):
+        return self.ENTRIES
+
+    def test_title_artist_order_is_recognised(self):
+        from services.song_identify import identify
+        found = identify(["She's Only Happy In The Sun - Ben Harper"], {"artist": "Sierra C", "title": "x"}, 236.0, self.fetch)
+        assert found["proposal"] == {"artist": "Ben Harper", "title": "She's Only Happy In The Sun"}
+        assert found["matches"][0]["length_match"] is True
+        assert len([m for m in found["matches"] if m["artist"] == "Ben Harper"]) == 1   # one entry per song
+
+    def test_no_clear_match_keeps_the_guess(self):
+        from services.song_identify import identify
+        found = identify(["lskajdfl3ww4rlkjsdfoadjlkjl"], {"artist": "", "title": "lskajdfl3ww4"}, None, lambda p: [])
+        assert found == {"proposal": {"artist": "", "title": "lskajdfl3ww4"}, "matches": [], "names": ["lskajdfl3ww4rlkjsdfoadjlkjl"]}
+
+    def test_word_overlap_score_ignores_order(self):
+        from services.song_identify import name_score
+        assert name_score("Sun Happy Ben Harper", "Ben Harper", "Happy Sun") == 1.0
+        assert name_score("abc", "Ben Harper", "Sun") == 0.0
+
+    def test_raw_names_prefer_youtube_then_tags_then_file_name(self):
+        from services.song_identify import raw_names
+        session = {"song_name_sources": {"filename": "Track_01", "tags_name": "Sierra C - She's Only Happy",
+                                         "youtube_title": "Ben Harper - She's Only Happy In The Sun (Official Video)"}}
+        assert raw_names(session) == ["Ben Harper - She's Only Happy In The Sun", "Sierra C - She's Only Happy", "Track 01"]
+        assert raw_names({"song_name_sources": {"filename": "123456"}}) == []   # nothing to search with

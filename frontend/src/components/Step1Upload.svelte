@@ -1,5 +1,6 @@
 <script>
   import { sessionId, uploadData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
+  import SongNameModal from './SongNameModal.svelte';
   import { inspectYouTube, streamYouTubeImport, newSession, uploadAudio, extractVocals, cancelExtractVocals, streamExtractVocals, uploadCorrectedVocals, uploadMixAudio, deleteAudio, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
 
   let audioPlayerMix;
@@ -59,6 +60,20 @@
     }
   }
 
+  // ── Song name ("Which song is this?") ───────────────────
+  let songModalOpen = false;
+
+  /** After a new song arrives: ask for artist and title unless they were confirmed before. */
+  function askForSong(result) {
+    lyricsData.update(d => ({ ...d, artist: result.artist || d.artist || '', title: result.title || d.title || '' }));
+    if (result.song_confirmed === false) songModalOpen = true;
+  }
+
+  function handleSongConfirmed(event) {
+    lyricsData.update(d => ({ ...d, artist: event.detail.artist, title: event.detail.title }));
+    songModalOpen = false;
+  }
+
   // ── YouTube link ────────────────────────────────────────
   let youtubeLink = '';
   let youtubePreview = null;   // details of the pasted video
@@ -109,13 +124,9 @@
       if (event.phase === 'done') {
         sessionId.set(event.session_id);
         uploadData.update(d => ({ ...d, filename: event.filename, hasOriginal: true }));
-        // Hand artist, title and language to Step 2, without overwriting what is already there.
-        lyricsData.update(d => ({
-          ...d,
-          artist: d.artist || event.artist || '',
-          title: d.title || event.title || '',
-          language: d.language || event.language || d.language,
-        }));
+        // Language for Step 2 (if YouTube knows it), then artist and title to check.
+        lyricsData.update(d => ({ ...d, language: d.language || event.language || d.language }));
+        askForSong(event);
         processingStatus.set(`Audio from YouTube: ${event.artist ? event.artist + ' – ' : ''}${event.title}`);
         youtubePreview = null;
         youtubeLink = '';
@@ -136,8 +147,7 @@
       const result = $sessionId ? await uploadMixAudio($sessionId, file) : await uploadAudio(file);
       if (!$sessionId) sessionId.set(result.session_id);
       uploadData.update(d => ({ ...d, filename: result.filename || file.name, hasOriginal: true }));
-      // Artist and title from the file's tags or name, for Step 2 (without overwriting what is there).
-      lyricsData.update(d => ({ ...d, artist: d.artist || result.artist || '', title: d.title || result.title || '' }));
+      askForSong(result);
       processingStatus.set('Full mix uploaded.');
     } catch (err) {
       errorMessage.set(err.message);
@@ -152,15 +162,17 @@
     isProcessing.set(true);
     processingStatus.set('Uploading vocals…');
     try {
+      let uploaded;
       if ($sessionId) {
-        await uploadCorrectedVocals($sessionId, file);
+        uploaded = await uploadCorrectedVocals($sessionId, file);
       } else {
         // Create a blank session (no original_audio) so vocals-only doesn't
         // falsely appear as having a full-mix track in Step 4.
         const result = await newSession();
         sessionId.set(result.session_id);
-        await uploadCorrectedVocals(result.session_id, file);
+        uploaded = await uploadCorrectedVocals(result.session_id, file);
       }
+      askForSong(uploaded);
       uploadData.update(d => ({
         ...d,
         hasVocals: true,
@@ -292,6 +304,18 @@
 <div class="step-content">
   <h2>Step 1: Upload Audio</h2>
   <p class="subtitle">Upload your audio files below. Full mix is optional — vocals are required to proceed.</p>
+
+  {#if $sessionId && ($uploadData.hasOriginal || $uploadData.hasVocals)}
+    <p class="song-line">
+      🎵 Song: <strong>{$lyricsData.artist || '?'} – {$lyricsData.title || '?'}</strong>
+      <button class="link-btn" on:click={() => songModalOpen = true}>✏️ Change</button>
+    </p>
+  {/if}
+
+  {#if songModalOpen && $sessionId}
+    <SongNameModal sessionId={$sessionId} artist={$lyricsData.artist} title={$lyricsData.title}
+                   on:confirm={handleSongConfirmed} on:skip={() => songModalOpen = false} />
+  {/if}
 
   <div class="audio-grid">
 
@@ -557,6 +581,9 @@
 
   .upload-text { color: #aaa; font-size: 0.88rem; margin: 0; }
   .upload-hint { color: #555; font-size: 0.78rem; margin: 0; }
+
+  .song-line { color: #bbb; font-size: 0.9rem; margin: 0 0 1rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .song-line .link-btn { background: none; border: none; color: #4fc3f7; cursor: pointer; text-decoration: underline; font-size: 0.85rem; padding: 0; }
 
   /* ── YouTube link ── */
   .youtube-import { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.75rem; }

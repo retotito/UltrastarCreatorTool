@@ -19,10 +19,17 @@
   let title = $lyricsData.title || '';
   let language = $lyricsData.language || '';
 
+  // Artist and title of a new upload are a guess until the user confirms them (Step 1's song window, editing
+  // them here, or "Yes, search lyrics"); the automatic LRCLIB search waits for that.
+  let songConfirmed = true;
+
   async function syncMetadata() {
     if (!$sessionId || !artist.trim() || !title.trim()) return;
     lyricsData.update(s => ({ ...s, artist: artist.trim(), title: title.trim() }));
-    try { await updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined); } catch { /* not critical */ }
+    try {
+      await updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined);
+      songConfirmed = true; // saving the names confirms them
+    } catch { /* not critical */ }
   }
 
   // Keep the store in step with the fields (the lyrics text there is the last generated one).
@@ -60,6 +67,7 @@
       if (!artist && stored.artist) artist = stored.artist;
       if (!title && stored.title) title = stored.title;
       if (!language && stored.language) language = stored.language;
+      songConfirmed = stored.song_confirmed !== false;
     } catch (err) {
       console.warn('[Step2] Could not load lyric sources:', err);
     }
@@ -145,7 +153,7 @@
   let autoSearchTimer = null;
 
   // Search on its own when artist and title are known and the LRCLIB text is still empty.
-  $: if (sourcesReady && artist.trim() && title.trim() && !sources.lrclib.text.trim() && !busy.lrclib
+  $: if (sourcesReady && songConfirmed && artist.trim() && title.trim() && !sources.lrclib.text.trim() && !busy.lrclib
          && autoSearchedFor !== `${$sessionId}|${artist.trim()}|${title.trim()}`) {
     clearTimeout(autoSearchTimer);
     const key = `${$sessionId}|${artist.trim()}|${title.trim()}`;
@@ -528,6 +536,13 @@
     </div>
   </div>
 
+  {#if !songConfirmed && artist.trim() && title.trim()}
+    <p class="confirm-song">
+      Is this the right song? Correct artist or title above if not.
+      <button class="btn btn-secondary small" on:click={syncMetadata}>✓ Yes, search lyrics</button>
+    </p>
+  {/if}
+
   {#if !hasVocals}
     <div class="no-vocals-warning">
       <p>⚠️ No vocal track yet.</p>
@@ -657,6 +672,7 @@
   .song-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
   .song-row .form-group { flex: 1 1 200px; }
   .song-row .language-group { flex: 0 1 220px; }
+  .confirm-song { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; color: #e0a030; font-size: 0.9rem; margin: 0 0 0.75rem; }
   .players { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.25rem 0 1rem; }
   .player-row { display: flex; align-items: center; gap: 0.75rem; }
   .player-label { flex: 0 0 130px; color: #bbb; font-size: 0.85rem; }
