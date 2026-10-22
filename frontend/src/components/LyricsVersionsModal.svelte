@@ -53,6 +53,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="versions-backdrop" on:click={() => dispatch('close')}>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="versions-modal" role="dialog" aria-modal="true" aria-labelledby="versions-title" on:click|stopPropagation>
     <div class="versions-header">
       <h2 id="versions-title">Lyrics from LRCLIB</h2>
