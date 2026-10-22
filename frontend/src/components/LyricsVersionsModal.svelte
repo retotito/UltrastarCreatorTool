@@ -3,7 +3,7 @@
    * Step 2's LRCLIB window: search again with another artist or title, and pick one of the versions
    * LRCLIB has. Picking one puts its lyrics into the LRCLIB tab.
    */
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 
   export let artist = '';
   export let title = '';
@@ -31,6 +31,22 @@
   function onKey(event) {
     if (event.key === 'Escape') dispatch('close');
   }
+
+  // The page underneath doesn't scroll while the window is open. Its scrollbar's width is kept as
+  // padding, so the page doesn't shift sideways.
+  let previous = null;
+  onMount(() => {
+    const body = document.body;
+    previous = { overflow: body.style.overflow, paddingRight: body.style.paddingRight };
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    body.style.overflow = 'hidden';
+    if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+  });
+  onDestroy(() => {
+    if (!previous) return;
+    document.body.style.overflow = previous.overflow;
+    document.body.style.paddingRight = previous.paddingRight;
+  });
 </script>
 
 <svelte:window on:keydown={onKey} />
@@ -78,7 +94,7 @@
 
 <style>
   .versions-backdrop {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000;
+    position: fixed; inset: 0; overscroll-behavior: contain; background: rgba(0, 0, 0, 0.6); z-index: 1000;
     display: flex; align-items: center; justify-content: center; padding: 1rem;
   }
   .versions-modal {
@@ -97,7 +113,10 @@
   .versions-search input:focus { outline: none; border-color: #1976d2; }
   .versions-hint, .versions-empty { color: #888; font-size: 0.8rem; margin: 0; }
   .versions-message { color: #ccc; font-size: 0.85rem; margin: 0; }
-  .versions-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border: 1px solid #333; border-radius: 6px; }
+  .versions-list {
+    list-style: none; margin: 0; padding: 0; overflow-y: auto; border: 1px solid #333; border-radius: 6px;
+    overscroll-behavior: contain; /* scrolling past the list's end doesn't scroll the page */
+  }
   .version {
     display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%;
     padding: 0.55rem 0.75rem; border: none; border-bottom: 1px solid #2a2a3a;
