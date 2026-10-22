@@ -64,11 +64,12 @@
       <input type="text" bind:value={queryArtist} placeholder="Artist" aria-label="Artist" />
       <input type="text" bind:value={queryTitle} placeholder="Title" aria-label="Title" />
       <button class="btn btn-secondary" type="submit" disabled={searching || !queryArtist.trim() || !queryTitle.trim()}>
-        {searching ? '🔎 Searching…' : '🔎 Search'}
+        {#if searching}<span class="spinner" aria-hidden="true"></span> Searching…{:else}🔎 Search{/if}
       </button>
     </form>
     <p class="versions-hint">Change artist or title if the version isn't right — only this search uses them, not your song's details.</p>
 
+    {#if searching}<div class="busy-bar" role="progressbar" aria-label="Searching LRCLIB"></div>{/if}
     {#if message}<p class="versions-message">{message}</p>{/if}
 
     {#if candidates.length}
@@ -87,7 +88,9 @@
           </li>
         {/each}
       </ul>
-    {:else if !searching}
+    {:else if searching}
+      <p class="versions-empty">Asking lrclib.net…</p>
+    {:else}
       <p class="versions-empty">No versions found. Try a shorter title, or check the artist's spelling.</p>
     {/if}
   </div>
@@ -137,4 +140,13 @@
   .btn-secondary { background: #333; color: #ccc; border: 1px solid #555; }
   .btn-secondary:hover:not(:disabled) { background: #444; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .spinner {
+    display: inline-block; width: 0.85em; height: 0.85em; vertical-align: -0.1em;
+    border: 2px solid rgba(255, 255, 255, 0.25); border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .busy-bar { height: 3px; border-radius: 2px; background: linear-gradient(90deg, transparent, #4fc3f7, transparent);
+    background-size: 50% 100%; background-repeat: no-repeat; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
 </style>

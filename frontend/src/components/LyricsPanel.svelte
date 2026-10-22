@@ -154,7 +154,7 @@
     {#each tabs as t (t.id)}
       <button role="tab" class="panel-tab" class:active={t.id === tab} aria-selected={t.id === tab}
               on:click={() => selectTab(t.id)}>
-        {t.label}{#if busy[t.id]} ⏳{/if}
+        {t.label}{#if busy[t.id]} <span class="spinner small" aria-label="working"></span>{/if}
       </button>
     {/each}
   </div>
@@ -162,7 +162,7 @@
   <div class="panel-tools">
     {#if tab === 'lrclib'}
       <span class="tool-info">
-        {#if busy.lrclib}🔎 Searching LRCLIB…
+        {#if busy.lrclib}<span class="spinner" aria-hidden="true"></span> Searching LRCLIB…
         {:else if info?.message}{info.message}
         {:else}Lyrics published online (lrclib.net), found by artist and title.{/if}
       </span>
@@ -210,6 +210,13 @@
     padding: 0.45rem 0.75rem; cursor: pointer; font-size: 0.9rem;
   }
   .panel-tab:hover { color: #ddd; }
+  .spinner {
+    display: inline-block; width: 0.85em; height: 0.85em; vertical-align: -0.1em;
+    border: 2px solid rgba(79, 195, 247, 0.3); border-top-color: #4fc3f7; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .spinner.small { width: 0.7em; height: 0.7em; border-width: 1.5px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .panel-tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; font-weight: 600; }
   /* Same height on every tab, so both text fields start at the same line and can be compared. */
   .panel-tools { display: flex; flex-direction: column; justify-content: center; gap: 0.25rem; height: 4.2rem; overflow: hidden; }
