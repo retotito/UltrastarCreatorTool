@@ -117,6 +117,7 @@
   $: hasCleaned = !!$sessionId && (hasEditedVocal || (cleanupSegments.length > 0 && cleanedAudioAvailable));
   $: vocalsUrl = $sessionId && hasVocals ? getAudioUrl($sessionId, hasOriginalDemucs && !hasEditedVocal ? 'demucs' : 'vocals') : '';
   $: cleanedUrl = hasCleaned ? getAudioUrl($sessionId, hasEditedVocal ? 'edited' : 'cleaned') : '';
+  $: mixUrl = $sessionId && $uploadData.hasOriginal ? getAudioUrl($sessionId, 'original') : '';
   $: tabList = [
     { id: 'lrclib', label: 'LRCLIB' },
     { id: 'vocals', label: 'Vocals' },
@@ -495,6 +496,20 @@
     </div>
   {/if}
 
+  {#if mixUrl || vocalsUrl || cleanedUrl}
+    <div class="players">
+      {#if mixUrl}
+        <div class="player-row"><span class="player-label">🎵 Full mix</span><audio controls preload="none" src={mixUrl}></audio></div>
+      {/if}
+      {#if vocalsUrl}
+        <div class="player-row"><span class="player-label">🎤 Vocals</span><audio controls preload="none" src={vocalsUrl}></audio></div>
+      {/if}
+      {#if cleanedUrl}
+        <div class="player-row"><span class="player-label">✨ Cleaned vocals</span><audio controls preload="none" src={cleanedUrl}></audio></div>
+      {/if}
+    </div>
+  {/if}
+
   <div class="lyrics-comparison-container">
     {#each ['left', 'right'] as side (side)}
       <LyricsPanel
@@ -503,7 +518,6 @@
         tabs={tabList}
         {sources}
         {busy}
-        audioUrls={{ vocals: vocalsUrl, cleaned: cleanedUrl }}
         candidates={lyricsCandidates}
         {chosenCandidateId}
         {songDuration}
@@ -598,6 +612,10 @@
   .song-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
   .song-row .form-group { flex: 1 1 200px; }
   .song-row .language-group { flex: 0 1 220px; }
+  .players { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.25rem 0 1rem; }
+  .player-row { display: flex; align-items: center; gap: 0.75rem; }
+  .player-label { flex: 0 0 130px; color: #bbb; font-size: 0.85rem; }
+  .player-row audio { flex: 1; min-width: 0; height: 34px; }
   .cleaned-toggle { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0; color: #ccc; cursor: pointer; }
 
   .warning-modal {

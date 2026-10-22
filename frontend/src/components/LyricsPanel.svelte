@@ -15,8 +15,6 @@
   export let sources = {};
   /** source id → true while it is being produced (search / Whisper) */
   export let busy = {};
-  /** source id → audio URL to listen to (vocals, cleaned) */
-  export let audioUrls = {};
   /** LRCLIB suggestions (shared by both sides) */
   export let candidates = [];
   export let chosenCandidateId = null;
@@ -178,9 +176,6 @@
         </ul>
       {/if}
     {:else}
-      {#if audioUrls[tab]}
-        <audio controls src={audioUrls[tab]}></audio>
-      {/if}
       <div class="tool-row">
         <span class="tool-info">
           {#if info?.message}{info.message}
@@ -222,7 +217,6 @@
   .panel-tab:hover { color: #ddd; }
   .panel-tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; font-weight: 600; }
   .panel-tools { display: flex; flex-direction: column; gap: 0.35rem; min-height: 2.4rem; }
-  .panel-tools audio { width: 100%; height: 32px; }
   .tool-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
   .tool-info { color: #999; font-size: 0.82rem; }
   .lyrics-candidates {
