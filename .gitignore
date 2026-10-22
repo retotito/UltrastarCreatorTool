@@ -31,6 +31,7 @@ nohup.out
 # Generated files
 backend/downloads/
 backend/uploads/
+backend/tools/
 backend/corrections/
 backend/reference_songs/
 backend/training_data/

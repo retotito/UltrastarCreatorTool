@@ -1,6 +1,6 @@
 <script>
   import { sessionId, uploadData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
-  import { newSession, uploadAudio, extractVocals, cancelExtractVocals, streamExtractVocals, uploadCorrectedVocals, uploadMixAudio, deleteAudio, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
+  import { inspectYouTube, streamYouTubeImport, newSession, uploadAudio, extractVocals, cancelExtractVocals, streamExtractVocals, uploadCorrectedVocals, uploadMixAudio, deleteAudio, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
 
   let audioPlayerMix;
   let audioPlayerVocals;
@@ -57,6 +57,74 @@
       if (seq !== instrumentalProbeSeq) return;
       hasInstrumental = false;
     }
+  }
+
+  // ── YouTube link ────────────────────────────────────────
+  let youtubeLink = '';
+  let youtubePreview = null;   // details of the pasted video
+  let youtubeBusy = false;
+  let youtubeStatus = '';
+  let youtubePercent = null;
+
+  function formatDuration(seconds) {
+    if (!seconds) return '';
+    const s = Math.round(seconds);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  async function handleYouTubeInspect() {
+    if (!youtubeLink.trim()) return;
+    errorMessage.set('');
+    youtubePreview = null;
+    youtubeBusy = true;
+    youtubeStatus = 'Getting the video details… (the first time this also downloads the YouTube tools, about a minute)';
+    try {
+      youtubePreview = await inspectYouTube(youtubeLink.trim());
+      youtubeStatus = '';
+    } catch (err) {
+      youtubeStatus = '';
+      errorMessage.set(err.message);
+    } finally {
+      youtubeBusy = false;
+    }
+  }
+
+  function handleYouTubeImport() {
+    if (!youtubePreview) return;
+    errorMessage.set('');
+    youtubeBusy = true;
+    isProcessing.set(true);
+    youtubePercent = null;
+    youtubeStatus = 'Starting…';
+    streamYouTubeImport(youtubePreview.video_id, $sessionId, (event) => {
+      if (event.phase === 'error') {
+        errorMessage.set(event.message);
+        youtubeStatus = '';
+        youtubeBusy = false;
+        isProcessing.set(false);
+        return;
+      }
+      youtubeStatus = event.message;
+      youtubePercent = event.percent ?? null;
+      if (event.phase === 'done') {
+        sessionId.set(event.session_id);
+        uploadData.update(d => ({ ...d, filename: event.filename, hasOriginal: true }));
+        // Hand artist, title and language to Step 2, without overwriting what is already there.
+        lyricsData.update(d => ({
+          ...d,
+          artist: d.artist || event.artist || '',
+          title: d.title || event.title || '',
+          language: d.language || event.language || d.language,
+        }));
+        processingStatus.set(`Audio from YouTube: ${event.artist ? event.artist + ' – ' : ''}${event.title}`);
+        youtubePreview = null;
+        youtubeLink = '';
+        youtubeStatus = '';
+        youtubePercent = null;
+        youtubeBusy = false;
+        isProcessing.set(false);
+      }
+    });
   }
 
   // ── Mix upload ──────────────────────────────────────────
@@ -258,6 +326,35 @@
             📁 Browse
             <input type="file" accept="audio/*" on:change={(e) => { const f = e.target.files?.[0]; if (f) handleMixFile(f); e.target.value=''; }} hidden />
           </label>
+        </div>
+
+        <div class="youtube-import">
+          <p class="upload-hint">or from a YouTube link</p>
+          <div class="youtube-row">
+            <input type="url" bind:value={youtubeLink} placeholder="https://www.youtube.com/watch?v=…"
+                   aria-label="YouTube link" disabled={$isProcessing || youtubeBusy}
+                   on:keydown={(e) => { if (e.key === 'Enter') handleYouTubeInspect(); }} />
+            <button class="btn btn-browse" on:click={handleYouTubeInspect}
+                    disabled={$isProcessing || youtubeBusy || !youtubeLink.trim()}>▶ Get</button>
+          </div>
+          {#if youtubePreview}
+            <div class="youtube-preview">
+              {#if youtubePreview.thumbnail}<img src={youtubePreview.thumbnail} alt="" />{/if}
+              <div class="youtube-meta">
+                <strong>{youtubePreview.video_title}</strong>
+                <span>{youtubePreview.channel}{youtubePreview.duration ? ' · ' + formatDuration(youtubePreview.duration) : ''}</span>
+                <span>Song: {youtubePreview.artist ? youtubePreview.artist + ' – ' : ''}{youtubePreview.title}</span>
+              </div>
+            </div>
+            <button class="btn btn-extract" on:click={handleYouTubeImport} disabled={$isProcessing || youtubeBusy}>
+              ⬇ Download audio
+            </button>
+            <p class="youtube-note">Only download songs you have the right to use.</p>
+          {/if}
+          {#if youtubeStatus}
+            <p class="youtube-status">{youtubeStatus}{youtubePercent !== null ? ` ${youtubePercent}%` : ''}</p>
+            {#if youtubePercent !== null}<progress max="100" value={youtubePercent}></progress>{/if}
+          {/if}
         </div>
       {/if}
     </div>
@@ -463,6 +560,26 @@
 
   .upload-text { color: #aaa; font-size: 0.88rem; margin: 0; }
   .upload-hint { color: #555; font-size: 0.78rem; margin: 0; }
+
+  /* ── YouTube link ── */
+  .youtube-import { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.75rem; }
+  .youtube-row { display: flex; gap: 0.4rem; }
+  .youtube-row input {
+    flex: 1; min-width: 0;
+    background: #11111d; color: #e0e0e0;
+    border: 1px solid #2a2a3e; border-radius: 6px;
+    padding: 0.4rem 0.6rem; font-size: 0.85rem;
+  }
+  .youtube-row input:focus { outline: none; border-color: #1976d2; }
+  .youtube-row .btn-browse { margin-top: 0; }
+  .youtube-preview { display: flex; gap: 0.6rem; align-items: center; text-align: left; }
+  .youtube-preview img { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+  .youtube-meta { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; font-size: 0.82rem; }
+  .youtube-meta strong { color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .youtube-meta span { color: #888; }
+  .youtube-note { color: #555; font-size: 0.72rem; margin: 0; }
+  .youtube-status { color: #4fc3f7; font-size: 0.8rem; margin: 0; }
+  .youtube-import progress { width: 100%; height: 6px; }
 
   /* ── File present state ── */
   .file-info { display: flex; align-items: center; }

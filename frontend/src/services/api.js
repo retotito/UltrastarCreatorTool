@@ -122,6 +122,28 @@ export function streamExtractVocals(sessionId, onEvent) {
   return () => es.close();
 }
 
+export async function inspectYouTube(url) {
+  return request('POST', '/youtube/inspect', { url });
+}
+
+/** Downloads a YouTube video's audio as the full mix (into `sessionId`, or a new session). */
+export function streamYouTubeImport(videoId, sessionId, onEvent) {
+  const params = new URLSearchParams({ video_id: videoId, session_id: sessionId || '' });
+  const es = new EventSource(`${BASE}/youtube/import-stream?${params}`);
+  es.onmessage = (e) => {
+    try {
+      const event = JSON.parse(e.data);
+      onEvent(event);
+      if (event.phase === 'done' || event.phase === 'error') es.close();
+    } catch {}
+  };
+  es.onerror = () => {
+    onEvent({ phase: 'error', message: 'Connection to server lost' });
+    es.close();
+  };
+  return () => es.close();
+}
+
 export async function uploadCorrectedVocals(sessionId, file) {
   const form = new FormData();
   form.append('vocals', file);

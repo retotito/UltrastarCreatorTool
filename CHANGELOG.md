@@ -4,6 +4,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### ▶ YouTube link in Step 1
+- Paste a YouTube link instead of uploading a file: the app shows the video, downloads its audio as the full mix and
+  fills in artist, title and (when YouTube knows it) the language for Step 2; the link is written as `#YOUTUBE`
+- The download tools (yt-dlp, QuickJS) are downloaded on first use and updated automatically when YouTube changes
+
 ### 🎯 Lyrics timing without hallucinated notes
 - **Forced alignment of your lyrics**: syllable timing now comes from aligning the lyrics you confirmed directly to
   the vocals, instead of matching Whisper's transcript. Words Whisper didn't hear no longer get guessed positions.

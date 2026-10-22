@@ -117,6 +117,7 @@ CORRECTIONS_DIR = os.path.join(_DATA_DIR, "corrections")
 UPLOAD_DIR = os.path.join(_DATA_DIR, "uploads")
 REFERENCE_DIR = os.path.join(_DATA_DIR, "reference_songs")
 SESSIONS_DIR = os.path.join(_DATA_DIR, "sessions")
+TOOLS_DIR = os.path.join(_DATA_DIR, "tools")  # yt-dlp and QuickJS, downloaded on first use
 
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 os.makedirs(CORRECTIONS_DIR, exist_ok=True)
@@ -1637,6 +1638,143 @@ async def upload_audio(audio: UploadFile = File(...)):
         "filename": orig_filename,
         "size": len(content),
     }
+
+
+# ────────────────────────────────────────────────────────────
+# YouTube link (Step 1): details, then the audio as the session's full mix
+# ────────────────────────────────────────────────────────────
+_youtube_details: dict = {}  # video id → summary from the last inspect (so import doesn't ask YouTube twice)
+
+
+def _ffmpeg_path() -> Optional[str]:
+    if hasattr(sys, "_MEIPASS"):
+        bundled = os.path.join(sys._MEIPASS, "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+        if os.path.isfile(bundled):
+            return bundled
+    return shutil.which("ffmpeg")
+
+
+def _youtube():
+    from services.download_tools import Tools
+    from services.youtube import YouTube
+    return YouTube(Tools(TOOLS_DIR), _ffmpeg_path())
+
+
+def _safe_filename(name: str) -> str:
+    cleaned = "".join(c for c in name if c not in '\\/:*?"<>|\0').strip(" .")
+    return cleaned[:120] or "YouTube audio"
+
+
+@app.post("/api/youtube/inspect")
+async def youtube_inspect(request: Request):
+    """Details of a YouTube video for the Step 1 preview. The first call installs yt-dlp and QuickJS (~1 min)."""
+    import asyncio
+    from services.youtube import YouTubeError, summary, video_id
+    body = await request.json()
+    vid = video_id(str(body.get("url") or ""))
+    if not vid:
+        raise ServiceError("Not a YouTube link", "Paste a link to a YouTube video, e.g. https://www.youtube.com/watch?v=…")
+    try:
+        info = await asyncio.to_thread(_youtube().inspect, vid)
+    except YouTubeError as e:
+        raise ServiceError("YouTube", str(e))
+    details = summary(info)
+    _youtube_details[vid] = details
+    log_step("YOUTUBE", f"Inspected {vid}: {details['artist']} - {details['title']} ({details['duration']}s)")
+    return details
+
+
+@app.get("/api/youtube/import-stream")
+async def youtube_import_stream(video_id: str, session_id: str = ""):
+    """SSE: download a YouTube video's audio as the full mix, into `session_id` or a new session.
+
+    Events: {phase: "tools"|"download"|"convert"|"done"|"error", message, percent?, session_id?, ...}.
+    """
+    import asyncio
+    import queue
+    import threading
+    from services.youtube import ID, YouTubeError, summary
+
+    def send(phase: str, message: str = "", **kwargs) -> str:
+        return f"data: {json.dumps({'phase': phase, 'message': message, **kwargs})}\n\n"
+
+    async def events():
+        if not ID.match(video_id or ""):
+            yield send("error", "That isn't a YouTube video.")
+            return
+        if session_id and session_id not in sessions:
+            yield send("error", "Session not found")
+            return
+        target_id = session_id or str(uuid.uuid4())[:8]
+        folder = os.path.join(UPLOAD_DIR, target_id)
+        updates: "queue.Queue" = queue.Queue()
+        outcome: dict = {}
+
+        def work():
+            try:
+                yt = _youtube()
+                if not (yt.tools.installed("yt-dlp") and yt.tools.installed("quickjs")):
+                    updates.put(("tools", "Getting the YouTube download tools (first time only, about a minute)…", None))
+                details = _youtube_details.get(video_id) or summary(yt.inspect(video_id))
+                updates.put(("download", "Downloading the audio…", 0))
+
+                def progress(done, total):
+                    if total:
+                        updates.put(("download", "Downloading the audio…", min(99, int(done * 100 / total))))
+                path = yt.download_audio(video_id, folder, progress)
+                updates.put(("convert", "Converting the audio…", None))
+                name = _safe_filename(f"{details['artist']} - {details['title']}" if details["artist"] else details["title"])
+                named = os.path.join(folder, name + os.path.splitext(path)[1])
+                os.replace(path, named)
+                outcome["file"], outcome["filename"] = _normalize_audio_to_wav(named, os.path.basename(named))
+                outcome["details"] = details
+            except YouTubeError as e:
+                outcome["error"] = str(e)
+            except Exception as e:  # unexpected: show it rather than hang
+                outcome["error"] = f"{type(e).__name__}: {e}"
+            finally:
+                updates.put(None)
+
+        threading.Thread(target=work, daemon=True).start()
+        while True:
+            try:
+                item = updates.get_nowait()
+            except queue.Empty:
+                await asyncio.sleep(0.3)
+                continue
+            if item is None:
+                break
+            phase, message, percent = item
+            yield send(phase, message, percent=percent)
+
+        if "error" in outcome:
+            yield send("error", outcome["error"])
+            return
+        details = outcome["details"]
+        session = sessions.get(target_id)
+        if session is None:
+            session = sessions[target_id] = {
+                "id": target_id, "original_audio": None, "vocal_audio": None, "lyrics": None,
+                "status": "uploaded", "created_at": time.time(),
+            }
+        session["original_audio"] = outcome["file"]
+        session["filename"] = outcome["filename"]
+        session["youtube_url"] = details["url"]
+        session["youtube_thumbnail"] = details["thumbnail"]
+        for key in ("artist", "title"):
+            if details[key] and not session.get(key):
+                session[key] = details[key]
+        if details["language"] and not session.get("language"):
+            session["language"] = details["language"]
+        _update_txt_asset_headers(session)
+        save_session(target_id)
+        log_step("YOUTUBE", f"Session {target_id}: audio from {details['url']} → {outcome['filename']}")
+        yield send("done", "Audio downloaded.", session_id=target_id, filename=outcome["filename"],
+                   artist=session.get("artist", ""), title=session.get("title", ""),
+                   language=session.get("language"), url=details["url"], thumbnail=details["thumbnail"])
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/cancel-extract/{session_id}")

@@ -42,6 +42,8 @@ See [ADR 0001](../decisions/0001-keep-python-sidecar.md) for why the backend sta
 | `services/syllable_alignment.py` | Chooses the alignment engine, with fallbacks |
 | `services/lyrics_search.py` | Lyrics from LRCLIB |
 | `services/melisma.py` | Splits long syllables into `~` notes where the pitch moves |
+| `services/youtube.py` | YouTube links: video details and audio download through yt-dlp |
+| `services/download_tools.py` | Downloads and updates yt-dlp and QuickJS on first use |
 | `services/alignment_whisper.py` | Syllable timing from WhisperX word/char timestamps (current primary aligner) |
 | `services/alignment.py` | Energy-based fallback aligner |
 | `services/onset_snapping.py` | Moves syllable starts to nearby spectral onsets |
@@ -64,7 +66,8 @@ On Windows the app data lives in `%APPDATA%\com.ultrastar.creator`.
 
 ## Session lifecycle
 
-1. **Upload** (Step 1): audio is normalised and stored; optionally Demucs separates the vocals.
+1. **Upload** (Step 1): an audio file or a YouTube link's audio is normalised and stored; optionally Demucs
+   separates the vocals.
 2. **Lyrics** (Step 2): WhisperX transcribes the vocals as a suggestion; the user corrects and hyphenates. Whisper
    word/char timestamps are stored in the session (`whisper_words`, `whisper_chars`).
 3. **Generate** (Step 3): BPM → pitch → alignment → `.txt` / MIDI / summary, stored in `session["result"]`.

@@ -24,6 +24,7 @@ Developer documentation for Ultrastar Creator Tool. For what the app does and ho
 - [BPM / GAP change recalculation rules](architecture/recalculation.md)
 
 **Features**
+- [YouTube import](features/youtube-import.md)
 - [Backup](features/backup.md)
 - [Cleanup sections](features/cleanup-sections.md)
 - [Segment-local regenerate](features/segment-regenerate.md)
