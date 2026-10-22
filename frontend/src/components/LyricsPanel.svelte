@@ -83,12 +83,45 @@
     return lines;
   }
 
+  function addMark(from, to, color) {
+    const mark = editor.getDoc().markText(from, to, { css: `background-color: ${color};` });
+    mark.__highlightColor = color;
+  }
+
+  /** Remove the highlights between `from` and `to`; parts of a highlight outside that range stay. */
+  function uncolorRange(from, to) {
+    const cmp = CodeMirror.cmpPos;
+    for (const mark of editor.getAllMarks()) {
+      const pos = mark.find();
+      if (!pos || cmp(pos.to, from) <= 0 || cmp(pos.from, to) >= 0) continue; // doesn't overlap
+      const color = mark.__highlightColor || '#ffff0080';
+      mark.clear();
+      if (cmp(pos.from, from) < 0) addMark(pos.from, from, color);
+      if (cmp(pos.to, to) > 0) addMark(to, pos.to, color);
+    }
+  }
+
   function colorSelection(color) {
     const doc = editor.getDoc();
     if (!doc.somethingSelected()) return;
-    const mark = doc.markText(doc.getCursor('from'), doc.getCursor('to'), { css: `background-color: ${color};` });
-    mark.__highlightColor = color;
+    const from = doc.getCursor('from');
+    const to = doc.getCursor('to');
+    uncolorRange(from, to); // replace, don't stack colours
+    addMark(from, to, color);
     dispatch('change', { source: tab, marks: currentMarks() });
+  }
+
+  /** Remove the colour from the selection, or the whole highlight under the cursor when nothing is selected. */
+  function uncolorSelection() {
+    const doc = editor.getDoc();
+    if (doc.somethingSelected()) {
+      uncolorRange(doc.getCursor('from'), doc.getCursor('to'));
+    } else {
+      const cursor = doc.getCursor();
+      for (const mark of doc.findMarksAt(cursor)) mark.clear();
+    }
+    dispatch('change', { source: tab, marks: currentMarks() });
+    editor.focus();
   }
 
   onMount(() => {
@@ -158,6 +191,8 @@
     <button class="color-btn red" on:click={() => colorSelection('#ff000080')} title="Highlight in red">🟥</button>
     <button class="color-btn green" on:click={() => colorSelection('#00ff0080')} title="Highlight in green">🟩</button>
     <button class="color-btn blue" on:click={() => colorSelection('#0000ff80')} title="Highlight in blue">🟦</button>
+    <button class="color-btn eraser" on:click={uncolorSelection}
+            title="Remove the colour from the selected text (or from the highlight at the cursor)">🧽 Remove colour</button>
   </div>
 
   <button class="btn btn-primary btn-generate panel-generate" on:click={() => dispatch('generate', { side, source: tab })}
@@ -208,4 +243,5 @@
   }
   .color-btn:hover { border-color: #666; background: #252525; }
   .color-btn:active { transform: scale(0.95); }
+  .color-btn.eraser { margin-left: auto; font-size: 0.85rem; }
 </style>
