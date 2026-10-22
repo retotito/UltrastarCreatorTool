@@ -1618,18 +1618,21 @@ async def upload_audio(audio: UploadFile = File(...)):
         content = await audio.read()
         f.write(content)
 
-    file_path, orig_filename = _normalize_audio_to_wav(file_path, orig_filename)
-
     sessions[session_id] = {
         "id": session_id,
-        "original_audio": file_path,
+        "original_audio": None,
         "vocal_audio": None,
         "lyrics": None,
         "status": "uploaded",
         "created_at": time.time(),
     }
+    # Before the WAV conversion, which drops the tags.
+    details = _apply_song_details(sessions[session_id], file_path, orig_filename)
+    file_path, orig_filename = _normalize_audio_to_wav(file_path, orig_filename)
+    sessions[session_id]["original_audio"] = file_path
 
-    log_step("UPLOAD", f"Session {session_id}: {audio.filename} → {orig_filename} ({len(content)} bytes)")
+    log_step("UPLOAD", f"Session {session_id}: {audio.filename} → {orig_filename} ({len(content)} bytes), "
+                       f"song: {details['artist']} - {details['title']}")
     save_session(session_id)
 
     return {
@@ -1637,6 +1640,7 @@ async def upload_audio(audio: UploadFile = File(...)):
         "session_id": session_id,
         "filename": orig_filename,
         "size": len(content),
+        **details,
     }
 
 
@@ -1652,6 +1656,24 @@ def _ffmpeg_path() -> Optional[str]:
         if os.path.isfile(bundled):
             return bundled
     return shutil.which("ffmpeg")
+
+
+def _ffprobe_path() -> Optional[str]:
+    if hasattr(sys, "_MEIPASS"):
+        bundled = os.path.join(sys._MEIPASS, "ffprobe.exe" if sys.platform == "win32" else "ffprobe")
+        if os.path.isfile(bundled):
+            return bundled
+    return shutil.which("ffprobe")
+
+
+def _apply_song_details(session: dict, path: str, filename: str) -> dict:
+    """Artist/title from an uploaded file's tags or name, set on the session where it has none yet."""
+    from services.song_details import song_details
+    found = song_details(path, filename, _ffprobe_path())
+    for key in ("artist", "title"):
+        if found[key] and not session.get(key):
+            session[key] = found[key]
+    return {"artist": session.get("artist", ""), "title": session.get("title", "")}
 
 
 def _youtube():
@@ -1967,6 +1989,7 @@ async def upload_mix_audio(session_id: str, audio: UploadFile = File(...)):
         content = await audio.read()
         f.write(content)
 
+    details = _apply_song_details(session, file_path, orig_filename)  # before WAV conversion drops the tags
     file_path, orig_filename = _normalize_audio_to_wav(file_path, orig_filename)
 
     session["original_audio"] = file_path
@@ -1975,7 +1998,7 @@ async def upload_mix_audio(session_id: str, audio: UploadFile = File(...)):
     log_step("UPLOAD", f"Session {session_id}: replaced mix audio with {orig_filename} ({len(content)} bytes)")
     save_session(session_id)
 
-    return {"status": "ok", "session_id": session_id, "filename": orig_filename}
+    return {"status": "ok", "session_id": session_id, "filename": orig_filename, **details}
 
 
 @app.delete("/api/delete-audio/{session_id}/{audio_type}")
@@ -3287,6 +3310,33 @@ async def submit_lyrics(
             for i, line in enumerate(parsed)
         ],
     }
+
+
+@app.get("/api/lyrics-sources/{session_id}")
+async def get_lyrics_sources(session_id: str):
+    """Step 2's lyric sources (LRCLIB, vocals, cleaned vocals) and which tab each side shows."""
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    stored = session.get("lyrics_sources") or {}
+    return {"sources": stored.get("sources", {}), "tabs": stored.get("tabs", {}),
+            "artist": session.get("artist", ""), "title": session.get("title", ""),
+            "language": session.get("language")}
+
+
+@app.put("/api/lyrics-sources/{session_id}")
+async def put_lyrics_sources(session_id: str, request: Request):
+    """Save some of Step 2's lyric sources and tabs (only the given fields change)."""
+    from services.lyrics_sources import InvalidSources, merge
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        session["lyrics_sources"] = merge(session.get("lyrics_sources") or {}, await request.json())
+    except InvalidSources as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    save_session(session_id)
+    return {"status": "ok"}
 
 
 @app.get("/api/lyrics-search/{session_id}")

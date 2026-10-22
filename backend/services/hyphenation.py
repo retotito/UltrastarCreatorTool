@@ -237,23 +237,15 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
             })
             continue
 
-        # If line already contains hyphens, keep as-is
-        if "-" in line and not line.startswith("-"):
-            syl_count = _count_syllables_in_hyphenated(line)
-            total_syllables += syl_count
-            result_lines.append({
-                "original": line,
-                "hyphenated": line,
-                "syllable_count": syl_count,
-            })
-            continue
-
-        # Hyphenate each word
+        # Hyphenate each word. Words the user already split ("beau-ti-ful", "oh-oh-oh") stay as they are,
+        # the rest of the line is still hyphenated.
         hyphenated_words = []
         for word in line.split():
             # Preserve punctuation
             prefix, core, suffix = _split_punctuation(word)
-            if core and by_character:
+            if "-" in word:
+                hyphenated_words.append(word)
+            elif core and by_character:
                 hyphenated_words.append(f"{prefix}{split_characters(core)}{suffix}")
             elif core and generic:
                 hyphenated_words.append(f"{prefix}{split_vowel_groups(core)}{suffix}")

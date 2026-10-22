@@ -36,10 +36,16 @@ def test_capitalisation_is_kept():
     assert hyphenate("Beautiful").startswith("Beau")
 
 
-def test_lines_that_already_have_hyphens_are_left_alone():
-    result = hyphenate_lyrics("Wun-der-bar\nsingen", "de")
-    assert result["hyphenated"] == "Wun-der-bar\nsin-gen"
-    assert [line["syllable_count"] for line in result["lines"]] == [3, 2]
+def test_words_the_user_split_are_kept_and_the_rest_of_the_line_is_hyphenated():
+    result = hyphenate_lyrics("Wun-der-bar singen\nOh-oh-oh, beautiful day", "de")
+    assert result["hyphenated"].split("\n")[0] == "Wun-der-bar sin-gen"
+    assert result["lines"][0]["syllable_count"] == 5
+    assert hyphenate("Oh-oh-oh, beautiful day") == "Oh-oh-oh, beau-ti-ful day"
+
+
+def test_hyphenating_twice_changes_nothing():
+    once = hyphenate("Shoots up through the stony ground, beautiful day")
+    assert hyphenate(once) == once
 
 
 def test_marker_lines_and_empty_lines_are_kept_and_not_counted():
