@@ -8,6 +8,7 @@
   import { onMount, onDestroy } from 'svelte';
   import 'codemirror/lib/codemirror.css';
   import LyricsPanel from './LyricsPanel.svelte';
+  import LyricsVersionsModal from './LyricsVersionsModal.svelte';
   import { sessionId, lyricsData, uploadData, currentStep, isProcessing, processingStatus, errorMessage, generationModalOpen, generationUseCleaned, generationResult } from '../stores/appStore.js';
   import { showConfirm } from '../stores/dialogStore.js';
   import { SUPPORTED_LANGUAGES } from '../lib/languages';
@@ -55,6 +56,7 @@
       }
       sources = merged;
       tabs = { left: stored.tabs?.left || 'lrclib', right: stored.tabs?.right || 'vocals' };
+      tabsPicked = !!stored.tabs?.left;
       if (!artist && stored.artist) artist = stored.artist;
       if (!title && stored.title) title = stored.title;
       if (!language && stored.language) language = stored.language;
@@ -87,7 +89,10 @@
     updateSource(source, patch);
   }
 
+  let tabsPicked = false; // the user chose a tab: no more automatic switching
+
   function handleTab(event) {
+    tabsPicked = true;
     tabs = { ...tabs, [event.detail.side]: event.detail.tab };
     scheduleSave();
   }
@@ -145,37 +150,67 @@
          && autoSearchedFor !== `${$sessionId}|${artist.trim()}|${title.trim()}`) {
     clearTimeout(autoSearchTimer);
     const key = `${$sessionId}|${artist.trim()}|${title.trim()}`;
-    autoSearchTimer = setTimeout(() => { autoSearchedFor = key; handleFindLyrics(true); }, 800);
+    autoSearchTimer = setTimeout(() => { autoSearchedFor = key; autoSearch(); }, 800);
   }
 
-  async function handleFindLyrics(auto = false) {
-    if (!artist.trim() || !title.trim()) {
-      errorMessage.set('Enter Artist and Title to search for lyrics');
-      return;
-    }
-    if (!auto && sources.lrclib.text.trim() && !(await showConfirm(
-      'Replace the LRCLIB text with the lyrics found online?', { title: 'Search LRCLIB', confirmLabel: 'Replace' },
-    ))) return;
-    if (!auto) errorMessage.set('');
+  async function searchLrclib(queryArtist, queryTitle) {
     busy = { ...busy, lrclib: true };
     try {
-      const found = await searchLyricsOnline($sessionId, artist.trim(), title.trim());
+      const found = await searchLyricsOnline($sessionId, queryArtist, queryTitle);
       lyricsCandidates = found.candidates || [];
       songDuration = found.song_duration || null;
-      chosenCandidateId = null;
-      if (found.found) {
-        useLyricsCandidate(found);
-      } else if (lyricsCandidates.length) {
-        updateSource('lrclib', { info: { message: `No exact match for "${artist.trim()} – ${title.trim()}". Choose one of the suggestions:` } });
-      } else {
-        updateSource('lrclib', { info: { message: `No lyrics on LRCLIB for "${artist.trim()} – ${title.trim()}". Check artist and title, or paste the lyrics.` } });
-      }
-    } catch (err) {
-      if (auto) updateSource('lrclib', { info: { message: err.message.replace(/^API error \d+: /, '') } });
-      else errorMessage.set(err.message);
+      return found;
     } finally {
       busy = { ...busy, lrclib: false };
     }
+  }
+
+  /** On its own when Step 2 opens: fill the LRCLIB tab with the clear match, if there is one. */
+  async function autoSearch() {
+    const query = `"${artist.trim()} – ${title.trim()}"`;
+    try {
+      const found = await searchLrclib(artist.trim(), title.trim());
+      chosenCandidateId = null;
+      if (found.found) {
+        useLyricsCandidate(found);
+        return;
+      }
+      updateSource('lrclib', { info: { message: lyricsCandidates.length
+        ? `No exact match for ${query}. Search LRCLIB to choose a version.`
+        : `No lyrics on LRCLIB for ${query}. Search with another title, or paste the lyrics.` } });
+      // Nothing to show on the left: start there with the vocals instead (as long as no tab was picked).
+      if (!tabsPicked && tabs.left === 'lrclib' && tabs.right === 'vocals') {
+        tabs = { left: 'vocals', right: 'lrclib' };
+        scheduleSave();
+      }
+    } catch (err) {
+      updateSource('lrclib', { info: { message: err.message.replace(/^API error \d+: /, '') } });
+    }
+  }
+
+  // The LRCLIB window: search again and choose a version.
+  let versionsOpen = false;
+  let versionsMessage = '';
+
+  function openVersions() {
+    versionsMessage = '';
+    versionsOpen = true;
+  }
+
+  async function handleVersionsSearch(event) {
+    versionsMessage = '';
+    try {
+      const found = await searchLrclib(event.detail.artist, event.detail.title);
+      if (!lyricsCandidates.length) versionsMessage = '';
+      else if (!found.found) versionsMessage = 'No exact match — these are the closest:';
+    } catch (err) {
+      versionsMessage = err.message.replace(/^API error \d+: /, '');
+    }
+  }
+
+  function handleVersionChosen(event) {
+    useLyricsCandidate(event.detail);
+    versionsOpen = false;
   }
 
   function formatDuration(seconds) {
@@ -518,17 +553,14 @@
         tabs={tabList}
         {sources}
         {busy}
-        candidates={lyricsCandidates}
-        {chosenCandidateId}
-        {songDuration}
-        canSearch={!!(artist.trim() && title.trim())}
+        versionsCount={lyricsCandidates.length}
+        chosen={chosenCandidateId !== null}
         {canGenerate}
         {generateHint}
         disabled={$isProcessing || isTranscribing}
         on:tab={handleTab}
         on:change={handlePanelChange}
-        on:search={() => handleFindLyrics(false)}
-        on:choose={(e) => useLyricsCandidate(e.detail)}
+        on:versions={openVersions}
         on:transcribe={handleTranscribe}
         on:generate={handleGenerate}
       />
@@ -555,6 +587,21 @@
     <div class="error-bar">❌ {$errorMessage}</div>
   {/if}
 </div>
+
+{#if versionsOpen}
+  <LyricsVersionsModal
+    {artist}
+    {title}
+    candidates={lyricsCandidates}
+    chosenId={chosenCandidateId}
+    {songDuration}
+    searching={busy.lrclib}
+    message={versionsMessage}
+    on:search={handleVersionsSearch}
+    on:choose={handleVersionChosen}
+    on:close={() => versionsOpen = false}
+  />
+{/if}
 
 {#if whisperFallbackWarning}
   <div class="warning-modal-overlay" on:click={() => whisperFallbackWarning = false}>

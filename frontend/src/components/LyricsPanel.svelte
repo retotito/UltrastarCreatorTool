@@ -15,11 +15,9 @@
   export let sources = {};
   /** source id → true while it is being produced (search / Whisper) */
   export let busy = {};
-  /** LRCLIB suggestions (shared by both sides) */
-  export let candidates = [];
-  export let chosenCandidateId = null;
-  export let songDuration = null;
-  export let canSearch = false;
+  /** LRCLIB: how many versions there are, and whether one of them fills the tab */
+  export let versionsCount = 0;
+  export let chosen = false;
   export let canGenerate = false;
   export let generateHint = '';
   export let disabled = false;
@@ -29,18 +27,11 @@
   let editor = null;
   let shownTab = null;
   let applying = false;
-  let showCandidates = false;
 
   $: source = sources[tab] || { text: '' };
   $: text = source.text || '';
   $: info = source.info || null;
   $: if (editor) syncEditor(tab, text);
-
-  function formatDuration(seconds) {
-    if (!seconds) return '';
-    const s = Math.round(seconds);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  }
 
   /** Show the selected source's text; only re-render marks when the tab changed or the text came from elsewhere. */
   function syncEditor(currentTab, currentText) {
@@ -100,11 +91,6 @@
     dispatch('change', { source: tab, marks: currentMarks() });
   }
 
-  function clearColors() {
-    editor.getAllMarks().forEach(m => m.clear());
-    dispatch('change', { source: tab, marks: [] });
-  }
-
   onMount(() => {
     editor = CodeMirror.fromTextArea(textarea, { lineNumbers: true, lineWrapping: true, mode: null });
     editor.on('change', (cm) => {
@@ -126,7 +112,6 @@
   function selectTab(id) {
     if (id === tab) return;
     tab = id;
-    showCandidates = false;
     dispatch('tab', { side, tab: id });
   }
 </script>
@@ -143,38 +128,14 @@
 
   <div class="panel-tools">
     {#if tab === 'lrclib'}
-      <div class="tool-row">
-        <span class="tool-info">
-          {#if busy.lrclib}🔎 Searching LRCLIB…
-          {:else if info?.message}{info.message}
-          {:else}Lyrics published online (lrclib.net), found by artist and title.{/if}
-        </span>
-        <button class="btn btn-secondary small" on:click={() => dispatch('search')} disabled={disabled || busy.lrclib || !canSearch}
-                title="Search lrclib.net by artist and title">🔎 Search</button>
-      </div>
-      {#if candidates.length > 1 || (candidates.length && chosenCandidateId === null)}
-        <button class="link-btn" on:click={() => showCandidates = !showCandidates}>
-          {showCandidates ? 'Hide versions' : chosenCandidateId === null ? `Choose from ${candidates.length} suggestions` : `Choose another version (${candidates.length - 1})`}
-        </button>
-      {/if}
-      {#if showCandidates}
-        <ul class="lyrics-candidates">
-          {#each candidates as entry (entry.id)}
-            <li>
-              <button class="lyrics-candidate" class:chosen={entry.id === chosenCandidateId}
-                      on:click={() => { showCandidates = false; dispatch('choose', entry); }}>
-                <span class="candidate-title">{entry.track} — {entry.artist}</span>
-                <span class="candidate-meta">
-                  {#if entry.album}{entry.album} · {/if}{formatDuration(entry.duration)}
-                  {#if entry.length_match === true}<span class="length-ok" title="Same length as your song ({formatDuration(songDuration)})">✓ same length</span>{/if}
-                  {#if entry.length_match === false}<span class="length-off" title="Your song is {formatDuration(songDuration)}">other length</span>{/if}
-                  · {entry.lines} lines{entry.synced ? ' · synced' : ''}
-                </span>
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {/if}
+      <span class="tool-info">
+        {#if busy.lrclib}🔎 Searching LRCLIB…
+        {:else if info?.message}{info.message}
+        {:else}Lyrics published online (lrclib.net), found by artist and title.{/if}
+      </span>
+      <button class="link-btn" on:click={() => dispatch('versions')} disabled={disabled || busy.lrclib}>
+        {chosen && versionsCount > 1 ? `Choose another version (${versionsCount - 1})` : 'Search LRCLIB…'}
+      </button>
     {:else}
       <div class="tool-row">
         <span class="tool-info">
@@ -197,7 +158,6 @@
     <button class="color-btn red" on:click={() => colorSelection('#ff000080')} title="Highlight in red">🟥</button>
     <button class="color-btn green" on:click={() => colorSelection('#00ff0080')} title="Highlight in green">🟩</button>
     <button class="color-btn blue" on:click={() => colorSelection('#0000ff80')} title="Highlight in blue">🟦</button>
-    <button class="color-btn clear" on:click={clearColors} title="Clear all colors">⚪ Clear</button>
   </div>
 
   <button class="btn btn-primary btn-generate panel-generate" on:click={() => dispatch('generate', { side, source: tab })}
@@ -216,24 +176,12 @@
   }
   .panel-tab:hover { color: #ddd; }
   .panel-tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; font-weight: 600; }
-  .panel-tools { display: flex; flex-direction: column; gap: 0.35rem; min-height: 2.4rem; }
+  /* Same height on every tab, so both text fields start at the same line and can be compared. */
+  .panel-tools { display: flex; flex-direction: column; justify-content: center; gap: 0.25rem; height: 4.2rem; overflow: hidden; }
+  .tool-info { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .tool-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
   .tool-info { color: #999; font-size: 0.82rem; }
-  .lyrics-candidates {
-    list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto;
-    border: 1px solid #444; border-radius: 6px;
-  }
-  .lyrics-candidate {
-    display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%;
-    padding: 0.4rem 0.6rem; border: none; border-bottom: 1px solid #333;
-    background: transparent; color: inherit; text-align: left; cursor: pointer;
-  }
-  .lyrics-candidate:hover, .lyrics-candidate:focus-visible { background: rgba(79, 140, 255, 0.15); }
-  .lyrics-candidate.chosen { background: rgba(76, 175, 80, 0.18); }
-  .candidate-title { font-weight: 600; }
-  .candidate-meta { font-size: 0.85em; opacity: 0.8; }
-  .length-ok { color: #4caf50; margin-left: 0.25rem; }
-  .length-off { color: #e0a030; margin-left: 0.25rem; }
+  .link-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .link-btn {
     align-self: flex-start; background: none; border: none; color: #4fc3f7; cursor: pointer;
     padding: 0; font-size: 0.82rem; text-decoration: underline;
@@ -249,8 +197,6 @@
   .btn.small { font-size: 0.8rem; padding: 0.5rem 1rem; }
   .btn-primary { background: #1976d2; color: white; }
   .btn-primary:hover:not(:disabled) { background: #1565c0; }
-  .btn-secondary { background: #333; color: #ccc; border: 1px solid #555; }
-  .btn-secondary:hover:not(:disabled) { background: #444; }
   .btn-transcribe { background: #6a1b9a; color: white; white-space: nowrap; }
   .btn-transcribe:hover:not(:disabled) { background: #8e24aa; }
   .btn-generate { padding: 0.9rem 2rem; font-size: 1rem; }
@@ -262,6 +208,4 @@
   }
   .color-btn:hover { border-color: #666; background: #252525; }
   .color-btn:active { transform: scale(0.95); }
-  .color-btn.clear { margin-left: auto; background: #2a2a2a; border-color: #555; }
-  .color-btn.clear:hover { background: #333; border-color: #777; }
 </style>
