@@ -1,28 +1,291 @@
 <script>
-  async function handleLoadTestLyrics() {
+  /**
+   * Step 2: the song's artist, title and language, and its lyrics from up to three sources (LRCLIB,
+   * Whisper on the vocals, Whisper on the cleaned vocals) shown as tabs on two sides for comparing.
+   * Either side generates the UltraStar file from the text it shows; the text is hyphenated on the way
+   * (words the user split stay as they are). See docs/plans/step2-lyrics-tabs.md.
+   */
+  import { onMount, onDestroy } from 'svelte';
+  import 'codemirror/lib/codemirror.css';
+  import LyricsPanel from './LyricsPanel.svelte';
+  import { sessionId, lyricsData, uploadData, currentStep, isProcessing, processingStatus, errorMessage, generationModalOpen, generationUseCleaned, generationResult } from '../stores/appStore.js';
+  import { showConfirm } from '../stores/dialogStore.js';
+  import { SUPPORTED_LANGUAGES } from '../lib/languages';
+  import { submitLyrics, searchLyricsOnline, getLyricsSources, saveLyricsSources, getTestLyrics, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata, getEditorData, generateEmptyUltrastar } from '../services/api.js';
+
+  // ── Song ────────────────────────────────────────────────
+  let artist = $lyricsData.artist || '';
+  let title = $lyricsData.title || '';
+  let language = $lyricsData.language || '';
+
+  async function syncMetadata() {
+    if (!$sessionId || !artist.trim() || !title.trim()) return;
+    lyricsData.update(s => ({ ...s, artist: artist.trim(), title: title.trim() }));
+    try { await updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined); } catch { /* not critical */ }
+  }
+
+  // Keep the store in step with the fields (the lyrics text there is the last generated one).
+  $: lyricsData.update(s => ({ ...s, artist, title, language }));
+
+  // ── Lyric sources ───────────────────────────────────────
+  const EMPTY = () => ({ text: '', marks: [], dividers: [], info: null });
+  let sources = { lrclib: EMPTY(), vocals: EMPTY(), cleaned: EMPTY() };
+  let tabs = { left: 'lrclib', right: 'vocals' };
+  let sourcesLoadedFor = null;
+  let sourcesReady = false;
+  let busy = { lrclib: false, vocals: false, cleaned: false };
+  let saveTimer = null;
+
+  $: if ($sessionId && sourcesLoadedFor !== $sessionId) loadSources($sessionId);
+
+  async function loadSources(id) {
+    sourcesLoadedFor = id;
+    sourcesReady = false;
     try {
-      const result = await getTestLyrics();
-      lyricsText = result.lyrics;
-      artist = 'U2';
-      title = 'Beautiful Day';
+      const stored = await getLyricsSources(id);
+      const merged = { lrclib: EMPTY(), vocals: EMPTY(), cleaned: EMPTY() };
+      for (const key of Object.keys(merged)) merged[key] = { ...merged[key], ...(stored.sources?.[key] || {}) };
+      if (!stored.sources || Object.keys(stored.sources).length === 0) {
+        // Sessions from before the tabs: the left field was "Generated Lyrics", the right one (browser only) "Original".
+        merged.vocals.text = $lyricsData.text || '';
+        try {
+          const old = JSON.parse(localStorage.getItem(`comparison_lyrics_${id}`) || 'null');
+          if (old?.text) merged.lrclib = { ...merged.lrclib, text: old.text, marks: old.marks || [] };
+        } catch { /* nothing usable */ }
+      }
+      sources = merged;
+      tabs = { left: stored.tabs?.left || 'lrclib', right: stored.tabs?.right || 'vocals' };
+      if (!artist && stored.artist) artist = stored.artist;
+      if (!title && stored.title) title = stored.title;
+      if (!language && stored.language) language = stored.language;
     } catch (err) {
-      errorMessage.set(err.message);
+      console.warn('[Step2] Could not load lyric sources:', err);
+    }
+    sourcesReady = true;
+  }
+
+  function scheduleSave() {
+    if (!$sessionId) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, 600);
+  }
+
+  function flushSave() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    if (!$sessionId || !sourcesReady) return;
+    saveLyricsSources($sessionId, { sources, tabs }).catch(err => console.warn('[Step2] Could not save lyrics:', err));
+  }
+
+  function updateSource(id, patch) {
+    sources = { ...sources, [id]: { ...sources[id], ...patch } };
+    scheduleSave();
+  }
+
+  function handlePanelChange(event) {
+    const { source, ...patch } = event.detail;
+    updateSource(source, patch);
+  }
+
+  function handleTab(event) {
+    tabs = { ...tabs, [event.detail.side]: event.detail.tab };
+    scheduleSave();
+  }
+
+  // ── Cleanup (Step 4) ────────────────────────────────────
+  let cleanupSegments = [];
+  let cleanedAudioAvailable = false;
+  let hasOriginalDemucs = false; // legacy sessions
+  let hasEditedVocal = false;
+  let useCleanedForTiming = true;
+
+  async function loadCleanupSegments() {
+    if (!$sessionId || !$generationResult) return; // no chart yet, so no cleanup either
+    try {
+      const editorData = await getEditorData($sessionId);
+      cleanupSegments = editorData.cleanup_segments || [];
+      cleanedAudioAvailable = editorData.cleaned_audio_available || false;
+      hasOriginalDemucs = editorData.has_original_demucs || false;
+      hasEditedVocal = editorData.has_edited_vocal || false;
+    } catch (e) {
+      console.error('[Step2] Failed to load cleanup segments:', e);
+      cleanupSegments = [];
     }
   }
 
-  async function handleAutoHyphenate() {
-    if (!activeLyrics.trim()) {
-      errorMessage.set('Enter lyrics first');
+  $: hasVocals = $uploadData.hasVocals;
+  $: hasCleaned = !!$sessionId && (hasEditedVocal || (cleanupSegments.length > 0 && cleanedAudioAvailable));
+  $: vocalsUrl = $sessionId && hasVocals ? getAudioUrl($sessionId, hasOriginalDemucs && !hasEditedVocal ? 'demucs' : 'vocals') : '';
+  $: cleanedUrl = hasCleaned ? getAudioUrl($sessionId, hasEditedVocal ? 'edited' : 'cleaned') : '';
+  $: tabList = [
+    { id: 'lrclib', label: 'LRCLIB' },
+    { id: 'vocals', label: 'Vocals' },
+    ...(hasCleaned ? [{ id: 'cleaned', label: 'Cleaned vocals' }] : []),
+  ];
+  // A side left on "Cleaned vocals" when there is no cleanup (any more) shows the vocals.
+  $: if (!hasCleaned && (tabs.left === 'cleaned' || tabs.right === 'cleaned')) {
+    tabs = { left: tabs.left === 'cleaned' ? 'vocals' : tabs.left, right: tabs.right === 'cleaned' ? 'vocals' : tabs.right };
+  }
+
+  $: if ($currentStep === 2 && $sessionId) {
+    checkTestSession();
+    loadCleanupSegments();
+  }
+
+  // ── LRCLIB ──────────────────────────────────────────────
+  let lyricsCandidates = [];
+  let chosenCandidateId = null;
+  let songDuration = null;
+  let autoSearchedFor = null;
+  let autoSearchTimer = null;
+
+  // Search on its own when artist and title are known and the LRCLIB text is still empty.
+  $: if (sourcesReady && artist.trim() && title.trim() && !sources.lrclib.text.trim() && !busy.lrclib
+         && autoSearchedFor !== `${$sessionId}|${artist.trim()}|${title.trim()}`) {
+    clearTimeout(autoSearchTimer);
+    const key = `${$sessionId}|${artist.trim()}|${title.trim()}`;
+    autoSearchTimer = setTimeout(() => { autoSearchedFor = key; handleFindLyrics(true); }, 800);
+  }
+
+  async function handleFindLyrics(auto = false) {
+    if (!artist.trim() || !title.trim()) {
+      errorMessage.set('Enter Artist and Title to search for lyrics');
       return;
     }
+    if (!auto && sources.lrclib.text.trim() && !(await showConfirm(
+      'Replace the LRCLIB text with the lyrics found online?', { title: 'Search LRCLIB', confirmLabel: 'Replace' },
+    ))) return;
+    if (!auto) errorMessage.set('');
+    busy = { ...busy, lrclib: true };
+    try {
+      const found = await searchLyricsOnline($sessionId, artist.trim(), title.trim());
+      lyricsCandidates = found.candidates || [];
+      songDuration = found.song_duration || null;
+      chosenCandidateId = null;
+      if (found.found) {
+        useLyricsCandidate(found);
+      } else if (lyricsCandidates.length) {
+        updateSource('lrclib', { info: { message: `No exact match for "${artist.trim()} – ${title.trim()}". Choose one of the suggestions:` } });
+      } else {
+        updateSource('lrclib', { info: { message: `No lyrics on LRCLIB for "${artist.trim()} – ${title.trim()}". Check artist and title, or paste the lyrics.` } });
+      }
+    } catch (err) {
+      if (auto) updateSource('lrclib', { info: { message: err.message.replace(/^API error \d+: /, '') } });
+      else errorMessage.set(err.message);
+    } finally {
+      busy = { ...busy, lrclib: false };
+    }
+  }
+
+  function formatDuration(seconds) {
+    if (!seconds) return '';
+    const s = Math.round(seconds);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function useLyricsCandidate(entry) {
+    chosenCandidateId = entry.id;
+    const length = entry.duration ? ` · ${formatDuration(entry.duration)}` : '';
+    updateSource('lrclib', {
+      text: entry.text, marks: [], dividers: [],
+      info: { message: `✓ ${entry.lines} lines: ${entry.artist} – ${entry.track}${length}${entry.synced ? ' · synced' : ''}. Repeated choruses must be written out.` },
+    });
+  }
+
+  // ── Whisper ─────────────────────────────────────────────
+  let isTranscribing = false;
+  let transcribeStatus = '';
+  let transcribePhase = '';  // 'loading' | 'transcribing' | 'done' | 'error'
+  let transcribeElapsed = 0;
+  let transcribeModalOpen = false;
+  let whisperFallbackWarning = false;
+  let transcribeAbortController = null;
+  let transcribeTicker = null;
+  const transcribeModelPreset = 'balanced';
+
+  function startTranscribeTicker() {
+    transcribeElapsed = 0;
+    transcribeTicker = setInterval(() => { transcribeElapsed += 1; }, 1000);
+  }
+  function stopTranscribeTicker() {
+    if (transcribeTicker) { clearInterval(transcribeTicker); transcribeTicker = null; }
+  }
+
+  async function handleTranscribe(event) {
+    const source = event.detail.source;
+    const cleaned = source === 'cleaned';
+    if (!$sessionId) { errorMessage.set('No session. Upload audio first.'); return; }
+    if (!cleaned && !hasVocals) { errorMessage.set('No vocals yet: extract or upload them in Step 1.'); return; }
+    if (sources[source].text.trim() && !(await showConfirm(
+      'Listen again and replace this text?', { title: 'Extract lyrics', confirmLabel: 'Replace' },
+    ))) return;
+    errorMessage.set('');
+    isTranscribing = true;
+    busy = { ...busy, [source]: true };
+    transcribePhase = 'transcribing';
+    transcribeStatus = cleaned ? 'Transcribing cleaned vocals with Whisper…' : 'Transcribing vocals with Whisper…';
+    transcribeModalOpen = true;
+    transcribeAbortController = new AbortController();
+    startTranscribeTicker();
+    try {
+      const result = await transcribeAudio($sessionId, language, transcribeAbortController.signal, cleaned, transcribeModelPreset);
+      stopTranscribeTicker();
+      updateSource(source, {
+        text: result.text, marks: [], dividers: [],
+        info: { message: `Whisper (${result.model}): ${result.words} words, ${result.lines} lines — check and correct below` },
+      });
+      transcribePhase = 'done';
+      transcribeStatus = `${result.lines} lines, ${result.words} words (${result.language_name}, ${result.model})`;
+      if (result.model && !result.model.startsWith('whisperx-')) whisperFallbackWarning = true;
+      setTimeout(() => { transcribeModalOpen = false; }, 1800);
+    } catch (err) {
+      stopTranscribeTicker();
+      if (err.name === 'AbortError') return; // cancelled
+      transcribePhase = 'error';
+      transcribeStatus = err.message;
+      errorMessage.set(err.message);
+    } finally {
+      isTranscribing = false;
+      busy = { ...busy, [source]: false };
+    }
+  }
+
+  function cancelTranscription() {
+    stopTranscribeTicker();
+    isTranscribing = false;
+    transcribeModalOpen = false;
+    transcribePhase = '';
+    if (transcribeAbortController) transcribeAbortController.abort();
+    cancelTranscribe($sessionId);
+  }
+
+  // ── Generate ────────────────────────────────────────────
+  $: missing = [!artist.trim() && 'artist', !title.trim() && 'title', !language && 'language', !hasVocals && 'vocals (Step 1)']
+    .filter(Boolean);
+  $: canGenerate = !!$sessionId && missing.length === 0;
+  $: generateHint = missing.length ? `Needs ${missing.join(', ')}` : '';
+
+  async function handleGenerate(event) {
+    const text = sources[event.detail.source]?.text || '';
+    if (!text.trim() || !canGenerate) return;
+    if ($generationResult && !(await showConfirm(
+      'This replaces the UltraStar file you already have, including your changes in the editor.',
+      { title: 'Generate again?', confirmLabel: 'Generate', danger: true },
+    ))) return;
     errorMessage.set('');
     isProcessing.set(true);
-    processingStatus.set('Auto-hyphenating lyrics...');
+    processingStatus.set('Preparing lyrics…');
     try {
-      const result = await hyphenateLyrics(activeLyrics, language);
-      hyphenationResult = result;
-      setActiveLyrics(result.hyphenated);
-      processingStatus.set(`✅ Auto-hyphenated: ${result.total_syllables} syllables (${result.method})`);
+      // Hyphenated on the way, invisibly; words the user split stay as they are.
+      const hyphenated = (await hyphenateLyrics(text, language)).hyphenated;
+      const result = await submitLyrics($sessionId, hyphenated, artist, title, language);
+      lyricsData.set({
+        text: hyphenated, artist, title, language,
+        syllableCount: result.syllable_count, lineCount: result.line_count, preview: result.preview,
+      });
+      processingStatus.set(`✅ ${result.syllable_count} syllables across ${result.line_count} lines`);
+      generationUseCleaned.set(hasCleaned && useCleanedForTiming);
+      generationModalOpen.set(true);
     } catch (err) {
       errorMessage.set(err.message);
     } finally {
@@ -35,6 +298,10 @@
   async function handleGenerateEmpty() {
     if (!$sessionId) { errorMessage.set('No session. Please upload audio first.'); return; }
     if (!artist.trim() || !title.trim()) { errorMessage.set('Please enter Artist and Title before generating.'); return; }
+    if ($generationResult && !(await showConfirm(
+      'This replaces the UltraStar file you already have, including your changes in the editor.',
+      { title: 'Create an empty file?', confirmLabel: 'Create', danger: true },
+    ))) return;
     isProcessing.set(true);
     emptyGenerating = true;
     processingStatus.set('Creating empty Ultrastar file…');
@@ -50,852 +317,60 @@
     }
   }
 
-  async function handleSubmit(useCleaned = false) {
-    const lyricsForGeneration = activeLyrics;
-    if (!lyricsForGeneration.trim()) {
-      errorMessage.set('Please enter lyrics');
-      return;
-    }
-    if (!$sessionId) {
-      errorMessage.set('No session. Please upload audio first.');
-      return;
-    }
-    errorMessage.set('');
-    isProcessing.set(true);
-    processingStatus.set('Validating lyrics...');
-    try {
-      const result = await submitLyrics($sessionId, lyricsForGeneration, artist, title, language);
-      lyricsData.set({
-        text: lyricsForGeneration,
-        artist,
-        title,
-        language,
-        syllableCount: result.syllable_count,
-        lineCount: result.line_count,
-        preview: result.preview,
-      });
-      processingStatus.set(`✅ ${result.syllable_count} syllables across ${result.line_count} lines`);
-      generationUseCleaned.set(useCleaned);
-      generationModalOpen.set(true);
-    } catch (err) {
-      errorMessage.set(err.message);
-    } finally {
-      isProcessing.set(false);
-    }
-  }
-
-  // Restore checkTestSession function
+  // ── Test session ────────────────────────────────────────
   async function checkTestSession() {
-    if ($sessionId && $sessionId.startsWith('test-')) {
+    if ($sessionId && $sessionId.startsWith('test-') && !sources.vocals.text.trim()) {
       try {
         const result = await getTestLyrics();
-        lyricsText = result.lyrics;
-        artist = 'U2';
-        title = 'Beautiful Day';
-        // Optionally auto-submit or set more fields here
-      } catch (e) {
-        // Test lyrics not available, user can enter manually
-      }
-    }
-  }
-  import { onMount, onDestroy } from 'svelte';
-  import CodeMirror from 'codemirror';
-  import 'codemirror/lib/codemirror.css';
-  import { sessionId, lyricsData, uploadData, currentStep, isProcessing, processingStatus, errorMessage, generationModalOpen, generationUseCleaned, generationResult } from '../stores/appStore.js';
-  import { SUPPORTED_LANGUAGES } from '../lib/languages';
-  import { showConfirm } from '../stores/dialogStore.js';
-  import { submitLyrics, searchLyricsOnline, getTestLyrics, loadTestSession, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata, getEditorData, generateCleanedAudio, generateEmptyUltrastar } from '../services/api.js';
-
-  async function syncMetadata() {
-    if (!$sessionId) return;
-    if (!artist.trim() || !title.trim()) return;
-    // Always persist artist/title to the store so navigation doesn't lose them
-    lyricsData.update(s => ({ ...s, artist: artist.trim(), title: title.trim() }));
-    try {
-      await updateMetadata($sessionId, artist.trim(), title.trim());
-    } catch (e) {
-      // non-critical, ignore
+        updateSource('vocals', { text: result.lyrics });
+        artist = artist || 'U2';
+        title = title || 'Beautiful Day';
+      } catch { /* test lyrics not available */ }
     }
   }
 
-
-  // If coming from test session, lyrics may already be loaded
-  let lyricsText = $lyricsData.text || '';
-  let artist = $lyricsData.artist || '';
-  let title = $lyricsData.title || '';
-  let language = $lyricsData.language || '';
-  let comparisonLyrics = '';  // Original/reference lyrics for comparison
-  // Which field Auto-Hyphenate and Generate use: 'generated' (left) or 'original' (right).
-  let lyricsSource = 'generated';
-  let lyricsSourceLoadedForSession = null;
-  let lyricsSearching = false;
-  let lyricsSearchInfo = '';
-  let lyricsCandidates = [];      // LRCLIB entries to choose from
-  let showLyricsCandidates = false;
-  let chosenCandidateId = null;
-  let songDuration = null;
-  $: activeLyrics = (lyricsSource === 'original' ? comparisonLyrics : lyricsText) || '';
-  let comparisonState = null; // { text, marks: [{ from, to, color }] }
-  let comparisonLyricsLoadedForSession = null;
-  let generatedLyricsTextarea = null;
-  let comparisonLyricsTextarea = null;
-  let generatedEditor = null;
-  let comparisonEditor = null;
+  // ── Text field look (CodeMirror is styled globally: it lives in LyricsPanel) ──
   let zebraStyleEl = null;
-  let hyphenationResult = null;
-  let isTranscribing = false;
-  let transcribeInfo = null;
-  let transcribeStatus = '';
-  let transcribePhase = '';  // 'loading' | 'transcribing' | 'done' | 'error'
-  let transcribeElapsed = 0;
-  let transcribeModalOpen = false;
-  let whisperFallbackWarning = false;
-  let transcribeAbortController = null;
-  let transcribeTicker = null;
-  const transcribeModelPreset = 'balanced';
-
-  // Cleanup segments
-  let cleanupSegments = [];
-  let isGeneratingCleaned = false;
-  let cleanedAudioAvailable = false;
-  let cleanedAudioFilename = '';
-  let hasOriginalDemucs = false; // legacy compat
-  let hasEditedVocal = false; // true when edited_vocal exists (new design)
-
-  function startTranscribeTicker() {
-    transcribeElapsed = 0;
-    transcribeTicker = setInterval(() => { transcribeElapsed += 1; }, 1000);
-  }
-  function stopTranscribeTicker() {
-    if (transcribeTicker) { clearInterval(transcribeTicker); transcribeTicker = null; }
-  }
-
-  function getComparisonStorageKey() {
-    return $sessionId ? `comparison_lyrics_${$sessionId}` : null;
-  }
-
-  function loadComparisonLyrics() {
-    const key = getComparisonStorageKey();
-    if (!key) return;
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (parsed && typeof parsed.text === 'string') {
-            comparisonState = parsed;
-            comparisonLyrics = parsed.text;
-            return;
-          }
-        } catch {
-          comparisonLyrics = String(stored).replace(/<[^>]*>/g, '');
-          comparisonState = { text: comparisonLyrics, marks: [] };
-          return;
-        }
-      } else {
-        comparisonLyrics = '';
-        comparisonState = { text: '', marks: [] };
-      }
-    } catch (e) {
-      console.warn('Failed to load comparison lyrics:', e);
-    }
-  }
-
-  function saveComparisonLyrics() {
-    const key = getComparisonStorageKey();
-    if (!key || !comparisonEditor) return;
-    try {
-      const marks = comparisonEditor.getAllMarks()
-        .map(mark => {
-          const pos = mark.find();
-          if (!pos) return null;
-          return {
-            from: pos.from,
-            to: pos.to,
-            color: mark.__highlightColor || '#ffff0080',
-          };
-        })
-        .filter(Boolean);
-      const payload = {
-        text: comparisonEditor.getValue(),
-        marks,
-      };
-      comparisonLyrics = payload.text;
-      comparisonState = payload;
-      localStorage.setItem(key, JSON.stringify(payload));
-    } catch (e) {
-      console.warn('Failed to save comparison lyrics:', e);
-    }
-  }
-
-  function applyComparisonState(state) {
-    if (!comparisonEditor || !state) return;
-    const doc = comparisonEditor.getDoc();
-    comparisonEditor.operation(() => {
-      comparisonEditor.getAllMarks().forEach(mark => mark.clear());
-      if (Array.isArray(state.marks)) {
-        state.marks.forEach(mark => {
-          if (!mark?.from || !mark?.to || !mark?.color) return;
-          try {
-            const cmMark = doc.markText(mark.from, mark.to, { css: `background-color: ${mark.color};` });
-            cmMark.__highlightColor = mark.color;
-          } catch {
-            // Ignore invalid saved ranges
-          }
-        });
-      }
-    });
-  }
-
-  function setActiveLyrics(text) {
-    if (lyricsSource === 'original' && comparisonEditor) {
-      comparisonEditor.setValue(text);
-      // Highlights point into the old text; they'd land on the wrong words.
-      comparisonEditor.getAllMarks().forEach(mark => mark.clear());
-      saveComparisonLyrics();
-    } else {
-      lyricsText = text;
-    }
-  }
-
-  function lyricsSourceKey() {
-    return $sessionId ? `lyrics_source_${$sessionId}` : null;
-  }
-
-  function setLyricsSource(source) {
-    lyricsSource = source;
-    const key = lyricsSourceKey();
-    try { if (key) localStorage.setItem(key, source); } catch {}
-  }
-
-  $: if ($sessionId && lyricsSourceLoadedForSession !== $sessionId) {
-    lyricsSourceLoadedForSession = $sessionId;
-    let stored = null;
-    try { stored = localStorage.getItem(`lyrics_source_${$sessionId}`); } catch {}
-    lyricsSource = stored === 'original' ? 'original' : 'generated';
-  }
-
-  async function handleFindLyrics() {
-    if (!artist.trim() || !title.trim()) {
-      errorMessage.set('Enter Artist and Title to search for lyrics');
-      return;
-    }
-    if (comparisonLyrics.trim() && !(await showConfirm(
-      'Replace the text in the right field with the lyrics found online?',
-      { title: 'Find lyrics online', confirmLabel: 'Replace' },
-    ))) return;
-    errorMessage.set('');
-    lyricsSearchInfo = '';
-    lyricsCandidates = [];
-    showLyricsCandidates = false;
-    chosenCandidateId = null;
-    lyricsSearching = true;
-    try {
-      const found = await searchLyricsOnline($sessionId, artist.trim(), title.trim());
-      lyricsCandidates = found.candidates || [];
-      songDuration = found.song_duration || null;
-      if (found.found) {
-        useLyricsCandidate(found);
-      } else if (lyricsCandidates.length) {
-        lyricsSearchInfo = `No exact match for "${artist.trim()} – ${title.trim()}". Did you mean:`;
-        showLyricsCandidates = true;
-      } else {
-        lyricsSearchInfo = `No lyrics found on LRCLIB for "${artist.trim()} – ${title.trim()}". Check the spelling, or paste them yourself.`;
-      }
-    } catch (err) {
-      errorMessage.set(err.message);
-    } finally {
-      lyricsSearching = false;
-    }
-  }
-
-  function formatDuration(seconds) {
-    if (!seconds) return '';
-    const s = Math.round(seconds);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  }
-
-  /** Put an LRCLIB entry's lyrics into the right field and use them for generation. */
-  function useLyricsCandidate(entry) {
-    comparisonEditor.setValue(entry.text);
-    comparisonEditor.getAllMarks().forEach(mark => mark.clear());
-    saveComparisonLyrics();
-    setLyricsSource('original');
-    chosenCandidateId = entry.id;
-    showLyricsCandidates = false;
-    const length = entry.duration ? `, ${formatDuration(entry.duration)}` : '';
-    lyricsSearchInfo = `${entry.lines} lines from LRCLIB: ${entry.artist} – ${entry.track}${length}${entry.synced ? ', line-synced' : ''}. Check them against the song; repeated choruses must be written out.`;
-  }
-
-  function applyColorToSelection(color) {
-    if (!comparisonEditor) return;
-    const doc = comparisonEditor.getDoc();
-    if (!doc.somethingSelected()) {
-      console.warn('No text selected');
-      return;
-    }
-    const from = doc.getCursor('from');
-    const to = doc.getCursor('to');
-    const mark = doc.markText(from, to, { css: `background-color: ${color};` });
-    mark.__highlightColor = color;
-    saveComparisonLyrics();
-  }
-
-  function clearAllColors() {
-    if (!comparisonEditor) return;
-    comparisonEditor.getAllMarks().forEach(mark => mark.clear());
-    saveComparisonLyrics();
-  }
-
-  function getDividerStorageKey(editorName) {
-    return $sessionId ? `line_dividers_${editorName}_${$sessionId}` : null;
-  }
-
-  function saveDividers(cm, editorName) {
-    const key = getDividerStorageKey(editorName);
-    if (!key) return;
-    const dividerLines = [];
-    cm.eachLine((handle) => {
-      if (handle.__lineDividerActive) {
-        dividerLines.push(cm.getLineNumber(handle));
-      }
-    });
-    try { localStorage.setItem(key, JSON.stringify(dividerLines)); } catch {}
-  }
-
-  function loadDividers(cm, editorName) {
-    const key = getDividerStorageKey(editorName);
-    if (!key) return;
-    try {
-      const stored = localStorage.getItem(key);
-      if (!stored) return;
-      const lines = JSON.parse(stored);
-      if (!Array.isArray(lines)) return;
-      cm.operation(() => {
-        lines.forEach(lineNo => {
-          const handle = cm.getLineHandle(lineNo);
-          if (!handle) return;
-          cm.addLineClass(handle, 'wrap', 'cm-line-divider');
-          handle.__lineDividerActive = true;
-        });
-      });
-    } catch {}
-  }
-
-  function toggleLineUnderline(cm, lineNo, editorName) {
-    const handle = cm.getLineHandle(lineNo);
-    if (!handle) return;
-    const cls = 'cm-line-divider';
-    if (handle.__lineDividerActive) {
-      cm.removeLineClass(handle, 'wrap', cls);
-      handle.__lineDividerActive = false;
-    } else {
-      cm.addLineClass(handle, 'wrap', cls);
-      handle.__lineDividerActive = true;
-    }
-    saveDividers(cm, editorName);
-  }
-
-  // Load comparison lyrics once per session id.
-  $: if ($sessionId && comparisonLyricsLoadedForSession !== $sessionId) {
-    comparisonLyricsLoadedForSession = $sessionId;
-    comparisonLyrics = '';
-    comparisonState = null;
-    loadComparisonLyrics();
-    if (comparisonEditor) {
-      comparisonEditor.setValue(comparisonLyrics || '');
-      applyComparisonState(comparisonState);
-    }
-  }
-
-  $: if (generatedEditor && generatedEditor.getValue() !== (lyricsText || '')) {
-    const cursor = generatedEditor.getCursor();
-    generatedEditor.setValue(lyricsText || '');
-    try { generatedEditor.setCursor(cursor); } catch {}
-  }
-
-  $: if (comparisonEditor && comparisonEditor.getValue() !== (comparisonLyrics || '')) {
-    comparisonEditor.setValue(comparisonLyrics || '');
-    applyComparisonState(comparisonState);
-  }
-
-  // Save comparison lyrics when exiting Step 2
-  function saveComparisonOnDestroy() {
-    if ($sessionId && comparisonEditor) {
-      saveComparisonLyrics();
-    }
-  }
-
   onMount(() => {
-    if (!zebraStyleEl) {
-      zebraStyleEl = document.createElement('style');
-      zebraStyleEl.setAttribute('data-step2-cm-zebra', 'true');
-      zebraStyleEl.textContent = `
-        .lyrics-column .CodeMirror {
-          border: 1px solid #444;
-          border-radius: 6px;
-          height: 360px;
-          font-family: 'Courier New', monospace;
-          font-size: 0.95rem;
-          line-height: 1.5;
-          background: #0d0d0d;
-          color: #e0e0e0;
-        }
-        .lyrics-column .CodeMirror-focused {
-          border-color: #4a90e2;
-          box-shadow: 0 0 8px rgba(74, 144, 226, 0.3);
-        }
-        .lyrics-column .CodeMirror-gutters {
-          background: #161616;
-          border-right: 1px solid #333;
-        }
-        .lyrics-column .CodeMirror-linenumber {
-          color: #777;
-        }
-        .lyrics-column .CodeMirror-cursor {
-          border-left: 1px solid #ddd;
-        }
-        .lyrics-column .CodeMirror-selected {
-          background: rgba(79, 140, 255, 0.35);
-        }
-        .lyrics-column .CodeMirror-focused .CodeMirror-selected {
-          background: rgba(79, 140, 255, 0.45);
-        }
-        .lyrics-column .CodeMirror-focused .CodeMirror-selectedtext,
-        .lyrics-column .CodeMirror-selectedtext {
-          color: #ffffff;
-        }
-        .lyrics-column .CodeMirror-code > div:nth-child(even) .CodeMirror-line {
-          background: rgba(255, 255, 255, 0.08);
-        }
-        .lyrics-column .CodeMirror-code > div:nth-child(even) .CodeMirror-gutter-wrapper {
-          background: rgba(255, 255, 255, 0.08);
-        }
-        .lyrics-column .CodeMirror-code > div.cm-line-divider .CodeMirror-line {
-          border-bottom: 2px solid rgba(255, 255, 255, 0.55);
-          box-sizing: border-box;
-        }
-        .lyrics-column .CodeMirror-code > div.cm-line-divider .CodeMirror-gutter-wrapper,
-        .lyrics-column .CodeMirror-code > div.cm-line-divider .CodeMirror-gutter-elt {
-          border-bottom: 2px solid rgba(255, 255, 255, 0.55);
-          box-sizing: border-box;
-        }
-      `;
-      document.head.appendChild(zebraStyleEl);
-    }
-
-    if (generatedLyricsTextarea && !generatedEditor) {
-      generatedEditor = CodeMirror.fromTextArea(generatedLyricsTextarea, {
-        lineNumbers: true,
-        lineWrapping: true,
-        mode: null,
-      });
-      generatedEditor.setValue(lyricsText || '');
-      generatedEditor.on('change', (cm) => {
-        const value = cm.getValue();
-        if (value !== lyricsText) lyricsText = value;
-      });
-      generatedEditor.on('gutterClick', (cm, lineNo) => {
-        toggleLineUnderline(cm, lineNo, 'generated');
-      });
-      loadDividers(generatedEditor, 'generated');
-    }
-
-    if (comparisonLyricsTextarea && !comparisonEditor) {
-      comparisonEditor = CodeMirror.fromTextArea(comparisonLyricsTextarea, {
-        lineNumbers: true,
-        lineWrapping: true,
-        mode: null,
-      });
-      comparisonEditor.setValue(comparisonLyrics || '');
-      comparisonEditor.on('change', (cm) => {
-        comparisonLyrics = cm.getValue();
-        saveComparisonLyrics();
-      });
-      comparisonEditor.on('gutterClick', (cm, lineNo) => {
-        toggleLineUnderline(cm, lineNo, 'comparison');
-      });
-      if (comparisonState) applyComparisonState(comparisonState);
-      loadDividers(comparisonEditor, 'comparison');
-    }
-  });
-
-  // Load cleanup segments from editor when entering Step 2
-  async function loadCleanupSegments() {
-    if (!$sessionId || !$generationResult) return; // no result yet — nothing to load
-    try {
-      const editorData = await getEditorData($sessionId);
-      const newSegments = editorData.cleanup_segments || [];
-      cleanupSegments = newSegments;
-      // Restore cleaned audio state from backend (only reset if segments changed)
-      cleanedAudioAvailable = editorData.cleaned_audio_available || false;
-      if (!cleanedAudioAvailable) cleanedAudioFilename = '';
-      hasOriginalDemucs = editorData.has_original_demucs || false; // legacy
-      hasEditedVocal = editorData.has_edited_vocal || false;
-    } catch (e) {
-      console.error('[Step2] Failed to load cleanup segments:', e);
-      cleanupSegments = [];
-    }
-  }
-
-  // Handler for "Generate Lyrics from Cleaned Vocals" button
-  async function handleTranscribeFromCleaned() {
-    if (!$sessionId) return;
-    errorMessage.set('');
-    isTranscribing = true;
-    transcribePhase = 'loading';
-    transcribeStatus = 'Loading Whisper model…';
-    transcribeElapsed = 0;
-    transcribeModalOpen = true;
-    transcribeAbortController = new AbortController();
-    try {
-      transcribePhase = 'transcribing';
-      transcribeStatus = 'Transcribing cleaned vocals with Whisper…';
-      startTranscribeTicker();
-      const result = await transcribeAudio($sessionId, language, transcribeAbortController.signal, true, transcribeModelPreset);
-      stopTranscribeTicker();
-      lyricsText = result.text;
-      transcribeInfo = result;
-      transcribePhase = 'done';
-      transcribeStatus = `${result.lines} lines, ${result.words} words (${result.language_name}, ${result.model})`;
-      processingStatus.set('✅ Transcription from cleaned vocals complete');
-      if (result.model && !result.model.startsWith('whisperx-')) {
-        whisperFallbackWarning = true;
+    if (zebraStyleEl) return;
+    zebraStyleEl = document.createElement('style');
+    zebraStyleEl.setAttribute('data-step2-cm-zebra', 'true');
+    zebraStyleEl.textContent = `
+      .lyrics-column .CodeMirror {
+        border: 1px solid #444; border-radius: 6px; height: 360px;
+        font-family: 'Courier New', monospace; font-size: 0.95rem; line-height: 1.5;
+        background: #0d0d0d; color: #e0e0e0;
       }
-      setTimeout(() => { transcribeModalOpen = false; }, 1800);
-    } catch (err) {
-      stopTranscribeTicker();
-      if (err.name === 'AbortError') return;
-      transcribePhase = 'error';
-      transcribeStatus = err.message;
-      errorMessage.set(err.message);
-    } finally {
-      isTranscribing = false;
-    }
-  }
-
-  // Handler for "Generate Cleaned Preview" button
-  async function handleGenerateCleanedAudio() {
-    if (!$sessionId || cleanupSegments.length === 0) {
-      errorMessage.set('No cleanup segments to process');
-      return;
-    }
-    errorMessage.set('');
-    isGeneratingCleaned = true;
-    processingStatus.set('Generating cleaned audio preview...');
-    try {
-      const result = await generateCleanedAudio($sessionId, cleanupSegments);
-      cleanedAudioFilename = result.cleaned_audio_file;
-      cleanedAudioAvailable = true;
-      processingStatus.set('✅ Cleaned audio preview generated');
-    } catch (err) {
-      errorMessage.set(err.message);
-    } finally {
-      isGeneratingCleaned = false;
-    }
-  }
-
-  // Keep lyricsData in sync with local fields
-  $: lyricsData.set({
-    text: lyricsText,
-    artist,
-    title,
-    language,
-    syllableCount: $lyricsData.syllableCount,
-    lineCount: $lyricsData.lineCount,
-    preview: $lyricsData.preview
+      .lyrics-column .CodeMirror-focused { border-color: #4a90e2; box-shadow: 0 0 8px rgba(74, 144, 226, 0.3); }
+      .lyrics-column .CodeMirror-gutters { background: #161616; border-right: 1px solid #333; }
+      .lyrics-column .CodeMirror-linenumber { color: #777; }
+      .lyrics-column .CodeMirror-cursor { border-left: 1px solid #ddd; }
+      .lyrics-column .CodeMirror-selected { background: rgba(79, 140, 255, 0.35); }
+      .lyrics-column .CodeMirror-focused .CodeMirror-selected { background: rgba(79, 140, 255, 0.45); }
+      .lyrics-column .CodeMirror-focused .CodeMirror-selectedtext,
+      .lyrics-column .CodeMirror-selectedtext { color: #ffffff; }
+      .lyrics-column .CodeMirror-code > div:nth-child(even) .CodeMirror-line,
+      .lyrics-column .CodeMirror-code > div:nth-child(even) .CodeMirror-gutter-wrapper { background: rgba(255, 255, 255, 0.08); }
+      .lyrics-column .CodeMirror-code > div.cm-line-divider .CodeMirror-line,
+      .lyrics-column .CodeMirror-code > div.cm-line-divider .CodeMirror-gutter-wrapper,
+      .lyrics-column .CodeMirror-code > div.cm-line-divider .CodeMirror-gutter-elt {
+        border-bottom: 2px solid rgba(255, 255, 255, 0.55); box-sizing: border-box;
+      }
+    `;
+    document.head.appendChild(zebraStyleEl);
   });
-
-  // Handle file upload for .txt lyrics
-  function handleFileUpload(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      lyricsText = e.target.result;
-    };
-    reader.readAsText(file);
-  }
-
-  // Audio
-  $: hasVocals = $uploadData.hasVocals;
-  // Always use /vocals (original unedited vocal) for the Step 2 preview.
-  // With new design: /vocals is always the original. Legacy: use /demucs when has_original_demucs.
-  $: audioSrc = $sessionId && hasVocals
-    ? getAudioUrl($sessionId, hasOriginalDemucs && !hasEditedVocal ? 'demucs' : 'vocals')
-    : '';
-
-  $: if ($currentStep === 2 && $sessionId) {
-    checkTestSession();
-    loadCleanupSegments();
-  }
 
   onDestroy(() => {
-    saveComparisonOnDestroy();
-    if (zebraStyleEl && zebraStyleEl.parentNode) {
-      zebraStyleEl.parentNode.removeChild(zebraStyleEl);
-      zebraStyleEl = null;
-    }
-    if (generatedEditor) {
-      generatedEditor.toTextArea();
-      generatedEditor = null;
-    }
-    if (comparisonEditor) {
-      comparisonEditor.toTextArea();
-      comparisonEditor = null;
-    }
-    if ($sessionId && lyricsText.trim()) {
-      submitLyrics($sessionId, lyricsText, artist, title, language).catch(() => {});
-    } else if ($sessionId && artist.trim() && title.trim()) {
-      // No lyrics yet but names entered — persist them
-      updateMetadata($sessionId, artist.trim(), title.trim()).catch(() => {});
+    clearTimeout(autoSearchTimer);
+    if (saveTimer) flushSave();
+    if (zebraStyleEl && zebraStyleEl.parentNode) zebraStyleEl.parentNode.removeChild(zebraStyleEl);
+    zebraStyleEl = null;
+    if ($sessionId && artist.trim() && title.trim()) {
+      updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined).catch(() => {});
     }
   });
-
-  // ── Whisper transcription ──
-  async function handleTranscribe() {
-    if (!$sessionId) {
-      errorMessage.set('No session. Upload audio first.');
-      return;
-    }
-    errorMessage.set('');
-    isTranscribing = true;
-    transcribePhase = 'loading';
-    transcribeStatus = 'Loading Whisper model…';
-    transcribeElapsed = 0;
-    transcribeModalOpen = true;
-    transcribeAbortController = new AbortController();
-
-    try {
-      transcribePhase = 'transcribing';
-      transcribeStatus = 'Transcribing vocals with Whisper…';
-      startTranscribeTicker();
-      const result = await transcribeAudio($sessionId, language, transcribeAbortController.signal, false, transcribeModelPreset);
-      stopTranscribeTicker();
-      console.log('[Step2] Whisper result:', result);
-      lyricsText = result.text;
-      transcribeInfo = result;
-      transcribePhase = 'done';
-      transcribeStatus = `${result.lines} lines, ${result.words} words (${result.language_name}, ${result.model})`;
-      processingStatus.set('✅ Transcription complete');
-      if (result.model && !result.model.startsWith('whisperx-')) {
-        whisperFallbackWarning = true;
-      }
-      setTimeout(() => { transcribeModalOpen = false; }, 1800);
-    } catch (err) {
-      stopTranscribeTicker();
-      if (err.name === 'AbortError') return; // cancelled silently
-      console.error('[Step2] Transcription error:', err);
-      transcribePhase = 'error';
-      transcribeStatus = err.message;
-      errorMessage.set(err.message);
-    } finally {
-      isTranscribing = false;
-    }
-  }
-
-  function cancelTranscription() {
-    stopTranscribeTicker();
-    isTranscribing = false;
-    transcribeModalOpen = false;
-    transcribePhase = '';
-    if (transcribeAbortController) transcribeAbortController.abort();
-    cancelTranscribe($sessionId);
-  }
 </script>
-
 <div class="step-content">
-  <h2>Step 2: Lyrics</h2>
-
-  <div class="form-group" style="margin-bottom:2rem;">
-    <label for="language"><strong>Language (required)</strong></label>
-    <select id="language" bind:value={language}>
-      <option value="" disabled selected>Select language…</option>
-      {#each SUPPORTED_LANGUAGES as lang}
-        <option value={lang.code}>{lang.label}</option>
-      {/each}
-    </select>
-    {#if !language}
-      <div class="lang-warning">language of the song</div>
-    {/if}
-  </div>
-
-  {#if language}
-    {#if !hasVocals}
-      <div class="no-vocals-warning">
-        <p>⚠️ No vocal track found.</p>
-        <p class="hint">Please go back to <button class="link-btn" on:click={() => currentStep.set(1)}>Step 1</button> to extract or upload vocals before generating lyrics.</p>
-      </div>
-      <!--
-      <div class="back-btn-row">
-        <button class="btn btn-secondary" on:click={() => currentStep.set(1)}>← Back to Step 1</button>
-      </div>
-      -->
-    {:else}
-      <div class="audio-section">
-        <audio controls src={audioSrc}>
-          Your browser does not support the audio element.
-        </audio>
-        <div class="transcribe-area">
-          <button
-            class="btn btn-transcribe"
-            on:click={handleTranscribe}
-            disabled={isTranscribing || $isProcessing}
-          >
-            🎙️ Generate Lyrics from Vocals
-          </button>
-          <p class="transcribe-hint">This will use AI to listen to your vocal track and automatically generate lyrics. You can review and edit the result below.</p>
-        </div>
-        {#if transcribeInfo}
-          <div class="transcribe-info">
-            Whisper ({transcribeInfo.model}): {transcribeInfo.words} words, {transcribeInfo.lines} lines — review and correct below
-          </div>
-        {/if}
-      </div>
-    {/if}
-
-    {#if (hasEditedVocal || (cleanupSegments.length > 0 && cleanedAudioAvailable)) && $sessionId}
-      <div class="cleanup-banner">
-        <div class="cleanup-banner-content">
-          <span class="cleanup-banner-icon">🧹</span>
-          <div class="cleanup-banner-text">
-            <strong>{cleanupSegments.length > 0 ? `${cleanupSegments.length} cleanup ${cleanupSegments.length === 1 ? 'section' : 'sections'} applied` : 'Edited vocals available'}</strong>
-            <p class="cleanup-banner-hint">The edited vocal preview reflects your current cleanup sections from Step 4.</p>
-          </div>
-        </div>
-        <div class="cleanup-audio-compare">
-          <div class="audio-label">✨ Edited Vocals</div>
-          <audio controls src={getAudioUrl($sessionId, hasEditedVocal ? 'edited' : 'cleaned')}>
-            Your browser does not support the audio element.
-          </audio>
-          <div class="cleanup-transcribe-row">
-            <button
-              class="btn btn-transcribe"
-              on:click={handleTranscribeFromCleaned}
-              disabled={isTranscribing || $isProcessing}
-            >
-              🎙️ Generate Lyrics from Cleaned Vocals
-            </button>
-            <p class="transcribe-hint">Use AI to re-transcribe the cleaned audio. This will replace the current lyrics.</p>
-          </div>
-        </div>
-      </div>
-    {/if}
-
-    <div class="form-row">
-      <div class="form-group half">
-        <label for="artist">Artist <span class="required">*</span></label>
-        <input id="artist" type="text" bind:value={artist} placeholder="Artist name" class:input-missing={!artist.trim()} on:blur={syncMetadata} />
-      </div>
-      <div class="form-group half">
-        <label for="title">Title <span class="required">*</span></label>
-        <input id="title" type="text" bind:value={title} placeholder="Song title" class:input-missing={!title.trim()} on:blur={syncMetadata} />
-      </div>
-    </div>
-
-    <div class="lyrics-source" role="radiogroup" aria-label="Lyrics for generation">
-      <span class="lyrics-source-label">Lyrics for generation:</span>
-      <label class="lyrics-source-option">
-        <input type="radio" name="lyrics-source" value="generated" checked={lyricsSource === 'generated'} on:change={() => setLyricsSource('generated')} />
-        Generated lyrics (left)
-      </label>
-      <label class="lyrics-source-option">
-        <input type="radio" name="lyrics-source" value="original" checked={lyricsSource === 'original'} on:change={() => setLyricsSource('original')} />
-        Original lyrics (right)
-      </label>
-    </div>
-
-    <div class="lyrics-comparison-container">
-      <div class="form-group lyrics-column" class:selected-source={lyricsSource === 'generated'}>
-        <label for="lyrics">
-          Generated Lyrics
-          <span class="hint">(one line per phrase, use - for syllable splits: beau-ti-ful)</span>
-        </label>
-        <textarea
-          id="lyrics"
-          bind:this={generatedLyricsTextarea}
-          rows="15"
-          placeholder="The heart is a bloom&#10;Shoots up through the sto-ny ground&#10;There's no room&#10;..."
-        >{lyricsText}</textarea>
-      </div>
-
-      <div class="form-group lyrics-column" class:selected-source={lyricsSource === 'original'}>
-        <div class="column-header">
-          <label for="comparison">Original Lyrics</label>
-          <button class="btn btn-secondary small" on:click={handleFindLyrics}
-                  disabled={lyricsSearching || $isProcessing || !artist.trim() || !title.trim()}
-                  title="Search the published lyrics on lrclib.net by artist and title">
-            {lyricsSearching ? '🔎 Searching…' : '🔎 Find lyrics online'}
-          </button>
-        </div>
-        {#if lyricsSearchInfo}
-          <p class="hint lyrics-search-info">
-            {lyricsSearchInfo}
-            {#if chosenCandidateId !== null && lyricsCandidates.length > 1}
-              <button class="link-btn" on:click={() => showLyricsCandidates = !showLyricsCandidates}>
-                {showLyricsCandidates ? 'Hide other versions' : `Choose another version (${lyricsCandidates.length - 1})`}
-              </button>
-            {/if}
-          </p>
-        {/if}
-        {#if showLyricsCandidates}
-          <ul class="lyrics-candidates">
-            {#each lyricsCandidates as entry (entry.id)}
-              <li>
-                <button class="lyrics-candidate" class:chosen={entry.id === chosenCandidateId} on:click={() => useLyricsCandidate(entry)}>
-                  <span class="candidate-title">{entry.track} — {entry.artist}</span>
-                  <span class="candidate-meta">
-                    {#if entry.album}{entry.album} · {/if}{formatDuration(entry.duration)}
-                    {#if entry.length_match === true}<span class="length-ok" title="Same length as your song ({formatDuration(songDuration)})">✓ same length</span>{/if}
-                    {#if entry.length_match === false}<span class="length-off" title="Your song is {formatDuration(songDuration)}">other length</span>{/if}
-                    · {entry.lines} lines{entry.synced ? ' · synced' : ''}
-                  </span>
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        <textarea
-          id="comparison"
-          bind:this={comparisonLyricsTextarea}
-          rows="15"
-        >{comparisonLyrics}</textarea>
-
-        <div class="color-controls">
-          <button class="color-btn yellow" on:click={() => applyColorToSelection('#ffff0080')} title="Highlight in yellow">🟨</button>
-          <button class="color-btn red" on:click={() => applyColorToSelection('#ff000080')} title="Highlight in red">🟥</button>
-          <button class="color-btn green" on:click={() => applyColorToSelection('#00ff0080')} title="Highlight in green">🟩</button>
-          <button class="color-btn blue" on:click={() => applyColorToSelection('#0000ff80')} title="Highlight in blue">🟦</button>
-          <button class="color-btn clear" on:click={clearAllColors} title="Clear all colors">⚪ Clear</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="action-row">
-      <button class="btn btn-hyphen small" on:click={handleAutoHyphenate} disabled={$isProcessing || !activeLyrics.trim()}>
-        ✂️ Auto-Hyphenate
-      </button>
-    </div>
-    <div class="generate-row">
-      <button class="btn btn-primary btn-generate" on:click={() => handleSubmit(false)} disabled={$isProcessing || !activeLyrics.trim() || !artist.trim() || !title.trim() || !$sessionId}>
-        🚀 Generate Full Ultrastar Files
-      </button>
-      <button class="btn btn-secondary btn-generate" on:click={handleGenerateEmpty} disabled={$isProcessing || !$sessionId || !artist.trim() || !title.trim()} title="Skip note alignment — open editor with empty file">
-        📄 Generate Empty Ultrastar File
-      </button>
-      {#if cleanedAudioAvailable}
-        <button class="btn btn-generate-cleaned btn-generate" on:click={() => handleSubmit(true)} disabled={$isProcessing || !activeLyrics.trim() || !artist.trim() || !title.trim() || !$sessionId}>
-          ✨ Generate from Cleaned Vocals
-        </button>
-      {/if}
-    </div>
-    {#if !$isProcessing}
-      {@const missing = [!artist.trim() && 'Artist', !title.trim() && 'Title', !activeLyrics.trim() && 'Lyrics'].filter(Boolean)}
-      {#if missing.length > 0}
-        <p class="missing-hint">Required for full generate: {missing.join(', ')}</p>
-      {/if}
-    {/if}
-  {/if}
   <style>
     .lang-warning {
       color: #b00;
@@ -989,24 +464,75 @@
       border-color: #777;
     }
   </style>
+  <h2>Step 2: Lyrics</h2>
 
-  {#if $lyricsData.preview.length > 0 && !$generationModalOpen}
-    <!-- <div class="preview-section">
-      <h3>Syllable Preview ({$lyricsData.syllableCount} syllables, {$lyricsData.lineCount} lines)</h3>
-      <div class="preview-lines">
-        {#each $lyricsData.preview as line}
-          <div class="preview-line">
-            <span class="line-num">L{line.line}</span>
-            <div class="syllables">
-              {#each line.syllables as syl}
-                <span class="syllable">{syl}</span>
-              {/each}
-            </div>
-          </div>
+  <div class="form-row song-row">
+    <div class="form-group">
+      <label for="artist">Artist <span class="required">*</span></label>
+      <input id="artist" type="text" bind:value={artist} placeholder="Artist name" class:input-missing={!artist.trim()} on:blur={syncMetadata} />
+    </div>
+    <div class="form-group">
+      <label for="title">Title <span class="required">*</span></label>
+      <input id="title" type="text" bind:value={title} placeholder="Song title" class:input-missing={!title.trim()} on:blur={syncMetadata} />
+    </div>
+    <div class="form-group language-group">
+      <label for="language">Language <span class="required">*</span></label>
+      <select id="language" bind:value={language} on:change={syncMetadata}>
+        <option value="" disabled selected>Select language…</option>
+        {#each SUPPORTED_LANGUAGES as lang}
+          <option value={lang.code}>{lang.label}</option>
         {/each}
-      </div>
-    </div> -->
+      </select>
+      {#if !language}<div class="lang-warning">language of the song</div>{/if}
+    </div>
+  </div>
+
+  {#if !hasVocals}
+    <div class="no-vocals-warning">
+      <p>⚠️ No vocal track yet.</p>
+      <p class="hint">LRCLIB works without it, but listening and generating need the vocals: go back to
+        <button class="link-btn" on:click={() => currentStep.set(1)}>Step 1</button> to extract or upload them.</p>
+    </div>
   {/if}
+
+  <div class="lyrics-comparison-container">
+    {#each ['left', 'right'] as side (side)}
+      <LyricsPanel
+        {side}
+        tab={tabs[side]}
+        tabs={tabList}
+        {sources}
+        {busy}
+        audioUrls={{ vocals: vocalsUrl, cleaned: cleanedUrl }}
+        candidates={lyricsCandidates}
+        {chosenCandidateId}
+        {songDuration}
+        canSearch={!!(artist.trim() && title.trim())}
+        {canGenerate}
+        {generateHint}
+        disabled={$isProcessing || isTranscribing}
+        on:tab={handleTab}
+        on:change={handlePanelChange}
+        on:search={() => handleFindLyrics(false)}
+        on:choose={(e) => useLyricsCandidate(e.detail)}
+        on:transcribe={handleTranscribe}
+        on:generate={handleGenerate}
+      />
+    {/each}
+  </div>
+
+  {#if hasCleaned}
+    <label class="cleaned-toggle">
+      <input type="checkbox" bind:checked={useCleanedForTiming} />
+      Use the cleaned vocals (your Step 4 cleanup) for the timing
+    </label>
+  {/if}
+
+  <div class="generate-row">
+    <button class="btn btn-secondary btn-generate" on:click={handleGenerateEmpty} disabled={$isProcessing || !$sessionId || !artist.trim() || !title.trim()} title="Skip note alignment — open editor with empty file">
+      📄 Generate empty UltraStar file
+    </button>
+  </div>
 
   {#if $processingStatus}
     <div class="status-bar">{$processingStatus}</div>
@@ -1015,8 +541,6 @@
     <div class="error-bar">❌ {$errorMessage}</div>
   {/if}
 </div>
-
-      {#if false}{/if}
 
 {#if whisperFallbackWarning}
   <div class="warning-modal-overlay" on:click={() => whisperFallbackWarning = false}>
@@ -1071,90 +595,10 @@
 {/if}
 
 <style>
-  .lyrics-column.selected-source :global(.CodeMirror) {
-    border-color: #4caf50;
-    box-shadow: 0 0 0 1px #4caf50;
-  }
-  .lyrics-source {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 1.25rem;
-    margin: 0.5rem 0 0.75rem;
-  }
-  .lyrics-source-label {
-    font-weight: 600;
-  }
-  .lyrics-source-option {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    cursor: pointer;
-    font-weight: normal;
-  }
-  .column-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-  .lyrics-search-info {
-    margin: 0.25rem 0 0.5rem;
-  }
-  .lyrics-candidates {
-    list-style: none;
-    margin: 0 0 0.5rem;
-    padding: 0;
-    max-height: 220px;
-    overflow-y: auto;
-    border: 1px solid #444;
-    border-radius: 6px;
-  }
-  .lyrics-candidate {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.15rem;
-    width: 100%;
-    padding: 0.4rem 0.6rem;
-    border: none;
-    border-bottom: 1px solid #333;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .lyrics-candidate:hover,
-  .lyrics-candidate:focus-visible {
-    background: rgba(79, 140, 255, 0.15);
-  }
-  .lyrics-candidate.chosen {
-    background: rgba(76, 175, 80, 0.18);
-  }
-  .candidate-title {
-    font-weight: 600;
-  }
-  .candidate-meta {
-    font-size: 0.85em;
-    opacity: 0.8;
-  }
-  .length-ok {
-    color: #4caf50;
-    margin-left: 0.25rem;
-  }
-  .length-off {
-    color: #e0a030;
-    margin-left: 0.25rem;
-  }
-  .warning-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9999;
-  }
+  .song-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+  .song-row .form-group { flex: 1 1 200px; }
+  .song-row .language-group { flex: 0 1 220px; }
+  .cleaned-toggle { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0; color: #ccc; cursor: pointer; }
 
   .warning-modal {
     background: #1e2330;
@@ -1200,7 +644,6 @@
   }
 
   h2 { color: #4fc3f7; margin-bottom: 1rem; }
-  h3 { color: #aaa; margin: 1rem 0 0.5rem; font-size: 0.95rem; }
 
   .form-row {
     display: flex;
@@ -1211,9 +654,6 @@
     margin-bottom: 1rem;
   }
 
-  .form-group.half {
-    flex: 1;
-  }
 
   label {
     display: block;
@@ -1237,14 +677,8 @@
     background: #1e1a1a !important;
   }
 
-  .missing-hint {
-    font-size: 0.8rem;
-    color: #888;
-    margin: 0.3rem 0 0;
-    text-align: right;
-  }
 
-  input, select, textarea {
+  input, select {
     width: 100%;
     padding: 0.6rem;
     border: 1px solid #444;
@@ -1256,64 +690,19 @@
     box-sizing: border-box;
   }
 
-  textarea {
-    resize: vertical;
-    font-family: 'Courier New', monospace;
-    line-height: 1.5;
-  }
 
-  input:focus, select:focus, textarea:focus {
+  input:focus, select:focus {
     outline: none;
     border-color: #4fc3f7;
   }
 
-  .btn-transcribe { background: #6a1b9a; color: white; font-size: 0.85rem; padding: 0.5rem 1rem; }
-  .btn-transcribe { white-space: nowrap; }
-  .btn-transcribe:hover:not(:disabled) { background: #8e24aa; }
-  .btn-transcribe:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .audio-section {
-    background: linear-gradient(135deg, #1a3a3a 0%, #1a2e3a 100%);
-    border: 1px solid #2a7a7a;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-  }
 
-  .audio-section audio {
-    width: 100%;
-    margin-bottom: 0.75rem;
-  }
 
-  .cleanup-audio-compare {
-    margin-top: 1rem;
-    border-top: 1px solid #2a4a2a;
-    padding-top: 0.75rem;
-  }
 
-  .cleanup-audio-compare audio {
-    width: 100%;
-    margin-bottom: 0.5rem;
-  }
 
-  .cleanup-transcribe-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-  }
 
-  .cleanup-transcribe-row .transcribe-hint {
-    margin: 0;
-    padding-top: 0.6rem;
-  }
 
-  .transcribe-area {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 16px;
-  }
 
   .transcribe-hint {
     color: #888;
@@ -1322,18 +711,13 @@
     margin: 0;
   }
 
-  .no-audio-warning, .no-vocals-warning {
+  .no-vocals-warning {
     border-radius: 8px;
     padding: 0.75rem 1rem;
     margin-bottom: 0.75rem;
     font-size: 0.85rem;
   }
 
-  .no-audio-warning {
-    background: #3e1a1a;
-    border: 1px solid #c62828;
-    color: #ef9a9a;
-  }
 
   .no-vocals-warning {
     background: #3e2e1a;
@@ -1341,7 +725,7 @@
     color: #ffcc80;
   }
 
-  .no-audio-warning p, .no-vocals-warning p {
+  .no-vocals-warning p {
     margin: 0;
   }
 
@@ -1356,115 +740,22 @@
   }
   .link-btn:hover { color: #81d4fa; }
 
-  .transcribe-info {
-    background: #1a0e2e;
-    border: 1px solid #6a1b9a;
-    border-radius: 6px;
-    padding: 0.5rem 0.75rem;
-    color: #ce93d8;
-    font-size: 0.8rem;
-    margin-bottom: 1rem;
-  }
 
-  .cleanup-banner {
-    background: linear-gradient(135deg, #1a3a3a 0%, #1a2e3a 100%);
-    border: 1px solid #2a7a7a;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-  }
 
-  .cleanup-banner-content {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-  }
 
-  .cleanup-banner-icon {
-    font-size: 1.5rem;
-    flex-shrink: 0;
-    line-height: 1;
-  }
 
-  .cleanup-banner-text {
-    flex: 1;
-  }
 
-  .cleanup-banner-text strong {
-    display: block;
-    color: #4fc3f7;
-    font-size: 0.95rem;
-    margin-bottom: 0.3rem;
-  }
 
-  .cleanup-banner-hint {
-    color: #aaa;
-    font-size: 0.8rem;
-    line-height: 1.4;
-    margin: 0;
-  }
 
-  .btn-cleanup {
-    background: #00897b;
-    color: white;
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
 
-  .btn-cleanup:hover:not(:disabled) {
-    background: #00a89a;
-  }
 
-  .btn-cleanup:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
-  .cleanup-status {
-    display: flex;
-    align-items: center;
-  }
 
-  .cleanup-status-badge {
-    padding: 0.4rem 1rem;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
 
-  .cleanup-status-badge.generating {
-    background: #1a3a1a;
-    color: #4fc3f7;
-    border: 1px solid #2a7a2a;
-  }
 
-  .cleanup-status-badge.ready {
-    background: #1a3a1a;
-    color: #81c784;
-    border: 1px solid #2a7a2a;
-  }
 
-  .audio-label {
-    color: #aaa;
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin-bottom: 0.4rem;
-    margin-top: 1rem;
-  }
 
-  .audio-label:first-child {
-    margin-top: 0;
-  }
 
-  .action-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-  }
 
   .generate-row {
     display: flex;
@@ -1479,15 +770,7 @@
     font-size: 1rem;
   }
 
-  .btn-generate-cleaned {
-    background: #1a3a1a;
-    color: #81c784;
-    border: 1px solid #2a7a2a;
-  }
 
-  .btn-generate-cleaned:hover:not(:disabled) {
-    background: #2a4a2a;
-  }
 
   .btn {
     display: inline-block;
@@ -1498,69 +781,16 @@
     cursor: pointer;
     transition: all 0.2s;
   }
-  .btn.small { font-size: 0.8rem; padding: 0.5rem 1rem; }
-  .btn-primary { background: #1976d2; color: white; }
-  .btn-primary:hover:not(:disabled) { background: #1565c0; }
   .btn-secondary { background: #333; color: #ccc; border: 1px solid #555; }
   .btn-secondary:hover:not(:disabled) { background: #444; }
-  .btn-hyphen { background: #e65100; color: white; }
-  .btn-hyphen:hover:not(:disabled) { background: #f57c00; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .hyphenation-info {
-    margin-top: 0.75rem;
-    padding: 0.75rem;
-    background: #2e1a00;
-    border: 1px solid #e65100;
-    border-radius: 8px;
-    color: #ffcc80;
-    font-size: 0.85rem;
-  }
 
-  .hyphenation-info .hint {
-    color: #999;
-    margin-top: 0.3rem;
-  }
 
-  .preview-section {
-    margin-top: 1rem;
-    border: 1px solid #333;
-    border-radius: 8px;
-    padding: 1rem;
-    background: #111;
-    max-height: 300px;
-    overflow-y: auto;
-  }
 
-  .preview-line {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    margin-bottom: 0.4rem;
-  }
 
-  .line-num {
-    color: #666;
-    font-size: 0.75rem;
-    min-width: 2rem;
-    padding-top: 0.2rem;
-  }
 
-  .syllables {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.2rem;
-  }
 
-  .syllable {
-    background: #1a2e4a;
-    border: 1px solid #2a4a6e;
-    border-radius: 4px;
-    padding: 0.15rem 0.4rem;
-    font-size: 0.8rem;
-    color: #4fc3f7;
-    font-family: 'Courier New', monospace;
-  }
 
   .status-bar {
     background: #1a2e4a;

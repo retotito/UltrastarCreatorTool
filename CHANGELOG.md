@@ -19,9 +19,13 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Previous behaviour available with `ULTRASTAR_ALIGNMENT_ENGINE=legacy`
 - Works for lyrics in every script (Cyrillic, Greek, Arabic, Chinese, Japanese, …) via uroman
 
-### 🔎 Find lyrics online
-- Step 2 can fetch the published lyrics from [LRCLIB](https://lrclib.net) into the right field
-- Choose which field (left: transcribed, right: original) is used for hyphenation and generation
+### 📝 New Step 2
+- Artist, title and language at the top; for file uploads taken from the file's tags or name
+- Two sides with tabs for the lyrics sources: **LRCLIB** (published lyrics, searched automatically), **Vocals**
+  (Whisper) and **Cleaned vocals** (Whisper on your Step 4 cleanup) — compare any two side by side
+- Each side has its own "Generate UltraStar file"; with a cleanup, the timing uses the cleaned vocals (checkbox)
+- Hyphenation happens automatically when generating; words you split yourself are kept
+- Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
 ### 🌍 Hyphenation in more languages
 - Uses pyphen's dictionary for every language that has one (Russian, Greek, Ukrainian, Catalan, …), one syllable

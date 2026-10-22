@@ -133,14 +133,11 @@
     isProcessing.set(true);
     processingStatus.set('Uploading full mix…');
     try {
-      if ($sessionId) {
-        const mixResult = await uploadMixAudio($sessionId, file);
-        uploadData.update(d => ({ ...d, filename: mixResult.filename || file.name, hasOriginal: true }));
-      } else {
-        const result = await uploadAudio(file);
-        sessionId.set(result.session_id);
-        uploadData.update(d => ({ ...d, filename: result.filename, hasOriginal: true }));
-      }
+      const result = $sessionId ? await uploadMixAudio($sessionId, file) : await uploadAudio(file);
+      if (!$sessionId) sessionId.set(result.session_id);
+      uploadData.update(d => ({ ...d, filename: result.filename || file.name, hasOriginal: true }));
+      // Artist and title from the file's tags or name, for Step 2 (without overwriting what is there).
+      lyricsData.update(d => ({ ...d, artist: d.artist || result.artist || '', title: d.title || result.title || '' }));
       processingStatus.set('Full mix uploaded.');
     } catch (err) {
       errorMessage.set(err.message);

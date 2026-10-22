@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In progress |
+| **Status** | Built (2026-10-22), being tested |
 | **Created** | 2026-10-22 |
 | **Goal** | One clear Step 2: compare lyrics from LRCLIB, the vocals and the cleaned vocals side by side, generate from either side |
 
@@ -40,7 +40,9 @@ Artist [          ]  Title [          ]  Language [ ▾ ]
 
 ## Steps
 
-1. Backend: per-word hyphenation; lyric sources in the session (GET/PUT); artist/title from tags or file name on
+1. ✅ Backend: per-word hyphenation; lyric sources in the session (GET/PUT); artist/title from tags or file name on
    upload.
-2. Frontend: new Step 2 layout (side component with tabs), generate per side, cleaned-vocals checkbox, warning.
-3. Test together; docs and changelog.
+2. ✅ Frontend: new Step 2 layout (`LyricsPanel.svelte` per side), generate per side, cleaned-vocals checkbox,
+   warning before replacing a chart. Old sessions: the left "Generated Lyrics" text becomes the Vocals tab, the
+   right (browser-only) text the LRCLIB tab.
+3. Test together.

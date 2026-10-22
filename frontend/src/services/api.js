@@ -224,6 +224,14 @@ export async function submitLyrics(sessionId, lyrics, artist, title, language) {
   return request('POST', `/lyrics/${sessionId}`, form, true);
 }
 
+export async function getLyricsSources(sessionId) {
+  return request('GET', `/lyrics-sources/${sessionId}`, null, false, true);
+}
+
+export async function saveLyricsSources(sessionId, payload) {
+  return request('PUT', `/lyrics-sources/${sessionId}`, payload, false, true);
+}
+
 export async function searchLyricsOnline(sessionId, artist, title) {
   const params = new URLSearchParams({ artist, title });
   return request('GET', `/lyrics-search/${sessionId || 'none'}?${params}`);
