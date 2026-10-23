@@ -94,10 +94,10 @@ export async function newSession() {
   return request('POST', '/new-session');
 }
 
-export async function uploadAudio(file) {
+export async function uploadAudio(file, signal = null) {
   const form = new FormData();
   form.append('audio', file);
-  return request('POST', '/upload', form, true);
+  return request('POST', '/upload', form, true, false, signal);
 }
 
 export async function extractVocals(sessionId, signal = null) {
@@ -145,16 +145,16 @@ export function streamYouTubeImport(videoId, sessionId, onEvent) {
   return () => es.close();
 }
 
-export async function uploadCorrectedVocals(sessionId, file) {
+export async function uploadCorrectedVocals(sessionId, file, signal = null) {
   const form = new FormData();
   form.append('vocals', file);
-  return request('POST', `/upload-vocals/${sessionId}`, form, true);
+  return request('POST', `/upload-vocals/${sessionId}`, form, true, false, signal);
 }
 
-export async function uploadMixAudio(sessionId, file) {
+export async function uploadMixAudio(sessionId, file, signal = null) {
   const form = new FormData();
   form.append('audio', file);
-  return request('POST', `/upload-mix/${sessionId}`, form, true);
+  return request('POST', `/upload-mix/${sessionId}`, form, true, false, signal);
 }
 
 export async function deleteAudio(sessionId, type) {

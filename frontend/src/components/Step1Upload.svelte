@@ -76,139 +76,114 @@
   function handleSongConfirmed(event) {
     lyricsData.update(d => ({ ...d, artist: event.detail.artist, title: event.detail.title, language: event.detail.language,
                                language2: event.detail.language2 || '' }));
-    // The audio file is now named "Artist - Title".
-    if (event.detail.filename && $uploadData.hasOriginal) uploadData.update(d => ({ ...d, filename: event.detail.filename }));
+    // The audio file is now named "Artist - Title" (an uploaded vocals-only file "Artist - Title [Vocals]").
+    const name = event.detail.filename;
+    if (name && $uploadData.hasOriginal) uploadData.update(d => ({ ...d, filename: name }));
+    else if (name && $uploadData.hasVocals) uploadData.update(d => ({ ...d, vocalsFilename: name }));
     songModalOpen = false;
   }
 
-  // ── YouTube link ────────────────────────────────────────
+  // ── Getting a song: upload or YouTube download ─────────
+  // While a file uploads or YouTube downloads, a window with a spinner blocks the page until it is done or
+  // cancelled. Then "Which song is this?" asks for the names and languages and the file is named "Artist - Title".
   let youtubeLink = '';
-  let youtubePreview = null;   // details of the pasted video
-  let youtubeBusy = false;
-  let youtubeStatus = '';
-  let youtubePercent = null;
-  let youtubeInspectAbort = null;   // cancels "▶ Get"
-  let youtubeStopImport = null;     // cancels "⬇ Download audio"
+  let transfer = null;   // { title, status, percent, cancel } while busy
 
-  // While YouTube is busy, a window blocks the page (and its scrolling) until it is done or cancelled.
-  $: if (typeof document !== 'undefined') document.body.style.overflow = youtubeBusy ? 'hidden' : '';
+  $: if (typeof document !== 'undefined') document.body.style.overflow = transfer ? 'hidden' : '';
 
-  function cancelYouTube() {
-    youtubeInspectAbort?.abort();
-    youtubeStopImport?.();
-    youtubeInspectAbort = youtubeStopImport = null;
-    youtubeStatus = '';
-    youtubePercent = null;
-    youtubeBusy = false;
-    isProcessing.set(false);
-    processingStatus.set('YouTube download cancelled.');
-  }
-
-  function formatDuration(seconds) {
-    if (!seconds) return '';
-    const s = Math.round(seconds);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  }
-
-  async function handleYouTubeInspect() {
-    if (!youtubeLink.trim()) return;
+  /** Runs `job(control)` behind the busy window. `control.signal` is aborted on Cancel; `control.onCancel(fn)`
+   *  adds more to do then (e.g. closing the YouTube stream). Returns the job's result, or null if cancelled. */
+  async function runTransfer(title, status, job) {
     errorMessage.set('');
-    youtubePreview = null;
-    youtubeBusy = true;
-    youtubeStatus = 'Getting the video details… (the first time this also downloads the YouTube tools, about a minute)';
-    const abort = youtubeInspectAbort = new AbortController();
+    isProcessing.set(true);
+    const abort = new AbortController();
+    const extra = [];
+    transfer = { title, status, percent: null, cancel: () => { abort.abort(); extra.forEach(fn => fn()); } };
+    const control = {
+      signal: abort.signal,
+      onCancel: (fn) => extra.push(fn),
+      progress: (status, percent = null) => { if (transfer) transfer = { ...transfer, status, percent }; },
+    };
     try {
-      youtubePreview = await inspectYouTube(youtubeLink.trim(), abort.signal);
-      youtubeStatus = '';
+      return await job(control);
     } catch (err) {
-      if (abort.signal.aborted) return;   // cancelled: cancelYouTube already reset everything
-      youtubeStatus = '';
-      errorMessage.set(err.message);
+      if (!abort.signal.aborted) errorMessage.set(err.message);
+      return null;
     } finally {
-      if (!abort.signal.aborted) youtubeBusy = false;
-      if (youtubeInspectAbort === abort) youtubeInspectAbort = null;
+      if (abort.signal.aborted) processingStatus.set('Cancelled.');
+      transfer = null;
+      isProcessing.set(false);
     }
   }
 
-  function handleYouTubeImport() {
-    if (!youtubePreview) return;
-    errorMessage.set('');
-    youtubeBusy = true;
-    isProcessing.set(true);
-    youtubePercent = null;
-    youtubeStatus = 'Starting…';
-    youtubeStopImport = streamYouTubeImport(youtubePreview.video_id, $sessionId, (event) => {
-      if (event.phase === 'error' || event.phase === 'done') youtubeStopImport = null;
-      if (event.phase === 'error') {
-        errorMessage.set(event.message);
-        youtubeStatus = '';
-        youtubeBusy = false;
-        isProcessing.set(false);
-        return;
-      }
-      youtubeStatus = event.message;
-      youtubePercent = event.percent ?? null;
-      if (event.phase === 'done') {
-        sessionId.set(event.session_id);
-        uploadData.update(d => ({ ...d, filename: event.filename, hasOriginal: true }));
-        askForSong(event);   // event.language: what YouTube knows, if anything
-        processingStatus.set(`Audio from YouTube: ${event.artist ? event.artist + ' – ' : ''}${event.title}`);
-        youtubePreview = null;
-        youtubeLink = '';
-        youtubeStatus = '';
-        youtubePercent = null;
-        youtubeBusy = false;
-        isProcessing.set(false);
-      }
+  function cancelled(signal) {
+    if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+  }
+
+  /** The YouTube download as a promise: resolves with the "done" event, rejects with the error. */
+  function downloadFromYouTube(videoId, control) {
+    return new Promise((resolve, reject) => {
+      const stop = streamYouTubeImport(videoId, $sessionId, (event) => {
+        if (event.phase === 'error') reject(new Error(event.message));
+        else if (event.phase === 'done') resolve(event);
+        else control.progress(event.message, event.percent ?? null);
+      });
+      control.onCancel(() => { stop(); reject(new DOMException('Cancelled', 'AbortError')); });
     });
+  }
+
+  async function handleYouTube() {
+    const link = youtubeLink.trim();
+    if (!link) return;
+    const done = await runTransfer('Downloading from YouTube',
+      'Getting the video… (the first time this also downloads the YouTube tools, about a minute)',
+      async (control) => {
+        const video = await inspectYouTube(link, control.signal);
+        cancelled(control.signal);
+        control.progress('Downloading the audio…');
+        return downloadFromYouTube(video.video_id, control);
+      });
+    if (!done) return;
+    sessionId.set(done.session_id);
+    uploadData.update(d => ({ ...d, filename: done.filename, hasOriginal: true }));
+    youtubeLink = '';
+    processingStatus.set('Audio downloaded from YouTube.');
+    askForSong(done);   // done.language: what YouTube knows, if anything
   }
 
   // ── Mix upload ──────────────────────────────────────────
   async function handleMixFile(file) {
-    errorMessage.set('');
-    isProcessing.set(true);
-    processingStatus.set('Uploading full mix…');
-    try {
-      const result = $sessionId ? await uploadMixAudio($sessionId, file) : await uploadAudio(file);
-      if (!$sessionId) sessionId.set(result.session_id);
-      uploadData.update(d => ({ ...d, filename: result.filename || file.name, hasOriginal: true }));
-      askForSong(result);
-      processingStatus.set('Full mix uploaded.');
-    } catch (err) {
-      errorMessage.set(err.message);
-    } finally {
-      isProcessing.set(false);
-    }
+    const result = await runTransfer('Uploading the full mix', file.name, (control) =>
+      $sessionId ? uploadMixAudio($sessionId, file, control.signal) : uploadAudio(file, control.signal));
+    if (!result) return;
+    if (!$sessionId) sessionId.set(result.session_id);
+    uploadData.update(d => ({ ...d, filename: result.filename || file.name, hasOriginal: true }));
+    processingStatus.set('Full mix uploaded.');
+    askForSong(result);
   }
 
   // ── Vocals upload ────────────────────────────────────────
   async function handleVocalsFile(file) {
-    errorMessage.set('');
-    isProcessing.set(true);
-    processingStatus.set('Uploading vocals…');
-    try {
-      let uploaded;
-      if ($sessionId) {
-        uploaded = await uploadCorrectedVocals($sessionId, file);
-      } else {
+    const uploaded = await runTransfer('Uploading the vocals', file.name, async (control) => {
+      let id = $sessionId;
+      if (!id) {
         // Create a blank session (no original_audio) so vocals-only doesn't
         // falsely appear as having a full-mix track in Step 4.
-        const result = await newSession();
-        sessionId.set(result.session_id);
-        uploaded = await uploadCorrectedVocals(result.session_id, file);
+        id = (await newSession()).session_id;
+        cancelled(control.signal);
+        sessionId.set(id);
       }
-      askForSong(uploaded);
-      uploadData.update(d => ({
-        ...d,
-        hasVocals: true,
-        vocalUrl: getAudioUrl($sessionId, 'vocals'),
-      }));
-      processingStatus.set('Vocals uploaded.');
-    } catch (err) {
-      errorMessage.set(err.message);
-    } finally {
-      isProcessing.set(false);
-    }
+      return uploadCorrectedVocals(id, file, control.signal);
+    });
+    if (!uploaded) return;
+    uploadData.update(d => ({
+      ...d,
+      hasVocals: true,
+      vocalUrl: getAudioUrl($sessionId, 'vocals'),
+      vocalsFilename: d.hasOriginal ? '' : file.name,
+    }));
+    processingStatus.set('Vocals uploaded.');
+    askForSong(uploaded);
   }
 
   // ── Vocal extraction ─────────────────────────────────────
@@ -330,25 +305,18 @@
   <h2>Step 1: Upload Audio</h2>
   <p class="subtitle">Upload your audio files below. Full mix is optional — vocals are required to proceed.</p>
 
-  {#if $sessionId && ($uploadData.hasOriginal || $uploadData.hasVocals)}
-    <p class="song-line">
-      🎵 Song: <strong>{$lyricsData.artist || '?'} – {$lyricsData.title || '?'}</strong>
-      <button class="link-btn" on:click={() => songModalOpen = true}>✏️ Change</button>
-    </p>
-  {/if}
-
-  {#if youtubeBusy}
+  {#if transfer}
     <div class="yt-backdrop">
-      <div class="yt-modal" role="alertdialog" aria-modal="true" aria-labelledby="yt-busy-title" aria-busy="true">
+      <div class="yt-modal" role="alertdialog" aria-modal="true" aria-labelledby="transfer-title" aria-busy="true">
         <span class="e-spinner yt-spinner" aria-hidden="true"></span>
-        <h2 id="yt-busy-title">{youtubePreview ? 'Downloading from YouTube' : 'Getting the video'}</h2>
-        <p class="youtube-status">{youtubeStatus}{youtubePercent !== null ? ` ${youtubePercent}%` : ''}</p>
-        {#if youtubePercent !== null}
-          <progress max="100" value={youtubePercent}></progress>
+        <h2 id="transfer-title">{transfer.title}</h2>
+        <p class="transfer-status">{transfer.status}{transfer.percent !== null ? ` ${transfer.percent}%` : ''}</p>
+        {#if transfer.percent !== null}
+          <progress max="100" value={transfer.percent}></progress>
         {:else}
           <progress></progress> <!-- no percentage yet: an indeterminate bar -->
         {/if}
-        <button class="btn yt-cancel" on:click={cancelYouTube}>Cancel</button>
+        <button class="btn yt-cancel" on:click={transfer.cancel}>Cancel</button>
       </div>
     </div>
   {/if}
@@ -394,25 +362,12 @@
           <p class="upload-hint">or from a YouTube link</p>
           <div class="youtube-row">
             <input type="url" bind:value={youtubeLink} placeholder="https://www.youtube.com/watch?v=…"
-                   aria-label="YouTube link" disabled={$isProcessing || youtubeBusy}
-                   on:keydown={(e) => { if (e.key === 'Enter') handleYouTubeInspect(); }} />
-            <button class="btn btn-browse" on:click={handleYouTubeInspect}
-                    disabled={$isProcessing || youtubeBusy || !youtubeLink.trim()}>▶ Get</button>
+                   aria-label="YouTube link" disabled={$isProcessing}
+                   on:keydown={(e) => { if (e.key === 'Enter') handleYouTube(); }} />
+            <button class="btn btn-browse" on:click={handleYouTube}
+                    disabled={$isProcessing || !youtubeLink.trim()}>⬇ Download</button>
           </div>
-          {#if youtubePreview}
-            <div class="youtube-preview">
-              {#if youtubePreview.thumbnail}<img src={youtubePreview.thumbnail} alt="" />{/if}
-              <div class="youtube-meta">
-                <strong>{youtubePreview.video_title}</strong>
-                <span>{youtubePreview.channel}{youtubePreview.duration ? ' · ' + formatDuration(youtubePreview.duration) : ''}</span>
-                <span>Song: {youtubePreview.artist ? youtubePreview.artist + ' – ' : ''}{youtubePreview.title}</span>
-              </div>
-            </div>
-            <button class="btn btn-extract" on:click={handleYouTubeImport} disabled={$isProcessing || youtubeBusy}>
-              ⬇ Download audio
-            </button>
-            <p class="youtube-note">Only download songs you have the right to use.</p>
-          {/if}
+          <p class="youtube-note">Audio only. Only download songs you have the right to use.</p>
         </div>
       {/if}
     </div>
@@ -426,7 +381,7 @@
 
       {#if $uploadData.hasVocals}
         <div class="file-info">
-          <span class="file-name">✅ Vocals ready</span>
+          <span class="file-name">✅ {$uploadData.vocalsFilename || 'Vocals ready'}</span>
         </div>
         {#if vocalsUrl}
           <div class="audio-preview">
@@ -619,8 +574,6 @@
   .upload-text { color: #aaa; font-size: 0.88rem; margin: 0; }
   .upload-hint { color: #555; font-size: 0.78rem; margin: 0; }
 
-  .song-line { color: #bbb; font-size: 0.9rem; margin: 0 0 1rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-  .song-line .link-btn { background: none; border: none; color: #4fc3f7; cursor: pointer; text-decoration: underline; font-size: 0.85rem; padding: 0; }
 
   /* ── YouTube link ── */
   .youtube-import { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.75rem; }
@@ -633,13 +586,8 @@
   }
   .youtube-row input:focus { outline: none; border-color: #1976d2; }
   .youtube-row .btn-browse { margin-top: 0; }
-  .youtube-preview { display: flex; gap: 0.6rem; align-items: center; text-align: left; }
-  .youtube-preview img { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
-  .youtube-meta { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; font-size: 0.82rem; }
-  .youtube-meta strong { color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .youtube-meta span { color: #888; }
   .youtube-note { color: #555; font-size: 0.72rem; margin: 0; }
-  .youtube-status { color: #4fc3f7; font-size: 0.85rem; margin: 0; text-align: center; min-height: 1.2em; }
+  .transfer-status { color: #4fc3f7; font-size: 0.85rem; margin: 0; text-align: center; min-height: 1.2em; }
   .yt-backdrop {
     position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000; overscroll-behavior: contain;
     display: flex; align-items: center; justify-content: center; padding: 1rem;

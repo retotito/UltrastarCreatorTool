@@ -8,7 +8,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Paste a YouTube link instead of uploading a file: the app shows the video, downloads its audio as the full mix and
   fills in artist, title and (when YouTube knows it) the language for Step 2; the link is written as `#YOUTUBE`
 - The download tools (yt-dlp, QuickJS) are downloaded on first use and updated automatically when YouTube changes
-- While it loads, a window with a spinner blocks the page; **Cancel** stops the download and removes what was fetched
+- One step: paste the link and press **⬇ Download**. Uploads and downloads both show a blocking window with a
+  spinner and **Cancel**, then "Which song is this?"; the card shows the file as "Artist - Title"
 
 ### 🎯 Lyrics timing without hallucinated notes
 - **Forced alignment of your lyrics**: syllable timing now comes from aligning the lyrics you confirmed directly to
@@ -24,7 +25,7 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - After an upload (full mix or vocals) or a YouTube download, a window proposes artist and title to check, correct
   or swap. The proposal is checked online in the background, so "Title - Artist" file names and wrong tags are
   recognised. Confirming names the audio file "Artist - Title". Step 2 searches the lyrics only with confirmed
-  names; "✏️ Change" in Step 1 reopens the window
+  names (they can be changed later in Step 2)
 - The window also asks for the song's language and, for songs sung in two languages, an optional second one.
   Both are written as English names (`#LANGUAGE:English, German`), as the UltraStar format wants; Step 2 has the
   same two fields, and imported charts with two languages keep both

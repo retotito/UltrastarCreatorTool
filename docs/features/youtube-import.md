@@ -2,13 +2,14 @@
 
 > **Status:** Current · **Last updated:** 2026-10-23
 
-Paste a YouTube link in Step 1's **Full Mix** card instead of uploading a file. The app shows the video (thumbnail,
-title, channel, length, and the artist/title it found), then downloads **only the audio** as the full mix. Vocal
-separation and everything after work as with an uploaded file.
+Paste a YouTube link in Step 1's **Full Mix** card instead of uploading a file and press **⬇ Download**: the app
+downloads **only the audio** as the full mix. Vocal separation and everything after work as with an uploaded file.
 
-While the details or the audio load, a window with a spinner and progress blocks the page. **Cancel** closes the
-event stream; the backend notices the disconnect, kills yt-dlp (`download_audio(..., cancelled)`) and removes the
-partial download (and the new session's folder).
+Uploads and downloads look the same: a window with a spinner and progress blocks the page until the file is there,
+then "Which song is this?" asks for artist, title and language(s), and the card shows the file as
+"Artist - Title.wav". **Cancel** stops it: for YouTube, closing the event stream makes the backend kill yt-dlp
+(`download_audio(..., cancelled)`) and remove the partial download (and the new session's folder). **🗑 Delete** on
+the card removes the file to upload or download another one.
 
 ## What is saved in the session
 
