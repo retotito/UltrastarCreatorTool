@@ -71,6 +71,8 @@
 
   function handleSongConfirmed(event) {
     lyricsData.update(d => ({ ...d, artist: event.detail.artist, title: event.detail.title }));
+    // The audio file is now named "Artist - Title".
+    if (event.detail.filename && $uploadData.hasOriginal) uploadData.update(d => ({ ...d, filename: event.detail.filename }));
     songModalOpen = false;
   }
 

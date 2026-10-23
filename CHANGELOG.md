@@ -20,9 +20,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Works for lyrics in every script (Cyrillic, Greek, Arabic, Chinese, Japanese, …) via uroman
 
 ### 🎵 "Which song is this?"
-- After an upload (full mix or vocals) or a YouTube download, a window proposes artist and title and lists matching
-  songs found online (lrclib.net) — it recognises "Title - Artist" file names and ignores wrong tags; correct, swap
-  or pick, then confirm. Step 2 searches the lyrics only with confirmed names; "✏️ Change" in Step 1 reopens it
+- After an upload (full mix or vocals) or a YouTube download, a window proposes artist and title to check, correct
+  or swap. The proposal is checked online in the background, so "Title - Artist" file names and wrong tags are
+  recognised. Confirming names the audio file "Artist - Title". Step 2 searches the lyrics only with confirmed
+  names; "✏️ Change" in Step 1 reopens the window
 
 ### 📝 New Step 2
 - Artist, title and language at the top; for file uploads taken from the file's tags or name

@@ -1,8 +1,9 @@
 <script>
   /**
-   * "Which song is this?" after an upload or a YouTube download: a proposal for artist and title, songs on
-   * LRCLIB that fit the file or video name, and fields to correct. Saving the names confirms them, and
-   * Step 2 then searches the lyrics with them.
+   * "Which song is this?" after an upload or a YouTube download: a proposal for artist and title to check and
+   * correct. The proposal is checked against lrclib.net in the background (it tells "Title - Artist" from
+   * "Artist - Title" and ignores wrong tags). Saving the names confirms them, names the song's audio file
+   * "Artist - Title", and Step 2 then searches the lyrics with them.
    */
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { identifySong, updateMetadata } from '../services/api.js';
@@ -13,61 +14,38 @@
 
   const dispatch = createEventDispatcher();
   let names = [];
-  let matches = [];
-  let songDuration = null;
   let searching = false;
   let saving = false;
   let message = '';
-  let picked = null;
 
-  function formatDuration(seconds) {
-    if (!seconds) return '';
-    const s = Math.round(seconds);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  }
-
-  async function lookUp(query = '') {
+  async function propose() {
     searching = true;
     message = '';
     try {
-      const found = await identifySong(sessionId, query);
-      matches = found.matches || [];
-      songDuration = found.song_duration || null;
-      if (!query) {
-        names = found.names || [];
-        artist = found.proposal?.artist ?? artist;
-        title = found.proposal?.title ?? title;
-        picked = matches.findIndex(m => m.artist === artist && m.title.startsWith(title));
-        if (picked < 0) picked = null;
+      const found = await identifySong(sessionId);
+      names = found.names || [];
+      artist = found.proposal?.artist ?? artist;
+      title = found.proposal?.title ?? title;
+      if (!(found.matches || []).length && !(artist.trim() && title.trim())) {
+        message = "Couldn't recognise the song from its name. Please type artist and title.";
       }
-      if (!matches.length) {
-        message = query ? 'Nothing found online for that. Check the spelling, or keep your names.'
-                        : 'No match online for this name. Type the artist and title below.';
-      }
-    } catch (err) {
-      message = err.message.replace(/^API error \d+: /, '');
+    } catch {
+      // Offline or LRCLIB busy: keep the names from the file / video and let the user check them.
     } finally {
       searching = false;
     }
   }
 
-  function pick(index) {
-    picked = index;
-    artist = matches[index].artist;
-    title = matches[index].title;
-  }
-
   function swap() {
     [artist, title] = [title, artist];
-    picked = null;
   }
 
   async function confirm() {
     if (!artist.trim() || !title.trim()) return;
     saving = true;
     try {
-      await updateMetadata(sessionId, artist.trim(), title.trim());
-      dispatch('confirm', { artist: artist.trim(), title: title.trim() });
+      const saved = await updateMetadata(sessionId, artist.trim(), title.trim());
+      dispatch('confirm', { artist: artist.trim(), title: title.trim(), filename: saved?.filename || '' });
     } catch (err) {
       message = err.message.replace(/^API error \d+: /, '');
     } finally {
@@ -87,7 +65,7 @@
     const scrollbar = window.innerWidth - document.documentElement.clientWidth;
     body.style.overflow = 'hidden';
     if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
-    lookUp();
+    propose();
   });
   onDestroy(() => {
     if (!previous) return;
@@ -108,37 +86,21 @@
     {/if}
 
     {#if searching}
-      <div class="busy-bar" role="progressbar" aria-label="Looking the song up"></div>
-      <p class="song-hint">Looking it up on lrclib.net…</p>
-    {:else if matches.length}
-      <p class="song-label">Found online — click to use:</p>
-      <ul class="song-matches">
-        {#each matches as match, i}
-          <li>
-            <button class="song-match" class:picked={picked === i} on:click={() => pick(i)}>
-              <span class="match-name">{match.artist} – {match.title}</span>
-              <span class="match-meta">
-                {#if match.album}{match.album} · {/if}{formatDuration(match.duration)}
-                {#if match.length_match === true}<span class="length-ok" title="Same length as your song ({formatDuration(songDuration)})">✓ same length</span>{/if}
-              </span>
-            </button>
-          </li>
-        {/each}
-      </ul>
+      <div class="busy-bar" role="progressbar" aria-label="Recognising the song"></div>
+      <p class="song-hint">Recognising the song…</p>
+    {:else}
+      <p class="song-hint">Check artist and title — the song's files will be named "Artist - Title".</p>
     {/if}
     {#if message}<p class="song-message">{message}</p>{/if}
 
     <form class="song-fields" on:submit|preventDefault={confirm}>
-      <label>Artist <input type="text" bind:value={artist} on:input={() => picked = null} placeholder="Artist" /></label>
+      <label>Artist <input type="text" bind:value={artist} placeholder="Artist" disabled={searching} /></label>
       <button type="button" class="swap-btn" on:click={swap} title="Swap artist and title">⇄</button>
-      <label>Title <input type="text" bind:value={title} on:input={() => picked = null} placeholder="Song title" /></label>
+      <label>Title <input type="text" bind:value={title} placeholder="Song title" disabled={searching} /></label>
     </form>
-    <button class="link-btn" on:click={() => lookUp(`${artist} ${title}`.trim())}
-            disabled={searching || !(artist.trim() || title.trim())}>🔎 Search online with these names</button>
-
     <div class="song-actions">
       <button class="btn btn-secondary" on:click={() => dispatch('skip')}>Skip for now</button>
-      <button class="btn btn-primary" on:click={confirm} disabled={saving || !artist.trim() || !title.trim()}>
+      <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !artist.trim() || !title.trim()}>
         {saving ? 'Saving…' : '✓ Use this'}
       </button>
     </div>
@@ -157,18 +119,8 @@
   h2 { margin: 0; font-size: 1.15rem; }
   .song-from { margin: 0; color: #888; font-size: 0.85rem; }
   .song-from span { color: #bbb; }
-  .song-label, .song-hint { margin: 0; color: #999; font-size: 0.82rem; }
+  .song-hint { margin: 0; color: #999; font-size: 0.82rem; }
   .song-message { margin: 0; color: #e0a030; font-size: 0.85rem; }
-  .song-matches { list-style: none; margin: 0; padding: 0; border: 1px solid #333; border-radius: 6px; overscroll-behavior: contain; }
-  .song-match {
-    display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; width: 100%; padding: 0.5rem 0.75rem;
-    border: none; border-bottom: 1px solid #2a2a3a; background: transparent; color: inherit; text-align: left; cursor: pointer;
-  }
-  .song-match:hover, .song-match:focus-visible { background: rgba(79, 140, 255, 0.15); }
-  .song-match.picked { background: rgba(76, 175, 80, 0.2); }
-  .match-name { font-weight: 600; }
-  .match-meta { font-size: 0.82em; opacity: 0.8; }
-  .length-ok { color: #4caf50; margin-left: 0.25rem; }
   .song-fields { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
   .song-fields label { flex: 1 1 200px; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: #aaa; }
   .song-fields input {
@@ -180,11 +132,6 @@
     cursor: pointer; font-size: 1rem; margin-bottom: 1px;
   }
   .swap-btn:hover { background: #303045; }
-  .link-btn {
-    align-self: flex-start; background: none; border: none; color: #4fc3f7; cursor: pointer; padding: 0;
-    font-size: 0.82rem; text-decoration: underline;
-  }
-  .link-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .song-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.25rem; }
   .btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; }
   .btn-primary { background: #1976d2; color: white; }

@@ -1690,8 +1690,8 @@ def _youtube():
 
 
 def _safe_filename(name: str) -> str:
-    cleaned = "".join(c for c in name if c not in '\\/:*?"<>|\0').strip(" .")
-    return cleaned[:120] or "YouTube audio"
+    from services.song_files import safe_filename
+    return safe_filename(name)
 
 
 @app.post("/api/youtube/inspect")
@@ -5011,6 +5011,8 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
     session["song_confirmed"] = True  # the user saw and kept (or corrected) the names
     if language is not None:
         session["language"] = language
+    from services.song_files import rename_audio_to_song
+    rename_audio_to_song(session)
     # Clear derived headers so _update_txt_asset_headers recomputes them from new artist/title
     session.pop("vocals_header", None)
     session.pop("instrumental_header", None)
@@ -5043,7 +5045,8 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
     _update_txt_asset_headers(session)
 
     log_step("METADATA", f"Session {session_id}: artist='{artist}', title='{title}', language='{language}'")
-    return {"status": "ok", "artist": artist, "title": title, "language": language}
+    return {"status": "ok", "artist": artist, "title": title, "language": language,
+            "filename": os.path.basename(session.get("original_audio") or session.get("vocal_audio") or "")}
 
 
 @app.get("/api/download/{session_id}/{file_type}")
