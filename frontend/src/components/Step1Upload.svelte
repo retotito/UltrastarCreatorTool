@@ -378,7 +378,10 @@
             <p class="youtube-note">Only download songs you have the right to use.</p>
           {/if}
           {#if youtubeStatus}
-            <p class="youtube-status">{youtubeStatus}{youtubePercent !== null ? ` ${youtubePercent}%` : ''}</p>
+            <p class="youtube-status">
+              {#if youtubeBusy}<span class="e-spinner yt-spinner" aria-hidden="true"></span>{/if}
+              <span>{youtubeStatus}{youtubePercent !== null ? ` ${youtubePercent}%` : ''}</span>
+            </p>
             {#if youtubePercent !== null}<progress max="100" value={youtubePercent}></progress>{/if}
           {/if}
         </div>
@@ -607,7 +610,8 @@
   .youtube-meta strong { color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .youtube-meta span { color: #888; }
   .youtube-note { color: #555; font-size: 0.72rem; margin: 0; }
-  .youtube-status { color: #4fc3f7; font-size: 0.8rem; margin: 0; }
+  .youtube-status { color: #4fc3f7; font-size: 0.8rem; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+  .yt-spinner { width: 14px; height: 14px; border-width: 2px; border-top-color: #4fc3f7; }
   .youtube-import progress { width: 100%; height: 6px; }
 
   /* ── File present state ── */
