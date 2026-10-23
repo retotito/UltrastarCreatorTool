@@ -7,13 +7,14 @@
    */
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { identifySong, updateMetadata } from '../services/api.js';
+  import { SUPPORTED_LANGUAGES } from '../lib/languages';
 
   export let sessionId;
   export let artist = '';
   export let title = '';
+  export let language = '';
 
   const dispatch = createEventDispatcher();
-  let names = [];
   let searching = false;
   let saving = false;
   let message = '';
@@ -23,7 +24,6 @@
     message = '';
     try {
       const found = await identifySong(sessionId);
-      names = found.names || [];
       artist = found.proposal?.artist ?? artist;
       title = found.proposal?.title ?? title;
       if (!(found.matches || []).length && !(artist.trim() && title.trim())) {
@@ -41,20 +41,16 @@
   }
 
   async function confirm() {
-    if (!artist.trim() || !title.trim()) return;
+    if (!artist.trim() || !title.trim() || !language) return;
     saving = true;
     try {
-      const saved = await updateMetadata(sessionId, artist.trim(), title.trim());
-      dispatch('confirm', { artist: artist.trim(), title: title.trim(), filename: saved?.filename || '' });
+      const saved = await updateMetadata(sessionId, artist.trim(), title.trim(), language);
+      dispatch('confirm', { artist: artist.trim(), title: title.trim(), language, filename: saved?.filename || '' });
     } catch (err) {
       message = err.message.replace(/^API error \d+: /, '');
     } finally {
       saving = false;
     }
-  }
-
-  function onKey(event) {
-    if (event.key === 'Escape') dispatch('skip');
   }
 
   // Lock the page underneath (same as the LRCLIB window).
@@ -74,23 +70,15 @@
   });
 </script>
 
-<svelte:window on:keydown={onKey} />
-
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="song-backdrop">
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="song-modal" role="dialog" aria-modal="true" aria-labelledby="song-title" on:click|stopPropagation>
     <h2 id="song-title">Which song is this?</h2>
-    {#if names.length}
-      <p class="song-from">From: <span>"{names[0]}"</span></p>
-    {/if}
-
     {#if searching}
       <div class="busy-bar" role="progressbar" aria-label="Recognising the song"></div>
-      <p class="song-hint">Recognising the song…</p>
-    {:else}
-      <p class="song-hint">Check artist and title — the song's files will be named "Artist - Title".</p>
     {/if}
+    <p class="song-hint">Please check the artist and song name, and choose the language it is sung in.</p>
     {#if message}<p class="song-message">{message}</p>{/if}
 
     <form class="song-fields" on:submit|preventDefault={confirm}>
@@ -98,10 +86,18 @@
       <button type="button" class="swap-btn" on:click={swap} title="Swap artist and title">⇄</button>
       <label>Title <input type="text" bind:value={title} placeholder="Song title" disabled={searching} /></label>
     </form>
+    <label class="song-language">Language
+      <select bind:value={language}>
+        <option value="" disabled>Select language…</option>
+        {#each SUPPORTED_LANGUAGES as lang}
+          <option value={lang.code}>{lang.label}</option>
+        {/each}
+      </select>
+    </label>
+
     <div class="song-actions">
-      <button class="btn btn-secondary" on:click={() => dispatch('skip')}>Skip for now</button>
-      <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !artist.trim() || !title.trim()}>
-        {saving ? 'Saving…' : '✓ Use this'}
+      <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !artist.trim() || !title.trim() || !language}>
+        {saving ? 'Saving…' : '✓ Confirm'}
       </button>
     </div>
   </div>
@@ -117,8 +113,6 @@
     overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; padding: 1.25rem; color: #e0e0e0;
   }
   h2 { margin: 0; font-size: 1.15rem; }
-  .song-from { margin: 0; color: #888; font-size: 0.85rem; }
-  .song-from span { color: #bbb; }
   .song-hint { margin: 0; color: #999; font-size: 0.82rem; }
   .song-message { margin: 0; color: #e0a030; font-size: 0.85rem; }
   .song-fields { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
@@ -132,12 +126,14 @@
     cursor: pointer; font-size: 1rem; margin-bottom: 1px;
   }
   .swap-btn:hover { background: #303045; }
+  .song-language { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: #aaa; max-width: 260px; }
+  .song-language select {
+    background: #11111d; color: #e0e0e0; border: 1px solid #333; border-radius: 6px; padding: 0.5rem 0.6rem; font-size: 0.95rem;
+  }
   .song-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.25rem; }
   .btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; }
   .btn-primary { background: #1976d2; color: white; }
   .btn-primary:hover:not(:disabled) { background: #1565c0; }
-  .btn-secondary { background: #333; color: #ccc; border: 1px solid #555; }
-  .btn-secondary:hover:not(:disabled) { background: #444; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .busy-bar { height: 3px; border-radius: 2px; background: linear-gradient(90deg, transparent, #4fc3f7, transparent);
     background-size: 50% 100%; background-repeat: no-repeat; animation: slide 1.1s ease-in-out infinite; }
