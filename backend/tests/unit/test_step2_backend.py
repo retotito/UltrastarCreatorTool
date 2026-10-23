@@ -4,7 +4,7 @@ import pytest
 
 from services import lyrics_sources
 from services.lyrics_sources import InvalidSources, merge
-from services.song_details import details_from_filename, song_details
+from services.song_details import details_from_filename, mark_new_song, song_details
 
 
 class TestSources:
@@ -51,6 +51,12 @@ class TestSongDetails:
         found = song_details("x.mp3", "Name Artist - Name Title.mp3", "ffprobe")
         assert (found["artist"], found["title"]) == ("Tagged Artist", "Name Title")
         assert (found["filename"], found["tags_name"]) == ("Name Artist - Name Title", "Tagged Artist")
+
+    def test_a_new_song_replaces_the_names_and_needs_confirming(self):
+        session = {"artist": "Old", "title": "Song", "song_confirmed": True, "language": "en"}
+        mark_new_song(session, {"youtube_title": "Ben Harper - Diamonds"}, {"artist": "", "title": "Diamonds"})
+        assert session == {"artist": "Old", "title": "Diamonds", "song_confirmed": False, "language": "en",
+                           "song_name_sources": {"youtube_title": "Ben Harper - Diamonds"}}
 
     def test_real_tags_with_ffprobe(self, tmp_path):
         import shutil

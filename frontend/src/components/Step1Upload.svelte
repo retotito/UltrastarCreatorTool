@@ -63,12 +63,13 @@
   // ── Song name ("Which song is this?") ───────────────────
   let songModalOpen = false;
 
-  /** After a new song arrives: ask for artist, title and language unless they were confirmed before. A new song's
-   * language is only pre-selected when its source knows it (YouTube); otherwise the user has to choose it. */
+  /** After an upload or download: the backend marks every new song (a new full mix, or vocals alone) unconfirmed,
+   * so the song window asks for its names and languages. Languages are pre-selected only when the session or
+   * YouTube knows them; otherwise the user has to choose. */
   function askForSong(result) {
     lyricsData.update(d => ({ ...d, artist: result.artist || d.artist || '', title: result.title || d.title || '' }));
     if (result.song_confirmed === false) {
-      lyricsData.update(d => ({ ...d, language: result.language || '', language2: '' }));
+      lyricsData.update(d => ({ ...d, language: result.language || '', language2: result.language2 || '' }));
       songModalOpen = true;
     }
   }

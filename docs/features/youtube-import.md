@@ -16,7 +16,7 @@ the card removes the file to upload or download another one.
 | Field | From |
 |---|---|
 | `original_audio` | the best audio stream, converted to 44.1 kHz WAV like an upload |
-| `artist`, `title` | YouTube Music's own fields, else "Artist – Title" in the video title (labels like "(Official Video)" removed), else the channel name. Only set if the session has none yet |
+| `artist`, `title` | YouTube Music's own fields, else "Artist – Title" in the video title (labels like "(Official Video)" removed), else the channel name. A new download always replaces them as the proposal for the song window |
 | `language` | the uploader's setting, else the language of YouTube's original automatic captions (`xx-orig`); often unknown |
 | `youtube_url` | written as the `#YOUTUBE` header on export |
 | `youtube_thumbnail` | thumbnail URL (for a cover later) |

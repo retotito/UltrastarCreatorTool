@@ -49,3 +49,14 @@ def song_details(path: str, filename: str, ffprobe: Optional[str]) -> dict:
     tags_name = " - ".join(part for part in (tagged["artist"], tagged["title"]) if part)
     return {"artist": tagged["artist"] or named["artist"], "title": tagged["title"] or named["title"],
             "filename": os.path.splitext(os.path.basename(filename or ""))[0], "tags_name": tags_name}
+
+
+def mark_new_song(session: dict, sources: dict, found: dict) -> None:
+    """A new full mix (upload or YouTube), or vocals without one: its names become the proposal and the song is
+    unconfirmed until the user checks names and languages in Step 1's song window. Step 2 waits with its LRCLIB
+    search until then. Names the new file doesn't have stay as they were."""
+    session["song_name_sources"] = sources
+    session["song_confirmed"] = False
+    for key in ("artist", "title"):
+        if found.get(key):
+            session[key] = found[key]

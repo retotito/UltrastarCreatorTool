@@ -1670,21 +1670,20 @@ def _ffprobe_path() -> Optional[str]:
     return shutil.which("ffprobe")
 
 
-def _apply_song_details(session: dict, path: str, filename: str) -> dict:
-    """Artist/title from an uploaded file's tags or name, set on the session where it has none yet.
-
-    A new song (the session had no artist/title) is unconfirmed until the user checks the names (Step 1's
-    song window, or editing them in Step 2): Step 2 waits with its LRCLIB search until then."""
-    from services.song_details import song_details
+def _apply_song_details(session: dict, path: str, filename: str, new_song: bool = True) -> dict:
+    """Artist/title from an uploaded file's tags or name. For a new song (services/song_details.py mark_new_song) they replace the
+    session's; otherwise (vocals for the session's mix) they only fill what the session lacks."""
+    from services.song_details import mark_new_song, song_details
     found = song_details(path, filename, _ffprobe_path())
-    if not (session.get("artist") or session.get("title")):
-        session["song_name_sources"] = {"filename": found["filename"], "tags_name": found["tags_name"]}
-        session["song_confirmed"] = False
-    for key in ("artist", "title"):
-        if found[key] and not session.get(key):
-            session[key] = found[key]
+    if new_song or not (session.get("artist") or session.get("title")):
+        mark_new_song(session, {"filename": found["filename"], "tags_name": found["tags_name"]}, found)
+    else:
+        for key in ("artist", "title"):
+            if found[key] and not session.get(key):
+                session[key] = found[key]
     return {"artist": session.get("artist", ""), "title": session.get("title", ""),
-            "song_confirmed": session.get("song_confirmed", True)}
+            "song_confirmed": session.get("song_confirmed", True),
+            "language": session.get("language"), "language2": session.get("language2")}
 
 
 def _youtube():
@@ -1812,12 +1811,8 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
         session["filename"] = outcome["filename"]
         session["youtube_url"] = details["url"]
         session["youtube_thumbnail"] = details["thumbnail"]
-        if not (session.get("artist") or session.get("title")):
-            session["song_name_sources"] = {"youtube_title": details["video_title"]}
-            session["song_confirmed"] = False
-        for key in ("artist", "title"):
-            if details[key] and not session.get(key):
-                session[key] = details[key]
+        from services.song_details import mark_new_song
+        mark_new_song(session, {"youtube_title": details["video_title"]}, details)
         if details["language"] and not session.get("language"):
             session["language"] = details["language"]
         _update_txt_asset_headers(session)
@@ -1826,7 +1821,7 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
         yield send("done", "Audio downloaded.", session_id=target_id, filename=outcome["filename"],
                    artist=session.get("artist", ""), title=session.get("title", ""),
                    song_confirmed=session.get("song_confirmed", True),
-                   language=session.get("language"), url=details["url"], thumbnail=details["thumbnail"])
+                   language=session.get("language"), language2=session.get("language2"), url=details["url"], thumbnail=details["thumbnail"])
 
     return StreamingResponse(events(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -1993,7 +1988,8 @@ async def upload_corrected_vocals(session_id: str, vocals: UploadFile = File(...
         content = await vocals.read()
         f.write(content)
 
-    details = _apply_song_details(session, vocal_path, vocals.filename)  # only fills what the session lacks
+    # vocals for the session's mix are the same song; vocals alone are a new one
+    details = _apply_song_details(session, vocal_path, vocals.filename, new_song=not session.get("original_audio"))
     vocal_path, orig_vocal_filename = _normalize_audio_to_wav(vocal_path, orig_vocal_filename)
 
     session["vocal_audio"] = vocal_path
