@@ -42,6 +42,10 @@
     [artist, title] = [title, artist];
   }
 
+  // Why Confirm is disabled, shown as its tooltip.
+  $: missingHint = !artist.trim() ? 'Enter the artist' : !title.trim() ? 'Enter the song title'
+    : !language ? 'Select the language the song is sung in' : '';
+
   async function confirm() {
     if (!artist.trim() || !title.trim() || !language) return;
     saving = true;
@@ -110,9 +114,12 @@
     </div>
 
     <div class="song-actions">
-      <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !artist.trim() || !title.trim() || !language}>
-        {saving ? 'Saving…' : '✓ Confirm'}
-      </button>
+      <!-- The tooltip sits on a wrapper: a disabled button gets no hover, so it shows no title of its own. -->
+      <span title={missingHint}>
+        <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !!missingHint}>
+          {saving ? 'Saving…' : '✓ Confirm'}
+        </button>
+      </span>
     </div>
   </div>
 </div>
@@ -149,7 +156,8 @@
   .btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; }
   .btn-primary { background: #1976d2; color: white; }
   .btn-primary:hover:not(:disabled) { background: #1565c0; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+  .song-actions span:has(.btn:disabled) { cursor: not-allowed; }
   .busy-bar { height: 3px; border-radius: 2px; background: linear-gradient(90deg, transparent, #4fc3f7, transparent);
     background-size: 50% 100%; background-repeat: no-repeat; animation: slide 1.1s ease-in-out infinite; }
   @keyframes slide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
