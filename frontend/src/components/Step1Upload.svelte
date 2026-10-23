@@ -63,10 +63,14 @@
   // ── Song name ("Which song is this?") ───────────────────
   let songModalOpen = false;
 
-  /** After a new song arrives: ask for artist and title unless they were confirmed before. */
+  /** After a new song arrives: ask for artist, title and language unless they were confirmed before. A new song's
+   * language is only pre-selected when its source knows it (YouTube); otherwise the user has to choose it. */
   function askForSong(result) {
     lyricsData.update(d => ({ ...d, artist: result.artist || d.artist || '', title: result.title || d.title || '' }));
-    if (result.song_confirmed === false) songModalOpen = true;
+    if (result.song_confirmed === false) {
+      lyricsData.update(d => ({ ...d, language: result.language || '', language2: '' }));
+      songModalOpen = true;
+    }
   }
 
   function handleSongConfirmed(event) {
@@ -127,9 +131,7 @@
       if (event.phase === 'done') {
         sessionId.set(event.session_id);
         uploadData.update(d => ({ ...d, filename: event.filename, hasOriginal: true }));
-        // Language for Step 2 (if YouTube knows it), then artist and title to check.
-        lyricsData.update(d => ({ ...d, language: d.language || event.language || d.language }));
-        askForSong(event);
+        askForSong(event);   // event.language: what YouTube knows, if anything
         processingStatus.set(`Audio from YouTube: ${event.artist ? event.artist + ' – ' : ''}${event.title}`);
         youtubePreview = null;
         youtubeLink = '';
