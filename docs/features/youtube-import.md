@@ -6,6 +6,10 @@ Paste a YouTube link in Step 1's **Full Mix** card instead of uploading a file. 
 title, channel, length, and the artist/title it found), then downloads **only the audio** as the full mix. Vocal
 separation and everything after work as with an uploaded file.
 
+While the details or the audio load, a window with a spinner and progress blocks the page. **Cancel** closes the
+event stream; the backend notices the disconnect, kills yt-dlp (`download_audio(..., cancelled)`) and removes the
+partial download (and the new session's folder).
+
 ## What is saved in the session
 
 | Field | From |

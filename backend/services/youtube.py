@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 from urllib.parse import parse_qs, urlparse
@@ -29,6 +30,13 @@ class YouTubeError(Exception):
     def __init__(self, message: str, retryable: bool = True):
         super().__init__(message)
         self.retryable = retryable
+
+
+class YouTubeCancelled(YouTubeError):
+    """The user cancelled the download."""
+
+    def __init__(self):
+        super().__init__("Cancelled.", retryable=False)
 
 
 def video_id(link: str) -> Optional[str]:
@@ -221,8 +229,10 @@ class YouTube:
         return self._with_update(attempt)
 
     def download_audio(self, vid: str, folder: str,
-                       on_progress: Optional[Callable[[int, Optional[int]], None]] = None) -> str:
-        """Download the best audio stream as is into `folder` (as youtube_audio.<ext>); returns its path."""
+                       on_progress: Optional[Callable[[int, Optional[int]], None]] = None,
+                       cancelled: Optional[threading.Event] = None) -> str:
+        """Download the best audio stream as is into `folder` (as youtube_audio.<ext>); returns its path.
+        Setting `cancelled` stops yt-dlp, removes the partial download and raises YouTubeError("Cancelled.")."""
         if not ID.match(vid or ""):
             raise YouTubeError("That isn't a YouTube video.", retryable=False)
         os.makedirs(folder, exist_ok=True)
@@ -238,18 +248,34 @@ class YouTube:
                 "%(progress.total_bytes_estimate)s",
                 "--", watch_url(vid),
             ]
+            if cancelled is not None and cancelled.is_set():
+                raise YouTubeCancelled()
             process = self._popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if cancelled is not None:
+                threading.Thread(target=_kill_when_cancelled, args=(process, cancelled), daemon=True).start()
             for line in process.stdout:
                 if on_progress and line.startswith("@progress "):
                     on_progress(*parse_progress(line))
             stderr = process.stderr.read()
-            if process.wait(timeout=DOWNLOAD_TIMEOUT_SEC) != 0:
+            code = process.wait(timeout=DOWNLOAD_TIMEOUT_SEC)
+            if cancelled is not None and cancelled.is_set():
+                for partial in glob.glob(os.path.join(glob.escape(folder), "youtube_audio.*")):
+                    os.remove(partial)
+                raise YouTubeCancelled()
+            if code != 0:
                 raise explain(stderr)
             files = [f for f in glob.glob(os.path.join(folder, "youtube_audio.*")) if not f.endswith(".part")]
             if not files:
                 raise YouTubeError("yt-dlp finished but no audio file was written. Try again.")
             return files[0]
         return self._with_update(attempt)
+
+
+def _kill_when_cancelled(process, cancelled: threading.Event) -> None:
+    while process.poll() is None:
+        if cancelled.wait(0.3):
+            process.kill()
+            return
 
 
 def parse_progress(line: str) -> tuple:

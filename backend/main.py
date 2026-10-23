@@ -1731,7 +1731,7 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
     import asyncio
     import queue
     import threading
-    from services.youtube import ID, YouTubeError, summary
+    from services.youtube import ID, YouTubeCancelled, YouTubeError, summary
 
     def send(phase: str, message: str = "", **kwargs) -> str:
         return f"data: {json.dumps({'phase': phase, 'message': message, **kwargs})}\n\n"
@@ -1747,6 +1747,7 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
         folder = os.path.join(UPLOAD_DIR, target_id)
         updates: "queue.Queue" = queue.Queue()
         outcome: dict = {}
+        cancelled = threading.Event()  # set when the client goes away (Cancel in Step 1 closes the stream)
 
         def work():
             try:
@@ -1759,7 +1760,9 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
                 def progress(done, total):
                     if total:
                         updates.put(("download", "Downloading the audio…", min(99, int(done * 100 / total))))
-                path = yt.download_audio(video_id, folder, progress)
+                path = yt.download_audio(video_id, folder, progress, cancelled)
+                if cancelled.is_set():
+                    raise YouTubeCancelled()
                 updates.put(("convert", "Converting the audio…", None))
                 name = _safe_filename(f"{details['artist']} - {details['title']}" if details["artist"] else details["title"])
                 named = os.path.join(folder, name + os.path.splitext(path)[1])
@@ -1771,19 +1774,29 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
             except Exception as e:  # unexpected: show it rather than hang
                 outcome["error"] = f"{type(e).__name__}: {e}"
             finally:
+                if cancelled.is_set():
+                    if not session_id:  # a new session that never started: leave nothing behind
+                        shutil.rmtree(folder, ignore_errors=True)
+                    elif outcome.get("file"):
+                        os.remove(outcome["file"])
+                    log_step("YOUTUBE", f"Download of {video_id} cancelled")
                 updates.put(None)
 
         threading.Thread(target=work, daemon=True).start()
-        while True:
-            try:
-                item = updates.get_nowait()
-            except queue.Empty:
-                await asyncio.sleep(0.3)
-                continue
-            if item is None:
-                break
-            phase, message, percent = item
-            yield send(phase, message, percent=percent)
+        try:
+            while True:
+                try:
+                    item = updates.get_nowait()
+                except queue.Empty:
+                    await asyncio.sleep(0.3)
+                    continue
+                if item is None:
+                    break
+                phase, message, percent = item
+                yield send(phase, message, percent=percent)
+        except BaseException:  # client disconnected (asyncio.CancelledError / GeneratorExit)
+            cancelled.set()
+            raise
 
         if "error" in outcome:
             yield send("error", outcome["error"])

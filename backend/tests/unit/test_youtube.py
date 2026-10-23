@@ -243,6 +243,38 @@ def test_download_reports_progress_and_returns_the_file(tmp_path):
     assert path.endswith("youtube_audio.m4a") and progress == [(10, 100), (100, 100)]
 
 
+def test_cancel_stops_yt_dlp_and_removes_the_partial_file(tmp_path):
+    import threading
+    import time
+    from services.youtube import YouTubeCancelled
+    cancelled = threading.Event()
+
+    class Process:
+        killed = threading.Event()
+
+        def __init__(self, args, **kwargs):
+            open(tmp_path / "youtube_audio.m4a.part", "wb").write(b"half")
+            self.stderr = io.StringIO("")
+
+        @property
+        def stdout(self):
+            yield "@progress 10 100 NA\n"
+            cancelled.set()                 # the user presses Cancel mid-download
+            assert Process.killed.wait(2)   # yt-dlp is killed, its output ends
+
+        def poll(self):
+            return -9 if Process.killed.is_set() else None
+
+        def kill(self):
+            Process.killed.set()
+
+        def wait(self, timeout=None):
+            return -9
+    with pytest.raises(YouTubeCancelled):
+        YouTube(FakeTools(), None, popen=Process).download_audio("_KztNIg4cvE", str(tmp_path), cancelled=cancelled)
+    assert Process.killed.is_set() and list(tmp_path.iterdir()) == []
+
+
 def test_ids_are_checked_before_yt_dlp_runs():
     with pytest.raises(YouTubeError):
         YouTube(FakeTools(), None, run=lambda *a, **k: completed()).inspect("--exec=x")

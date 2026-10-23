@@ -122,11 +122,12 @@ export function streamExtractVocals(sessionId, onEvent) {
   return () => es.close();
 }
 
-export async function inspectYouTube(url) {
-  return request('POST', '/youtube/inspect', { url });
+export async function inspectYouTube(url, signal = null) {
+  return request('POST', '/youtube/inspect', { url }, false, false, signal);
 }
 
-/** Downloads a YouTube video's audio as the full mix (into `sessionId`, or a new session). */
+/** Downloads a YouTube video's audio as the full mix (into `sessionId`, or a new session). Returns a function that
+ *  cancels: closing the stream makes the backend stop yt-dlp and remove what it downloaded. */
 export function streamYouTubeImport(videoId, sessionId, onEvent) {
   const params = new URLSearchParams({ video_id: videoId, session_id: sessionId || '' });
   const es = new EventSource(`${BASE}/youtube/import-stream?${params}`);

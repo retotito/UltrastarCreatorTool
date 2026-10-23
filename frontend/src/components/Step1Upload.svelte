@@ -87,6 +87,22 @@
   let youtubeBusy = false;
   let youtubeStatus = '';
   let youtubePercent = null;
+  let youtubeInspectAbort = null;   // cancels "▶ Get"
+  let youtubeStopImport = null;     // cancels "⬇ Download audio"
+
+  // While YouTube is busy, a window blocks the page (and its scrolling) until it is done or cancelled.
+  $: if (typeof document !== 'undefined') document.body.style.overflow = youtubeBusy ? 'hidden' : '';
+
+  function cancelYouTube() {
+    youtubeInspectAbort?.abort();
+    youtubeStopImport?.();
+    youtubeInspectAbort = youtubeStopImport = null;
+    youtubeStatus = '';
+    youtubePercent = null;
+    youtubeBusy = false;
+    isProcessing.set(false);
+    processingStatus.set('YouTube download cancelled.');
+  }
 
   function formatDuration(seconds) {
     if (!seconds) return '';
@@ -100,14 +116,17 @@
     youtubePreview = null;
     youtubeBusy = true;
     youtubeStatus = 'Getting the video details… (the first time this also downloads the YouTube tools, about a minute)';
+    const abort = youtubeInspectAbort = new AbortController();
     try {
-      youtubePreview = await inspectYouTube(youtubeLink.trim());
+      youtubePreview = await inspectYouTube(youtubeLink.trim(), abort.signal);
       youtubeStatus = '';
     } catch (err) {
+      if (abort.signal.aborted) return;   // cancelled: cancelYouTube already reset everything
       youtubeStatus = '';
       errorMessage.set(err.message);
     } finally {
-      youtubeBusy = false;
+      if (!abort.signal.aborted) youtubeBusy = false;
+      if (youtubeInspectAbort === abort) youtubeInspectAbort = null;
     }
   }
 
@@ -118,7 +137,8 @@
     isProcessing.set(true);
     youtubePercent = null;
     youtubeStatus = 'Starting…';
-    streamYouTubeImport(youtubePreview.video_id, $sessionId, (event) => {
+    youtubeStopImport = streamYouTubeImport(youtubePreview.video_id, $sessionId, (event) => {
+      if (event.phase === 'error' || event.phase === 'done') youtubeStopImport = null;
       if (event.phase === 'error') {
         errorMessage.set(event.message);
         youtubeStatus = '';
@@ -317,6 +337,22 @@
     </p>
   {/if}
 
+  {#if youtubeBusy}
+    <div class="yt-backdrop">
+      <div class="yt-modal" role="alertdialog" aria-modal="true" aria-labelledby="yt-busy-title" aria-busy="true">
+        <span class="e-spinner yt-spinner" aria-hidden="true"></span>
+        <h2 id="yt-busy-title">{youtubePreview ? 'Downloading from YouTube' : 'Getting the video'}</h2>
+        <p class="youtube-status">{youtubeStatus}{youtubePercent !== null ? ` ${youtubePercent}%` : ''}</p>
+        {#if youtubePercent !== null}
+          <progress max="100" value={youtubePercent}></progress>
+        {:else}
+          <progress></progress> <!-- no percentage yet: an indeterminate bar -->
+        {/if}
+        <button class="btn yt-cancel" on:click={cancelYouTube}>Cancel</button>
+      </div>
+    </div>
+  {/if}
+
   {#if songModalOpen && $sessionId}
     <SongNameModal sessionId={$sessionId} artist={$lyricsData.artist} title={$lyricsData.title}
                    language={$lyricsData.language} language2={$lyricsData.language2 || ''} on:confirm={handleSongConfirmed} />
@@ -376,13 +412,6 @@
               ⬇ Download audio
             </button>
             <p class="youtube-note">Only download songs you have the right to use.</p>
-          {/if}
-          {#if youtubeStatus}
-            <p class="youtube-status">
-              {#if youtubeBusy}<span class="e-spinner yt-spinner" aria-hidden="true"></span>{/if}
-              <span>{youtubeStatus}{youtubePercent !== null ? ` ${youtubePercent}%` : ''}</span>
-            </p>
-            {#if youtubePercent !== null}<progress max="100" value={youtubePercent}></progress>{/if}
           {/if}
         </div>
       {/if}
@@ -610,9 +639,20 @@
   .youtube-meta strong { color: #e0e0e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .youtube-meta span { color: #888; }
   .youtube-note { color: #555; font-size: 0.72rem; margin: 0; }
-  .youtube-status { color: #4fc3f7; font-size: 0.8rem; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
-  .yt-spinner { width: 14px; height: 14px; border-width: 2px; border-top-color: #4fc3f7; }
-  .youtube-import progress { width: 100%; height: 6px; }
+  .youtube-status { color: #4fc3f7; font-size: 0.85rem; margin: 0; text-align: center; min-height: 1.2em; }
+  .yt-backdrop {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000; overscroll-behavior: contain;
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .yt-modal {
+    background: #1a1a2a; border: 1px solid #333; border-radius: 10px; width: min(420px, 100%); padding: 1.5rem;
+    display: flex; flex-direction: column; align-items: center; gap: 0.75rem; color: #e0e0e0;
+  }
+  .yt-modal h2 { margin: 0; font-size: 1.1rem; }
+  .yt-modal progress { width: 100%; height: 6px; }
+  .yt-spinner { width: 32px; height: 32px; border-top-color: #4fc3f7; }
+  .yt-cancel { background: #333; color: #e0e0e0; padding: 0.5rem 1.2rem; }
+  .yt-cancel:hover { background: #444; }
 
   /* ── File present state ── */
   .file-info { display: flex; align-items: center; }

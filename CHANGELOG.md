@@ -8,6 +8,7 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Paste a YouTube link instead of uploading a file: the app shows the video, downloads its audio as the full mix and
   fills in artist, title and (when YouTube knows it) the language for Step 2; the link is written as `#YOUTUBE`
 - The download tools (yt-dlp, QuickJS) are downloaded on first use and updated automatically when YouTube changes
+- While it loads, a window with a spinner blocks the page; **Cancel** stops the download and removes what was fetched
 
 ### 🎯 Lyrics timing without hallucinated notes
 - **Forced alignment of your lyrics**: syllable timing now comes from aligning the lyrics you confirmed directly to
