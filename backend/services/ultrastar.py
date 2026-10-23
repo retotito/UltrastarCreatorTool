@@ -83,28 +83,64 @@ def _fmt_bpm(bpm: float) -> str:
     s = f"{bpm:.2f}".rstrip('0').rstrip('.')
     return s
 
-# ISO 639-1 code → full English language name for #LANGUAGE header
+# ISO 639-1 code → English language name for the #LANGUAGE header (the format wants English names).
 _ISO_TO_LANGUAGE_NAME = {
-    "af": "Afrikaans", "sq": "Albanian", "ar": "Arabic", "hy": "Armenian",
-    "az": "Azerbaijani", "eu": "Basque", "be": "Belarusian", "bn": "Bengali",
-    "bs": "Bosnian", "bg": "Bulgarian", "ca": "Catalan", "zh": "Chinese",
-    "hr": "Croatian", "cs": "Czech", "da": "Danish", "nl": "Dutch",
-    "en": "English", "et": "Estonian", "fi": "Finnish", "fr": "French",
-    "gl": "Galician", "ka": "Georgian", "de": "German", "el": "Greek",
-    "gu": "Gujarati", "ht": "Haitian Creole", "ha": "Hausa", "he": "Hebrew",
-    "hi": "Hindi", "hu": "Hungarian", "is": "Icelandic", "id": "Indonesian",
-    "ga": "Irish", "it": "Italian", "ja": "Japanese", "kn": "Kannada",
-    "kk": "Kazakh", "ko": "Korean", "lv": "Latvian", "lt": "Lithuanian",
-    "mk": "Macedonian", "ms": "Malay", "ml": "Malayalam", "mt": "Maltese",
-    "mi": "Maori", "mr": "Marathi", "mn": "Mongolian", "ne": "Nepali",
-    "no": "Norwegian", "fa": "Persian", "pl": "Polish", "pt": "Portuguese",
-    "pa": "Punjabi", "ro": "Romanian", "ru": "Russian", "sr": "Serbian",
-    "sk": "Slovak", "sl": "Slovenian", "so": "Somali", "es": "Spanish",
-    "sw": "Swahili", "sv": "Swedish", "tl": "Filipino", "ta": "Tamil",
-    "te": "Telugu", "th": "Thai", "tr": "Turkish", "uk": "Ukrainian",
-    "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese", "cy": "Welsh",
-    "yi": "Yiddish", "yo": "Yoruba",
+    "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "az": "Azerbaijani",
+    "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian", "bn": "Bengali",
+    "bo": "Tibetan", "br": "Breton", "bs": "Bosnian", "ca": "Catalan",
+    "cs": "Czech", "cy": "Welsh", "da": "Danish", "de": "German",
+    "el": "Greek", "en": "English", "es": "Spanish", "et": "Estonian",
+    "eu": "Basque", "fa": "Persian", "fi": "Finnish", "fo": "Faroese",
+    "fr": "French", "ga": "Irish", "gl": "Galician", "gu": "Gujarati",
+    "ha": "Hausa", "haw": "Hawaiian", "he": "Hebrew", "hi": "Hindi",
+    "hr": "Croatian", "ht": "Haitian Creole", "hu": "Hungarian", "hy": "Armenian",
+    "id": "Indonesian", "is": "Icelandic", "it": "Italian", "ja": "Japanese",
+    "jw": "Javanese", "ka": "Georgian", "kk": "Kazakh", "km": "Khmer",
+    "kn": "Kannada", "ko": "Korean", "la": "Latin", "lb": "Luxembourgish",
+    "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lv": "Latvian",
+    "mg": "Malagasy", "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam",
+    "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", "mt": "Maltese",
+    "my": "Myanmar", "ne": "Nepali", "nl": "Dutch", "nn": "Nynorsk",
+    "no": "Norwegian", "oc": "Occitan", "pa": "Punjabi", "pl": "Polish",
+    "ps": "Pashto", "pt": "Portuguese", "ro": "Romanian", "ru": "Russian",
+    "sa": "Sanskrit", "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak",
+    "sl": "Slovenian", "sn": "Shona", "so": "Somali", "sq": "Albanian",
+    "sr": "Serbian", "su": "Sundanese", "sv": "Swedish", "sw": "Swahili",
+    "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "th": "Thai",
+    "tk": "Turkmen", "tl": "Tagalog", "tr": "Turkish", "tt": "Tatar",
+    "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese",
+    "yi": "Yiddish", "yo": "Yoruba", "zh": "Chinese",
 }
+_LANGUAGE_NAME_TO_ISO = {name.lower(): code for code, name in _ISO_TO_LANGUAGE_NAME.items()}
+
+
+def language_name(language: str) -> str:
+    """"en" → "English"; a name or an unknown code is kept as it is."""
+    if not language:
+        return ""
+    return _ISO_TO_LANGUAGE_NAME.get(language.strip().lower(), language.strip())
+
+
+def language_header(language: str, language2: Optional[str] = None) -> str:
+    """The #LANGUAGE value: one or two English language names, comma-separated ("English, German"), as the
+    UltraStar format allows. English when nothing is set."""
+    names = []
+    for code in (language, language2):
+        name = language_name(code or "")
+        if name and name not in names:
+            names.append(name)
+    return ", ".join(names) or "English"
+
+
+def parse_language_header(value: str) -> tuple:
+    """(code, second code or None) from a #LANGUAGE value like "English, German" or "de"."""
+    codes = []
+    for part in (value or "").split(","):
+        part = part.strip().lower()
+        code = _LANGUAGE_NAME_TO_ISO.get(part) or (part if part in _ISO_TO_LANGUAGE_NAME else None)
+        if code and code not in codes:
+            codes.append(code)
+    return (codes[0] if codes else None, codes[1] if len(codes) > 1 else None)
 
 
 def generate_ultrastar(
@@ -115,7 +151,8 @@ def generate_ultrastar(
     artist: str = "Unknown Artist",
     title: str = "Unknown Song",
     language: str = "English",
-    mp3_filename: str = "song.mp3"
+    mp3_filename: str = "song.mp3",
+    language2: Optional[str] = None,
 ) -> str:
     """Generate Ultrastar .txt file content.
     
@@ -136,8 +173,7 @@ def generate_ultrastar(
     
     log_step("ULTRASTAR", f"Generating file: {len(syllable_timings)} syllables, BPM={bpm:.2f}, GAP={gap_ms}ms")
     
-    # Convert ISO code to full English name for #LANGUAGE header (e.g. "en" → "English")
-    language_name = _ISO_TO_LANGUAGE_NAME.get(language.lower(), language) if language else "English"
+    language_value = language_header(language, language2)  # "English" or "English, German"
     
     # Header
     header = (
@@ -145,7 +181,7 @@ def generate_ultrastar(
         f"#TITLE:{title}\n"
         f"#BPM:{_fmt_bpm(bpm)}\n"
         f"#GAP:{gap_ms}\n"
-        f"#LANGUAGE:{language_name}\n"
+        f"#LANGUAGE:{language_value}\n"
         f"#MP3:{mp3_filename}\n"
     )
     
@@ -214,20 +250,21 @@ def generate_lyrics_only_txt(
     gap_ms: int = 0,
     language: str = "English",
     mp3_filename: str = "song.mp3",
+    language2: Optional[str] = None,
 ) -> str:
     """Generate a minimal Ultrastar .txt file with headers only (no notes).
 
     This is used as a lightweight starting point for manual note creation in
     the editor while preserving song metadata and timing headers.
     """
-    language_name = _ISO_TO_LANGUAGE_NAME.get(language.lower(), language) if language else "English"
+    language_value = language_header(language, language2)  # "English" or "English, German"
 
     header = (
         f"#ARTIST:{artist}\n"
         f"#TITLE:{title}\n"
         f"#BPM:{_fmt_bpm(bpm)}\n"
         f"#GAP:{gap_ms}\n"
-        f"#LANGUAGE:{language_name}\n"
+        f"#LANGUAGE:{language_value}\n"
         f"#MP3:{mp3_filename}\n"
     )
 

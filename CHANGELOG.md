@@ -24,6 +24,9 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   or swap. The proposal is checked online in the background, so "Title - Artist" file names and wrong tags are
   recognised. Confirming names the audio file "Artist - Title". Step 2 searches the lyrics only with confirmed
   names; "✏️ Change" in Step 1 reopens the window
+- The window also asks for the song's language and, for songs sung in two languages, an optional second one.
+  Both are written as English names (`#LANGUAGE:English, German`), as the UltraStar format wants; Step 2 has the
+  same two fields, and imported charts with two languages keep both
 
 ### 📝 New Step 2
 - Artist, title and language at the top; for file uploads taken from the file's tags or name

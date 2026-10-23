@@ -61,6 +61,7 @@ let initialLyrics = {
   artist: '',
   title: '',
   language: 'en',
+  language2: '',
   syllableCount: 0,
   lineCount: 0,
   preview: [],
@@ -144,7 +145,7 @@ export function resetSession() {
   sessionId.set(null);
   uploadData.set({ filename: null, hasVocals: false, vocalsFilename: null, hasOriginal: false, vocalUrl: null });
   localStorage.removeItem('uploadData');
-  lyricsData.set({ text: '', artist: '', title: '', language: 'en', syllableCount: 0, lineCount: 0, preview: [] });
+  lyricsData.set({ text: '', artist: '', title: '', language: 'en', language2: '', syllableCount: 0, lineCount: 0, preview: [] });
   localStorage.removeItem('lyricsData');
   generationResult.set(null);
   generationLog.set([]);

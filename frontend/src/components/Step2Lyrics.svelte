@@ -18,6 +18,7 @@
   let artist = $lyricsData.artist || '';
   let title = $lyricsData.title || '';
   let language = $lyricsData.language || '';
+  let language2 = $lyricsData.language2 || '';   // optional second sung language
 
   // Artist and title of a new upload are a guess until the user confirms them (Step 1's song window, editing
   // them here, or "Yes, search lyrics"); the automatic LRCLIB search waits for that.
@@ -27,13 +28,14 @@
     if (!$sessionId || !artist.trim() || !title.trim()) return;
     lyricsData.update(s => ({ ...s, artist: artist.trim(), title: title.trim() }));
     try {
-      await updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined);
+      await updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined, language2);
       songConfirmed = true; // saving the names confirms them
     } catch { /* not critical */ }
   }
 
   // Keep the store in step with the fields (the lyrics text there is the last generated one).
-  $: lyricsData.update(s => ({ ...s, artist, title, language }));
+  $: if (language2 && language2 === language) language2 = '';
+  $: lyricsData.update(s => ({ ...s, artist, title, language, language2 }));
 
   // ── Lyric sources ───────────────────────────────────────
   const EMPTY = () => ({ text: '', marks: [], dividers: [], info: null });
@@ -67,6 +69,7 @@
       if (!artist && stored.artist) artist = stored.artist;
       if (!title && stored.title) title = stored.title;
       if (!language && stored.language) language = stored.language;
+      if (!language2 && stored.language2) language2 = stored.language2;
       songConfirmed = stored.song_confirmed !== false;
     } catch (err) {
       console.warn('[Step2] Could not load lyric sources:', err);
@@ -415,7 +418,7 @@
     if (zebraStyleEl && zebraStyleEl.parentNode) zebraStyleEl.parentNode.removeChild(zebraStyleEl);
     zebraStyleEl = null;
     if ($sessionId && artist.trim() && title.trim()) {
-      updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined).catch(() => {});
+      updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined, language2).catch(() => {});
     }
   });
 </script>
@@ -533,6 +536,15 @@
         {/each}
       </select>
       {#if !language}<div class="lang-warning">language of the song</div>{/if}
+    </div>
+    <div class="form-group language-group">
+      <label for="language2">Language 2</label>
+      <select id="language2" bind:value={language2} on:change={syncMetadata}>
+        <option value="">None</option>
+        {#each SUPPORTED_LANGUAGES.filter(l => l.code !== language) as lang}
+          <option value={lang.code}>{lang.label}</option>
+        {/each}
+      </select>
     </div>
   </div>
 

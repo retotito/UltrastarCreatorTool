@@ -401,11 +401,13 @@ export function getDownloadZipUrl(sessionId) {
   return `${BASE}/download-zip/${sessionId}`;
 }
 
-export async function updateMetadata(sessionId, artist, title, language) {
+/** language2: a second sung language ("" removes it, undefined keeps it). */
+export async function updateMetadata(sessionId, artist, title, language, language2) {
   const form = new FormData();
   form.append('artist', artist);
   form.append('title', title);
   if (language !== undefined) form.append('language', language);
+  if (language2 !== undefined) form.append('language2', language2 || '');
   return request('PATCH', `/session/${sessionId}/metadata`, form, true);
 }
 

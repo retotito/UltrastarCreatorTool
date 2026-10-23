@@ -70,7 +70,8 @@
   }
 
   function handleSongConfirmed(event) {
-    lyricsData.update(d => ({ ...d, artist: event.detail.artist, title: event.detail.title, language: event.detail.language }));
+    lyricsData.update(d => ({ ...d, artist: event.detail.artist, title: event.detail.title, language: event.detail.language,
+                               language2: event.detail.language2 || '' }));
     // The audio file is now named "Artist - Title".
     if (event.detail.filename && $uploadData.hasOriginal) uploadData.update(d => ({ ...d, filename: event.detail.filename }));
     songModalOpen = false;
@@ -316,7 +317,7 @@
 
   {#if songModalOpen && $sessionId}
     <SongNameModal sessionId={$sessionId} artist={$lyricsData.artist} title={$lyricsData.title}
-                   language={$lyricsData.language} on:confirm={handleSongConfirmed} />
+                   language={$lyricsData.language} language2={$lyricsData.language2 || ''} on:confirm={handleSongConfirmed} />
   {/if}
 
   <div class="audio-grid">

@@ -2,7 +2,8 @@
 
 import pytest
 
-from services.ultrastar import _fmt_bpm, generate_lyrics_only_txt, generate_ultrastar
+from services.ultrastar import (_fmt_bpm, generate_lyrics_only_txt, generate_ultrastar, language_header,
+                                parse_language_header)
 
 
 def syl(text, start, end, line=0, rap=False):
@@ -29,6 +30,28 @@ def test_header_uses_full_language_name(make_pitch_data):
 def test_unknown_language_code_is_kept_as_given(make_pitch_data):
     content = generate_ultrastar([syl("la ", 1.0, 1.5)], make_pitch_data([]), 240, 1000, language="Klingon")
     assert "#LANGUAGE:Klingon" in content
+
+
+def test_two_languages_are_written_as_english_names(make_pitch_data):
+    content = generate_ultrastar([syl("la ", 1.0, 1.5)], make_pitch_data([]), 240, 1000, language="en", language2="de")
+    assert "#LANGUAGE:English, German" in content
+    assert "#LANGUAGE:French, Spanish" in generate_lyrics_only_txt("A", "T", language="fr", language2="es")
+
+
+@pytest.mark.parametrize("language, language2, expected", [
+    ("en", None, "English"), ("en", "de", "English, German"), ("en", "en", "English"), ("", None, "English"),
+    ("de", "", "German"), ("pt", "Klingon", "Portuguese, Klingon"),
+])
+def test_language_header(language, language2, expected):
+    assert language_header(language, language2) == expected
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("English, German", ("en", "de")), ("German", ("de", None)), ("de", ("de", None)),
+    ("english ,  french", ("en", "fr")), ("", (None, None)), ("Klingon", (None, None)),
+])
+def test_language_header_is_read_back_as_codes(value, expected):
+    assert parse_language_header(value) == expected
 
 
 def test_times_become_beats_relative_to_gap(make_pitch_data):

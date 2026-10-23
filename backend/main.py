@@ -1457,7 +1457,9 @@ async def import_ultrastar(
 
     artist = headers.get("ARTIST", "Unknown Artist")
     title = headers.get("TITLE", "Unknown Song")
-    language = headers.get("LANGUAGE", "en")
+    from services.ultrastar import parse_language_header
+    language, language2 = parse_language_header(headers.get("LANGUAGE", ""))  # "English, German" → en, de
+    language = language or "en"
     genre = headers.get("GENRE", "")
     year = headers.get("YEAR", "")
     edition = headers.get("EDITION", "")
@@ -1525,6 +1527,7 @@ async def import_ultrastar(
         "artist": artist,
         "title": title,
         "language": language,
+        "language2": language2,
         "genre": genre,
         "year": year,
         "edition": edition,
@@ -1569,6 +1572,7 @@ async def import_ultrastar(
         "artist": artist,
         "title": title,
         "language": language,
+        "language2": language2,
         "syllable_count": len(syllable_timings),
         "line_count": len(parsed["breaks"]) + 1,
         "bpm": bpm,
@@ -1687,6 +1691,11 @@ def _youtube():
     from services.download_tools import Tools
     from services.youtube import YouTube
     return YouTube(Tools(TOOLS_DIR), _ffmpeg_path())
+
+
+def _language_header(language, language2=None) -> str:
+    from services.ultrastar import language_header
+    return language_header(language or "", language2)
 
 
 def _safe_filename(name: str) -> str:
@@ -3364,7 +3373,8 @@ async def get_lyrics_sources(session_id: str):
     stored = session.get("lyrics_sources") or {}
     return {"sources": stored.get("sources", {}), "tabs": stored.get("tabs", {}),
             "artist": session.get("artist", ""), "title": session.get("title", ""),
-            "language": session.get("language"), "song_confirmed": session.get("song_confirmed", True)}
+            "language": session.get("language"), "language2": session.get("language2"),
+            "song_confirmed": session.get("song_confirmed", True)}
 
 
 @app.put("/api/lyrics-sources/{session_id}")
@@ -3641,6 +3651,7 @@ def generate_lyrics_only(session_id: str):
             gap_ms=0,
             language=language,
             mp3_filename=f"{artist} - {title}{_audio_ext}",
+            language2=session.get("language2"),
         )
 
         timestamp = int(time.time())
@@ -3814,6 +3825,7 @@ def generate_ultrastar_files(session_id: str):
             title=title,
             language=language,
             mp3_filename=f"{artist} - {title}{_audio_ext}",
+            language2=session.get("language2"),
         )
         
         # Determine pitch/alignment methods (from actual results)
@@ -4095,7 +4107,7 @@ async def generate_empty(session_id: str):
     header = (
         f"#TITLE:{info.get('title', 'Unknown')}\n"
         f"#ARTIST:{info.get('artist', 'Unknown')}\n"
-        f"#LANGUAGE:{info.get('language', '')}\n"
+        f"#LANGUAGE:{_language_header(session.get('language') or info.get('language', ''), session.get('language2'))}\n"
         f"#MP3:{mp3_filename}\n"
         f"#VOCALS:{vocals_filename}\n"
         f"#BPM:{float(bpm):.2f}".rstrip('0').rstrip('.') + "\n"
@@ -4315,34 +4327,7 @@ async def save_editor_state(session_id: str, request: Request):
     lines.append(f"#ARTIST:{session.get('artist', 'Unknown Artist')}")
     lines.append(f"#BPM:{float(editor_bpm):.2f}".rstrip('0').rstrip('.'))
     lines.append(f"#GAP:{int(editor_gap)}")
-    lang = session.get("language", "en")
-    lang_name = {
-        "af": "Afrikaans", "sq": "Albanian", "am": "Amharic", "ar": "Arabic",
-        "hy": "Armenian", "az": "Azerbaijani", "ba": "Bashkir", "eu": "Basque",
-        "be": "Belarusian", "bn": "Bengali", "bs": "Bosnian", "br": "Breton",
-        "bg": "Bulgarian", "ca": "Catalan", "zh": "Chinese", "hr": "Croatian",
-        "cs": "Czech", "da": "Danish", "nl": "Dutch", "en": "English",
-        "et": "Estonian", "fo": "Faroese", "fi": "Finnish", "fr": "French",
-        "gl": "Galician", "ka": "Georgian", "de": "German", "el": "Greek",
-        "gu": "Gujarati", "ht": "Haitian Creole", "ha": "Hausa", "haw": "Hawaiian",
-        "he": "Hebrew", "hi": "Hindi", "hu": "Hungarian", "is": "Icelandic",
-        "id": "Indonesian", "it": "Italian", "ja": "Japanese", "jw": "Javanese",
-        "kn": "Kannada", "kk": "Kazakh", "km": "Khmer", "ko": "Korean",
-        "lo": "Lao", "la": "Latin", "lv": "Latvian", "ln": "Lingala",
-        "lt": "Lithuanian", "lb": "Luxembourgish", "mk": "Macedonian",
-        "mg": "Malagasy", "ms": "Malay", "ml": "Malayalam", "mt": "Maltese",
-        "mi": "Maori", "mr": "Marathi", "mn": "Mongolian", "my": "Myanmar",
-        "ne": "Nepali", "no": "Norwegian", "nn": "Nynorsk", "oc": "Occitan",
-        "ps": "Pashto", "fa": "Persian", "pl": "Polish", "pt": "Portuguese",
-        "pa": "Punjabi", "ro": "Romanian", "ru": "Russian", "sa": "Sanskrit",
-        "sr": "Serbian", "sn": "Shona", "sd": "Sindhi", "si": "Sinhala",
-        "sk": "Slovak", "sl": "Slovenian", "so": "Somali", "es": "Spanish",
-        "su": "Sundanese", "sw": "Swahili", "sv": "Swedish", "tl": "Tagalog",
-        "tg": "Tajik", "ta": "Tamil", "tt": "Tatar", "te": "Telugu",
-        "th": "Thai", "bo": "Tibetan", "tr": "Turkish", "tk": "Turkmen",
-        "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese",
-        "cy": "Welsh", "yi": "Yiddish", "yo": "Yoruba",
-    }.get(lang, lang.title())
+    lang_name = _language_header(session.get("language", "en"), session.get("language2"))
     lines.append(f"#LANGUAGE:{lang_name}")
     _mp3_path = session.get('original_audio') or 'song.mp3'
     _mp3_header_value = f"{os.path.splitext(os.path.basename(_mp3_path))[0]}.mp3"
@@ -5000,7 +4985,8 @@ async def export_with_corrections(
 
 
 @app.patch("/api/session/{session_id}/metadata")
-async def update_metadata(session_id: str, artist: str = Form(...), title: str = Form(...), language: str = Form(None)):
+async def update_metadata(session_id: str, artist: str = Form(...), title: str = Form(...), language: str = Form(None),
+                          language2: str = Form(None)):
     """Update artist/title/language in session and rewrite the .txt file headers."""
     session = sessions.get(session_id)
     if not session:
@@ -5011,6 +4997,8 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
     session["song_confirmed"] = True  # the user saw and kept (or corrected) the names
     if language is not None:
         session["language"] = language
+    if language2 is not None:  # "" clears the second language
+        session["language2"] = language2 if language2 and language2 != session.get("language") else None
     from services.song_files import rename_audio_to_song
     rename_audio_to_song(session)
     # Clear derived headers so _update_txt_asset_headers recomputes them from new artist/title
@@ -5034,8 +5022,10 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
                 import re
                 content = re.sub(r"^#TITLE:.*$", f"#TITLE:{title}", content, count=1, flags=re.MULTILINE)
                 content = re.sub(r"^#ARTIST:.*$", f"#ARTIST:{artist}", content, count=1, flags=re.MULTILINE)
-                if language:
-                    content = re.sub(r"^#LANGUAGE:.*$", f"#LANGUAGE:{language}", content, count=1, flags=re.MULTILINE)
+                if language or language2 is not None:
+                    # English names, one or two ("English, German"), not the code
+                    value = _language_header(session.get("language"), session.get("language2"))
+                    content = re.sub(r"^#LANGUAGE:.*$", f"#LANGUAGE:{value}", content, count=1, flags=re.MULTILINE)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(content)
             except Exception as e:
@@ -5045,7 +5035,7 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
     _update_txt_asset_headers(session)
 
     log_step("METADATA", f"Session {session_id}: artist='{artist}', title='{title}', language='{language}'")
-    return {"status": "ok", "artist": artist, "title": title, "language": language,
+    return {"status": "ok", "artist": artist, "title": title, "language": language, "language2": session.get("language2"),
             "filename": os.path.basename(session.get("original_audio") or session.get("vocal_audio") or "")}
 
 

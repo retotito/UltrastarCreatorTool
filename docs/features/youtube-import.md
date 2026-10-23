@@ -1,6 +1,6 @@
 # YouTube Import (Step 1)
 
-> **Status:** Current · **Last updated:** 2026-10-22
+> **Status:** Current · **Last updated:** 2026-10-23
 
 Paste a YouTube link in Step 1's **Full Mix** card instead of uploading a file. The app shows the video (thumbnail,
 title, channel, length, and the artist/title it found), then downloads **only the audio** as the full mix. Vocal
@@ -17,7 +17,9 @@ separation and everything after work as with an uploaded file.
 | `youtube_thumbnail` | thumbnail URL (for a cover later) |
 
 Artist and title are a proposal: Step 1 then opens "Which song is this?" (`SongNameModal.svelte`), which checks
-the video title against lrclib.net (`services/song_identify.py`) and lets the user correct the names. Uploaded files
+the video title against lrclib.net (`services/song_identify.py`) and lets the user correct the names and choose the
+language, plus an optional second one (`language2`; written as `#LANGUAGE:English, German` by
+`services/ultrastar.py` `language_header`). Uploaded files
 get the same window (names from their tags and file name). Step 2's automatic LRCLIB search waits until the names
 are confirmed (`song_confirmed`).
 

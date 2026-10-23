@@ -1,7 +1,8 @@
 <script>
   /**
    * "Which song is this?" after an upload or a YouTube download: a proposal for artist and title to check and
-   * correct. The proposal is checked against lrclib.net in the background (it tells "Title - Artist" from
+   * correct, and the language(s) it is sung in (a second one for bilingual songs: "#LANGUAGE:English, German").
+   * The artist/title proposal is checked against lrclib.net in the background (it tells "Title - Artist" from
    * "Artist - Title" and ignores wrong tags). Saving the names confirms them, names the song's audio file
    * "Artist - Title", and Step 2 then searches the lyrics with them.
    */
@@ -13,6 +14,7 @@
   export let artist = '';
   export let title = '';
   export let language = '';
+  export let language2 = '';
 
   const dispatch = createEventDispatcher();
   let searching = false;
@@ -44,8 +46,10 @@
     if (!artist.trim() || !title.trim() || !language) return;
     saving = true;
     try {
-      const saved = await updateMetadata(sessionId, artist.trim(), title.trim(), language);
-      dispatch('confirm', { artist: artist.trim(), title: title.trim(), language, filename: saved?.filename || '' });
+      const second = language2 && language2 !== language ? language2 : '';
+      const saved = await updateMetadata(sessionId, artist.trim(), title.trim(), language, second);
+      dispatch('confirm', { artist: artist.trim(), title: title.trim(), language, language2: second,
+                            filename: saved?.filename || '' });
     } catch (err) {
       message = err.message.replace(/^API error \d+: /, '');
     } finally {
@@ -78,7 +82,7 @@
     {#if searching}
       <div class="busy-bar" role="progressbar" aria-label="Recognising the song"></div>
     {/if}
-    <p class="song-hint">Please check the artist and song name, and choose the language it is sung in.</p>
+    <p class="song-hint">Please check the artist and song name, and choose the language it is sung in (a second one if the song mixes two).</p>
     {#if message}<p class="song-message">{message}</p>{/if}
 
     <form class="song-fields" on:submit|preventDefault={confirm}>
@@ -86,14 +90,24 @@
       <button type="button" class="swap-btn" on:click={swap} title="Swap artist and title">⇄</button>
       <label>Title <input type="text" bind:value={title} placeholder="Song title" disabled={searching} /></label>
     </form>
-    <label class="song-language">Language
-      <select bind:value={language}>
-        <option value="" disabled>Select language…</option>
-        {#each SUPPORTED_LANGUAGES as lang}
-          <option value={lang.code}>{lang.label}</option>
-        {/each}
-      </select>
-    </label>
+    <div class="song-languages">
+      <label class="song-language">Language
+        <select bind:value={language}>
+          <option value="" disabled>Select language…</option>
+          {#each SUPPORTED_LANGUAGES as lang}
+            <option value={lang.code}>{lang.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="song-language">Language 2 (optional)
+        <select bind:value={language2}>
+          <option value="">None</option>
+          {#each SUPPORTED_LANGUAGES.filter(l => l.code !== language) as lang}
+            <option value={lang.code}>{lang.label}</option>
+          {/each}
+        </select>
+      </label>
+    </div>
 
     <div class="song-actions">
       <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !artist.trim() || !title.trim() || !language}>
@@ -126,7 +140,8 @@
     cursor: pointer; font-size: 1rem; margin-bottom: 1px;
   }
   .swap-btn:hover { background: #303045; }
-  .song-language { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: #aaa; max-width: 260px; }
+  .song-languages { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .song-language { flex: 1 1 200px; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: #aaa; }
   .song-language select {
     background: #11111d; color: #e0e0e0; border: 1px solid #333; border-radius: 6px; padding: 0.5rem 0.6rem; font-size: 0.95rem;
   }
