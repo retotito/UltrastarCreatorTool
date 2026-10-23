@@ -1,6 +1,6 @@
 # AI Pipeline
 
-> **Status:** Current · **Last updated:** 2026-10-19
+> **Status:** Current · **Last updated:** 2026-10-23
 
 How audio and lyrics become an UltraStar `.txt`, as implemented today. The planned change of the alignment stage is
 described in [plans/forced-alignment.md](../plans/forced-alignment.md).
@@ -27,6 +27,12 @@ padded to the exact length of the original. Can be skipped by uploading vocals d
 `main.py` `transcribe_stream`: WhisperX (faster-whisper, CPU, int8, batch size 4) with the model from the UI preset:
 `fast` = small, `balanced` = medium, otherwise large-v3. WhisperX defaults apply: pyannote voice activity
 detection, beam size 5, `condition_on_previous_text=False`.
+
+**Two languages** (the session has `language2`): Whisper decodes with one language and *translates* lines sung in
+another. `services/bilingual_transcription.py` transcribes the vocals once per language in passages of up to 8 s
+and keeps, per passage, the version with the higher average log-probability (Whisper's own language detection
+mistook several Italian lines of an English/Italian duet for English). About twice the time of one language.
+Each language's passages are then aligned with that language's wav2vec2 model.
 
 WhisperX then aligns **its own transcript** with a wav2vec2 model (English: `WAV2VEC2_ASR_BASE_960H`) to get word
 and character timestamps, stored in the session. Fallback: vanilla Whisper with `word_timestamps=True` (word level

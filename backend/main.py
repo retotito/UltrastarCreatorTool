@@ -2938,26 +2938,41 @@ async def transcribe_stream(session_id: str, language: str = "en", use_cleaned: 
                 model = _whisperx_model_cache[model_name]
                 log_step("WHISPERX", "Loading audio...")
                 audio = whisperx.load_audio(audio_path)
-                log_step("WHISPERX", "Running transcription...")
-                transcribe_result = model.transcribe(audio, batch_size=4, language=language if language else None)
+                language2 = session.get("language2")
+                if language and language2 and language2 != language:
+                    # Two languages: each passage in its own, else Whisper translates the second one
+                    from services.bilingual_transcription import transcribe_two_languages
+                    log_step("WHISPERX", f"Running transcription in {language} and {language2}...")
+                    transcribe_result = transcribe_two_languages(model, audio, language, language2, batch_size=4)
+                    sung = {}
+                    for seg in transcribe_result["segments"]:
+                        sung[seg["language"]] = sung.get(seg["language"], 0) + 1
+                    log_step("WHISPERX", "Passages per language: " + ", ".join(f"{k} {v}" for k, v in sung.items()))
+                else:
+                    log_step("WHISPERX", "Running transcription...")
+                    transcribe_result = model.transcribe(audio, batch_size=4, language=language if language else None)
                 segments = transcribe_result.get("segments", [])
                 lines = [s["text"].strip() for s in segments if s.get("text", "").strip()]
                 all_words = []
                 all_chars = []
-                try:
-                    align_model, align_metadata = whisperx.load_align_model(
-                        language_code=transcribe_result.get("language", language or "en"),
-                        device=device
-                    )
-                    aligned = whisperx.align(segments, align_model, align_metadata, audio, device, return_char_alignments=True)
-                    for w in aligned.get("word_segments", []):
-                        all_words.append({"word": w.get("word","").strip(), "start": round(w.get("start",0),4), "end": round(w.get("end",0),4), "score": round(w.get("score",0),4)})
-                    for seg in aligned.get("segments", []):
-                        for c in seg.get("chars", []):
-                            if c.get("char","").strip():
-                                all_chars.append({"char": c["char"], "start": round(c.get("start",0),4), "end": round(c.get("end",0),4)})
-                except Exception as align_err:
-                    log_step("WHISPERX", f"Alignment failed (non-fatal): {align_err}")
+                # Word timing with each language's alignment model
+                by_language = {}
+                for seg in segments:
+                    by_language.setdefault(seg.get("language") or transcribe_result.get("language", language or "en"), []).append(seg)
+                for code, code_segments in by_language.items():
+                    try:
+                        align_model, align_metadata = whisperx.load_align_model(language_code=code, device=device)
+                        aligned = whisperx.align(code_segments, align_model, align_metadata, audio, device, return_char_alignments=True)
+                        for w in aligned.get("word_segments", []):
+                            all_words.append({"word": w.get("word","").strip(), "start": round(w.get("start",0),4), "end": round(w.get("end",0),4), "score": round(w.get("score",0),4)})
+                        for seg in aligned.get("segments", []):
+                            for c in seg.get("chars", []):
+                                if c.get("char","").strip():
+                                    all_chars.append({"char": c["char"], "start": round(c.get("start",0),4), "end": round(c.get("end",0),4)})
+                    except Exception as align_err:
+                        log_step("WHISPERX", f"Alignment ({code}) failed (non-fatal): {align_err}")
+                all_words.sort(key=lambda w: w["start"])
+                all_chars.sort(key=lambda c: c["start"])
                 transcribed_text = "\n".join(lines)
                 session["whisper_words"] = all_words
                 session["whisper_chars"] = all_chars
