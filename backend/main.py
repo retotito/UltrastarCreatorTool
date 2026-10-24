@@ -2618,18 +2618,20 @@ async def segment_generate(session_id: str, request: Request):
         )
 
         # Build note objects (IDs are 0-based within this batch; frontend re-IDs on merge)
+        # The same note steps as the whole song: melisma, GAME, final pitches, consonant trimming.
+        from services.note_pipeline import build_notes
+        syllable_timings, _ = build_notes(clip_path, syllable_timings, pitch_data, language, MODELS_DIR,
+                                          align_engine, tag="SEG_GEN")
+
         notes = []
         note_id = 0
         prev_line_index = None
         last_end_beat = -1
-
-        for timing in syllable_timings:
+        for timing in syllable_timings:   # one entry per note (melisma parts included)
             abs_start = timing["start"] + offset_sec
             abs_end = timing["end"] + offset_sec
             line_index = timing.get("line_index", 0)
             is_rap = timing.get("is_rap", False)
-
-            # Insert break between lyric lines
             if prev_line_index is not None and line_index != prev_line_index:
                 break_start_beat = last_end_beat + 2
                 next_beat = max(break_start_beat + 1, int(((abs_start - gap_sec) * bpm) / 15))
@@ -2639,67 +2641,36 @@ async def segment_generate(session_id: str, request: Request):
                 )
                 note_id += 1
                 last_end_beat = break_start_beat
-
-            # Pitch from clip-relative times. For long syllables with clear pitch
-            # movement, split into continuation notes to preserve vibrato shape.
-            subnotes = []
-            if is_rap:
-                subnotes = [{"start": timing["start"], "end": timing["end"], "pitch": 0, "syllable": timing["syllable"]}]
-            else:
-                from services import melisma
-                parts = melisma.split_melismas([timing], pitch_data) if melisma.enabled() else [timing]
-
-                if len(parts) > 1:
-                    for part in parts:
-                        subnotes.append(
-                            {
-                                "start": part["start"],
-                                "end": part["end"],
-                                "pitch": int(part["pitch"]),
-                                "syllable": part["syllable"],
-                            }
-                        )
-                else:
-                    pitch = syllable_pitch(pitch_data, timing["start"], timing["end"])
-                    if pitch == 0:
-                        pitch = last_pitch or 60  # unvoiced: the previous note's pitch, not a fixed C4
-                    subnotes = [{"start": timing["start"], "end": timing["end"], "pitch": pitch, "syllable": timing["syllable"]}]
-                if subnotes and subnotes[-1]["pitch"]:
-                    last_pitch = subnotes[-1]["pitch"]
-
-            for sub in subnotes:
-                sub_abs_start = sub["start"] + offset_sec
-                sub_abs_end = sub["end"] + offset_sec
-
-                start_beat = max(0, int(((sub_abs_start - gap_sec) * bpm) / 15))
-                end_beat = max(start_beat + 1, int(((sub_abs_end - gap_sec) * bpm) / 15))
+            pitch = 0 if is_rap else (timing.get("pitch") or last_pitch or 60)
+            if not is_rap:
+                last_pitch = pitch
+            start_beat = max(0, int(((abs_start - gap_sec) * bpm) / 15))
+            end_beat = max(start_beat + 1, int(((abs_end - gap_sec) * bpm) / 15))
+            duration = max(1, end_beat - start_beat)
+            if start_beat <= last_end_beat and notes:
+                start_beat = last_end_beat + 1
+                end_beat = max(start_beat + 1, end_beat)
                 duration = max(1, end_beat - start_beat)
-
-                if start_beat <= last_end_beat and notes:
-                    start_beat = last_end_beat + 1
-                    end_beat = max(start_beat + 1, end_beat)
-                    duration = max(1, end_beat - start_beat)
-
-                notes.append(
-                    {
-                        "id": note_id,
-                        "startBeat": start_beat,
-                        "duration": duration,
-                        "pitch": int(sub["pitch"]),
-                        "syllable": sub["syllable"],
-                        "isRap": is_rap,
-                        "confidence": timing.get("confidence", 1.0),
-                        "original": {"startBeat": start_beat, "duration": duration, "pitch": int(sub["pitch"])},
-                    }
-                )
-                note_id += 1
-                last_end_beat = start_beat + duration
-
+            notes.append(
+                {
+                    "id": note_id,
+                    "startBeat": start_beat,
+                    "duration": duration,
+                    "pitch": int(pitch),
+                    "syllable": timing["syllable"],
+                    "isRap": is_rap,
+                    "confidence": timing.get("confidence", 1.0),
+                    "original": {"startBeat": start_beat, "duration": duration, "pitch": int(pitch)},
+                }
+            )
+            note_id += 1
+            last_end_beat = start_beat + duration
             prev_line_index = line_index
 
         # Absolute-time syllable timings for frontend rawTimings sync
-        abs_timings = [
-            {**t, "start": round(t["start"] + offset_sec, 4), "end": round(t["end"] + offset_sec, 4)}
+        abs_timings = [   # one per note, like the notes; the aligner's letter times are clip-relative: left out
+            {**{k: v for k, v in t.items() if k != "letters"},
+             "start": round(t["start"] + offset_sec, 4), "end": round(t["end"] + offset_sec, 4)}
             for t in syllable_timings
         ]
 
@@ -3954,36 +3925,12 @@ def generate_ultrastar_files(session_id: str):
                     syllable_timings[syllable_idx]["line_index"] = line_idx
                 syllable_idx += 1
 
-        # Melisma: long syllables whose pitch moves become several notes (gas ~ ~). Done last, on
-        # timings, so GAP/BPM/lines above saw syllables and the editor gets one timing per note.
-        from services import melisma
-        if melisma.enabled():
-            syllable_count = len(syllable_timings)
-            syllable_timings = melisma.split_melismas(syllable_timings, pitch_data)
-            log_step("GENERATE", f"Melisma: {len(syllable_timings) - syllable_count} extra notes")
-
-        # Notes: GAME's sung note per syllable (better than the pitch curve's median, most of all where two
-        # voices overlap); syllables it finds nothing in keep FCPE's. See docs/architecture/pipeline.md.
-        from services import game_notes
-        check_cancelled()
-        found = 0
-        try:
-            started = time.time()
-            found = game_notes.apply(MODELS_DIR, vocal_path, syllable_timings, language)
-            log_step("GENERATE", f"Notes (GAME): {found}/{len(syllable_timings)} syllables in {time.time() - started:.0f}s")
-        except Exception as e:  # the model can't run: FCPE's pitch stays
-            log_step("GENERATE", f"Notes (GAME) skipped: {type(e).__name__}: {e}")
-
-        # Notes start where the voice gets a pitch and end where it fades, with air before the next syllable
-        # (services/consonant_trim.py; ULTRASTAR_TRIM_CONSONANTS=0 turns it off). Last, after the pitches are
-        # decided on the whole syllables (shorter notes made the pitch slightly worse on the reference songs).
-        from services import consonant_trim
-        if consonant_trim.enabled() and syllable_timings and align_engine == "ctc":
-            from services.forced_alignment import frame_loudness
-            from services.pitch_detection import freeze_pitches
-            syllable_timings = consonant_trim.trim(freeze_pitches(pitch_data, syllable_timings),
-                                                   pitch_data, frame_loudness(vocal_path))
-            log_step("GENERATE", "Consonant trimming applied")
+        # Melisma, GAME's notes, the final pitches and consonant trimming: the same steps as for a range
+        # (segment_generate). See services/note_pipeline.py and docs/architecture/pipeline.md.
+        from services.note_pipeline import build_notes
+        syllable_timings, notes_info = build_notes(vocal_path, syllable_timings, pitch_data, language, MODELS_DIR,
+                                                   align_engine, check_cancelled)
+        found = notes_info["game_found"]
         
         # Step 3d: Generate files
         log_step("GENERATE", "Step 4/4: Generating output files")

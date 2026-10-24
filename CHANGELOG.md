@@ -44,6 +44,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 🔁 "AI generate notes" on a loop = the same notes as Generate
+- A loop in the editor now gets the same note steps as the whole song: GAME's notes, octave check, repeated lines,
+  consonant trimming (it had FCPE's pitch only), and its timings match its notes one to one
+
 ### 🔤 English split into sung syllables
 - Words pyphen left whole are split as they are sung: "sing-ing", "pie-ces", "ban-da-ges", "un-pre-dic-ta-ble"
   (silent "e", "-es"/"-ed" and "-ing" handled). Agreement with the syllables of 7 real charts: 95.4 → 98.3 %

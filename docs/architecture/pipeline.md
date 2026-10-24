@@ -143,6 +143,12 @@ re-quantisation (`rawTimings`) in step. Off with `ULTRASTAR_MELISMA=off`.
 Measured on 6 reference songs: frame pitch (right pitch class over time) 42.3 → 44.9 %, within a semitone
 53.3 → 56.1 %, syllable pitch 57.4 → 59.0 %; 218 `~` notes against 212 in the charts.
 
+### 7a. One note pipeline for the song and for a range
+Melisma (7), GAME's notes, the final pitches and consonant trimming (7b) run in `services/note_pipeline.py`
+`build_notes`, for the whole song (Generate) and for a range (the editor's "AI generate notes" on a loop,
+`/api/segment-generate`). The range path used to have FCPE's median only (no GAME, octave check or trimming)
+and returned one timing per syllable while its notes included melisma parts; it now returns one per note.
+
 ### 7b. Consonant trimming
 `services/consonant_trim.py`, after the notes' pitches are decided (GAME, octave check) and frozen
 (`freeze_pitches`): a note starts after the first voiced frame (FCPE), moved halfway towards where the aligner
