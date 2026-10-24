@@ -37,6 +37,9 @@ the uploader (in the song's language first), then YouTube's automatic captions i
 `vtt_to_lyrics` makes lyrics lines of it (no timings, tags, "♪", "[Music]"; a line repeated by rolling captions
 once). With several tracks the tab offers a choice.
 
+The **import** already loads the uploader's subtitles (not the automatic captions) right after the audio: they
+fill the left side's YouTube tab, which Step 2 then shows first (`lyrics_sources.tabs.left = "youtube"`).
+
 ## Tools: yt-dlp and QuickJS
 
 `backend/services/download_tools.py` downloads them on first use into the app's data folder (`tools/`; in dev

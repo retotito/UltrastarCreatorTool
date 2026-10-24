@@ -1809,6 +1809,22 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
                 os.replace(path, named)
                 outcome["file"], outcome["filename"] = _normalize_audio_to_wav(named, os.path.basename(named))
                 outcome["details"] = details
+                # The uploader's subtitles, if any, as the song's first lyrics (Step 2's YouTube tab). Automatic
+                # captions are left to the tab's button: speech recognition is weak on singing.
+                from services.youtube import subtitle_tracks, vtt_to_lyrics
+                tracks = subtitle_tracks({"subtitles": {k: [] for k in details.get("subtitle_languages") or []}},
+                                         details.get("language"))
+                if tracks and not cancelled.is_set():
+                    updates.put(("subtitles", "Loading the video's subtitles…", None))
+                    subs_folder = os.path.join(folder, "subtitles")
+                    try:
+                        text = vtt_to_lyrics(yt.subtitles(video_id, tracks[0], subs_folder))
+                        if text:
+                            outcome["subtitles"] = (tracks[0], text)
+                    except Exception as e:  # no lyrics then: the download itself worked
+                        log_step("YOUTUBE", f"Subtitles not loaded: {type(e).__name__}: {e}")
+                    finally:
+                        shutil.rmtree(subs_folder, ignore_errors=True)
             except YouTubeError as e:
                 outcome["error"] = str(e)
             except Exception as e:  # unexpected: show it rather than hang
@@ -1856,6 +1872,17 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
         mark_new_song(session, {"youtube_title": details["video_title"]}, details)
         if details["language"] and not session.get("language"):
             session["language"] = details["language"]
+        if outcome.get("subtitles"):
+            from services.lyrics_sources import merge
+            track, text = outcome["subtitles"]
+            lines = len(text.splitlines())
+            session["lyrics_sources"] = merge(session.get("lyrics_sources") or {}, {
+                "sides": {"left": {"youtube": {"text": text, "marks": [], "dividers": [], "info": {
+                    "message": f"✓ {lines} lines from the video's subtitles: {track['label']}. "
+                               "Repeated choruses must be written out."}}}},
+                "tabs": {"left": "youtube"},
+            })
+            log_step("YOUTUBE", f"Session {target_id}: lyrics from the subtitles ({track['label']}, {lines} lines)")
         _update_txt_asset_headers(session)
         save_session(target_id)
         log_step("YOUTUBE", f"Session {target_id}: audio from {details['url']} → {outcome['filename']}")

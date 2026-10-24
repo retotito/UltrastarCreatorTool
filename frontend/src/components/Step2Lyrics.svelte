@@ -139,9 +139,10 @@
   $: vocalsUrl = $sessionId && hasVocals ? getAudioUrl($sessionId, hasOriginalDemucs && !hasEditedVocal ? 'demucs' : 'vocals') : '';
   $: cleanedUrl = hasCleaned ? getAudioUrl($sessionId, hasEditedVocal ? 'edited' : 'cleaned') : '';
   $: mixUrl = $sessionId && $uploadData.hasOriginal ? getAudioUrl($sessionId, 'original') : '';
+  // From YouTube: its subtitles come first (loaded with the audio when the uploader wrote some).
   $: tabList = [
-    { id: 'lrclib', label: 'LRCLIB' },
     ...(hasYoutube ? [{ id: 'youtube', label: 'YouTube' }] : []),
+    { id: 'lrclib', label: 'LRCLIB' },
     { id: 'vocals', label: 'Vocals' },
     ...(hasCleaned ? [{ id: 'cleaned', label: 'Cleaned vocals' }] : []),
   ];

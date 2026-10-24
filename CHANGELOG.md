@@ -47,6 +47,7 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 ### 📺 Lyrics from the YouTube video's subtitles
 - Songs imported from YouTube get a "YouTube" tab in Step 2: "Load subtitles" takes the video's subtitles as lyrics
   (written by the uploader first, else YouTube's automatic captions). Lyrics only shown in the picture can't be read
+- The YouTube download already brings the uploader's subtitles: Step 2 opens with them in the left YouTube tab
 
 ### ↔️ Step 2: two independent sides, nothing automatic
 - Each side has its own texts for LRCLIB, Vocals and Cleaned vocals: load a version or Whisper into one side,
