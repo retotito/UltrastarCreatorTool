@@ -3486,12 +3486,13 @@ async def song_identify(session_id: str, request: Request):
 
 @app.get("/api/lyrics-sources/{session_id}")
 async def get_lyrics_sources(session_id: str):
-    """Step 2's lyric sources (LRCLIB, vocals, cleaned vocals) and which tab each side shows."""
+    """Step 2's lyric sources (LRCLIB, vocals, cleaned vocals) per side and which tab each side shows."""
+    from services.lyrics_sources import sides_of
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     stored = session.get("lyrics_sources") or {}
-    return {"sources": stored.get("sources", {}), "tabs": stored.get("tabs", {}),
+    return {"sides": sides_of(stored), "tabs": stored.get("tabs", {}),
             "artist": session.get("artist", ""), "title": session.get("title", ""),
             "language": session.get("language"), "language2": session.get("language2"),
             "song_confirmed": session.get("song_confirmed", True)}

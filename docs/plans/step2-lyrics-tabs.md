@@ -23,16 +23,19 @@ Artist [          ]  Title [          ]  Language [ ▾ ]
 
 ## Decisions (2026-10-22)
 
-1. **Tabs are lyric sources, the two sides are views.** Each source has one text: LRCLIB, Vocals (Whisper),
-   Cleaned vocals (Whisper on the Step 4 cleanup, tab only when one exists). Showing the same source on both sides
-   shows the same text.
+1. **Tabs are lyric sources, each side has its own texts** (changed 2026-10-25; before, both sides showed one
+   shared text per source): LRCLIB, Vocals (Whisper), Cleaned vocals (Whisper on the Step 4 cleanup, tab only when
+   one exists). Loading LRCLIB or Whisper fills only the side it was started from; editing one side never changes
+   the other. Stored as `lyrics_sources.sides.{left,right}`; older sessions' shared texts go to both sides.
 2. **Generate per side** replaces "Lyrics for generation: left / right" and the separate "Generate from Cleaned
    Vocals" button. The timing audio follows the tab: Vocals → vocals, Cleaned vocals → cleaned vocals, LRCLIB
    (no audio of its own) → cleaned vocals when a cleanup exists, else vocals. No checkbox.
 3. **Hyphenation is automatic and invisible**: the text is hyphenated right before generating; the tab's text
    isn't changed. Hyphens the user wrote are kept **per word** (before: a whole line was skipped if it contained
    one `-`). Wrong splits are fixed in the editor.
-4. **LRCLIB searches automatically** when artist and title are known and its text is empty.
+4. **Nothing happens on its own** (changed 2026-10-25; before, LRCLIB searched automatically and the sides
+   swapped when it found nothing): the user opens "Search LRCLIB…" on a side (it searches with the song's names
+   right away) and chooses a version, or starts Whisper.
 5. **Defaults**: left LRCLIB, right Vocals.
 6. **Artist and title for file uploads** from the file's tags, else from the file name ("Artist - Title.mp3").
 7. **Texts are saved in the session** (not only the browser), so they survive another computer or cleared data.

@@ -44,6 +44,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### ↔️ Step 2: two independent sides, nothing automatic
+- Each side has its own texts for LRCLIB, Vocals and Cleaned vocals: load a version or Whisper into one side,
+  edit it, compare with the other. Nothing is searched or switched on its own any more
+- Existing sessions keep their texts (on both sides)
+
 ### 🎶 Long notes split like by hand
 - Syllables held for a second or more get finer "~" notes (up to 12): Ben Harper's final "sun" 6 → 12 notes
   (fine-tuned chart: 11), long syllables overall 72 → 105 notes (fine-tuned: 98) at the same pitch accuracy

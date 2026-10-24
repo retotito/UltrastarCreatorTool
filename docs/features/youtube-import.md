@@ -25,8 +25,8 @@ Artist and title are a proposal: Step 1 then opens "Which song is this?" (`SongN
 the video title against lrclib.net (`services/song_identify.py`) and lets the user correct the names and choose the
 language, plus an optional second one (`language2`; written as `#LANGUAGE:English, German` by
 `services/ultrastar.py` `language_header`). Uploaded files
-get the same window (names from their tags and file name). Step 2's automatic LRCLIB search waits until the names
-are confirmed (`song_confirmed`).
+get the same window (names from their tags and file name). Step 2 searches LRCLIB only when asked, with the
+confirmed names.
 
 ## Tools: yt-dlp and QuickJS
 

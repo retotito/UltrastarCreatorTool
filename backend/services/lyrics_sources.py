@@ -1,8 +1,12 @@
-"""Step 2's lyric sources, kept in the session: one text per source, shown in the tabs of either side.
+"""Step 2's lyric sources, kept in the session: each side (left, right) has its own text per source, shown in its
+tabs, so the two sides can be compared and edited independently.
 
 Sources: "lrclib" (lyrics found online), "vocals" (Whisper on the vocals), "cleaned" (Whisper on the
 cleaned vocals). Each has `text`, and optionally `marks` (colour highlights), `dividers` (line numbers
 with a divider) and `info` (what produced the text, for the tab's status line).
+
+Stored as {"sides": {"left": {source: …}, "right": {…}}, "tabs": {"left": source, "right": source}}. Sessions
+from before had one text per source for both sides ("sources"): `sides_of` gives it to each side.
 """
 
 from typing import Any, Dict
@@ -42,15 +46,27 @@ def _clean_source(value: Any) -> Dict[str, Any]:
     return out
 
 
+def sides_of(stored: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Each side's sources (copies); older sessions' shared "sources" go to both sides."""
+    if stored.get("sides"):
+        return {side: {k: dict(v) for k, v in (stored["sides"].get(side) or {}).items()} for side in SIDES}
+    shared = stored.get("sources") or {}
+    return {side: {k: dict(v) for k, v in shared.items()} for side in SIDES}
+
+
 def merge(stored: Dict[str, Any], update: Dict[str, Any]) -> Dict[str, Any]:
-    """`stored` ({"sources": …, "tabs": …}) with `update` applied: given fields replace stored ones,
+    """`stored` ({"sides": …, "tabs": …}) with `update` applied: given fields replace stored ones,
     others stay. Raises InvalidSources for anything unexpected."""
-    result = {"sources": {k: dict(v) for k, v in (stored.get("sources") or {}).items()},
-              "tabs": dict(stored.get("tabs") or {})}
-    for name, value in (update.get("sources") or {}).items():
-        if name not in SOURCES:
-            raise InvalidSources(f"Unknown source {name!r}")
-        result["sources"].setdefault(name, {}).update(_clean_source(value))
+    result = {"sides": sides_of(stored), "tabs": dict(stored.get("tabs") or {})}
+    for side, sources in (update.get("sides") or {}).items():
+        if side not in SIDES or not isinstance(sources, dict):
+            raise InvalidSources(f"Unknown side {side!r}")
+        for name, value in sources.items():
+            if name not in SOURCES:
+                raise InvalidSources(f"Unknown source {name!r}")
+            result["sides"][side].setdefault(name, {}).update(_clean_source(value))
+    if update.get("sources"):
+        raise InvalidSources("Sources are per side now: send {\"sides\": {\"left\": …, \"right\": …}}")
     for side, tab in (update.get("tabs") or {}).items():
         if side not in SIDES or tab not in SOURCES:
             raise InvalidSources(f"Unknown tab {side!r}: {tab!r}")

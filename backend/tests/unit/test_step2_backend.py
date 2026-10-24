@@ -8,20 +8,37 @@ from services.song_details import details_from_filename, mark_new_song, song_det
 
 
 class TestSources:
-    def test_update_replaces_only_the_given_fields(self):
-        stored = {"sources": {"lrclib": {"text": "old", "marks": [{"a": 1}]}}, "tabs": {"left": "lrclib"}}
-        result = merge(stored, {"sources": {"lrclib": {"text": "new"}, "vocals": {"text": "heard"}},
+    def test_update_replaces_only_the_given_fields_of_one_side(self):
+        stored = {"sides": {"left": {"lrclib": {"text": "old", "marks": [{"a": 1}]}}, "right": {}}, "tabs": {"left": "lrclib"}}
+        result = merge(stored, {"sides": {"left": {"lrclib": {"text": "new"}}, "right": {"vocals": {"text": "heard"}}},
                                 "tabs": {"right": "vocals"}})
-        assert result["sources"]["lrclib"] == {"text": "new", "marks": [{"a": 1}]}
-        assert result["sources"]["vocals"] == {"text": "heard"}
+        assert result["sides"]["left"]["lrclib"] == {"text": "new", "marks": [{"a": 1}]}
+        assert result["sides"]["right"] == {"vocals": {"text": "heard"}}
         assert result["tabs"] == {"left": "lrclib", "right": "vocals"}
-        assert stored["sources"]["lrclib"]["text"] == "old"  # input unchanged
+        assert stored["sides"]["left"]["lrclib"]["text"] == "old"  # input unchanged
+
+    def test_the_sides_are_independent(self):
+        result = merge({}, {"sides": {"left": {"lrclib": {"text": "left text"}}}})
+        result = merge(result, {"sides": {"right": {"lrclib": {"text": "right text"}}}})
+        assert result["sides"]["left"]["lrclib"]["text"] == "left text"
+        assert result["sides"]["right"]["lrclib"]["text"] == "right text"
+
+    def test_older_sessions_give_their_texts_to_both_sides(self):
+        from services.lyrics_sources import sides_of
+        old = {"sources": {"lrclib": {"text": "found"}, "vocals": {"text": "heard"}}, "tabs": {"left": "lrclib"}}
+        sides = sides_of(old)
+        assert sides["left"] == sides["right"] == {"lrclib": {"text": "found"}, "vocals": {"text": "heard"}}
+        sides["left"]["lrclib"]["text"] = "changed"
+        assert sides["right"]["lrclib"]["text"] == "found"      # copies, not shared
+        assert merge(old, {})["sides"]["right"]["vocals"]["text"] == "heard"
 
     @pytest.mark.parametrize("update", [
-        {"sources": {"youtube": {"text": "x"}}},
-        {"sources": {"lrclib": {"text": 5}}},
-        {"sources": {"lrclib": {"text": "x" * (lyrics_sources.MAX_TEXT + 1)}}},
-        {"sources": {"lrclib": {"dividers": [-1]}}},
+        {"sides": {"left": {"youtube": {"text": "x"}}}},
+        {"sides": {"middle": {"lrclib": {"text": "x"}}}},
+        {"sides": {"left": {"lrclib": {"text": 5}}}},
+        {"sides": {"left": {"lrclib": {"text": "x" * (lyrics_sources.MAX_TEXT + 1)}}}},
+        {"sides": {"left": {"lrclib": {"dividers": [-1]}}}},
+        {"sources": {"lrclib": {"text": "x"}}},          # the shared format is gone
         {"tabs": {"middle": "lrclib"}},
         {"tabs": {"left": "spotify"}},
     ])
@@ -30,7 +47,8 @@ class TestSources:
             merge({}, update)
 
     def test_dividers_are_sorted_and_unique(self):
-        assert merge({}, {"sources": {"vocals": {"dividers": [5, 2, 5]}}})["sources"]["vocals"]["dividers"] == [2, 5]
+        result = merge({}, {"sides": {"right": {"vocals": {"dividers": [5, 2, 5]}}}})
+        assert result["sides"]["right"]["vocals"]["dividers"] == [2, 5]
 
 
 class TestSongDetails:

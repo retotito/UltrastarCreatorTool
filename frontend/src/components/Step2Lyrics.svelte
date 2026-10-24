@@ -20,16 +20,11 @@
   let language = $lyricsData.language || '';
   let language2 = $lyricsData.language2 || '';   // optional second sung language
 
-  // Artist and title of a new upload are a guess until the user confirms them (Step 1's song window, editing
-  // them here, or "Yes, search lyrics"); the automatic LRCLIB search waits for that.
-  let songConfirmed = true;
-
   async function syncMetadata() {
     if (!$sessionId || !artist.trim() || !title.trim()) return;
     lyricsData.update(s => ({ ...s, artist: artist.trim(), title: title.trim() }));
     try {
       await updateMetadata($sessionId, artist.trim(), title.trim(), language || undefined, language2);
-      songConfirmed = true; // saving the names confirms them
     } catch { /* not critical */ }
   }
 
@@ -38,12 +33,16 @@
   $: lyricsData.update(s => ({ ...s, artist, title, language, language2 }));
 
   // ── Lyric sources ───────────────────────────────────────
+  // Each side has its own texts per source, so the two sides are compared and edited independently; nothing is
+  // filled in on its own: the user loads LRCLIB or Whisper into a side.
   const EMPTY = () => ({ text: '', marks: [], dividers: [], info: null });
-  let sources = { lrclib: EMPTY(), vocals: EMPTY(), cleaned: EMPTY() };
+  const SIDE = () => ({ lrclib: EMPTY(), vocals: EMPTY(), cleaned: EMPTY() });
+  let sides = { left: SIDE(), right: SIDE() };
   let tabs = { left: 'lrclib', right: 'vocals' };
   let sourcesLoadedFor = null;
   let sourcesReady = false;
-  let busy = { lrclib: false, vocals: false, cleaned: false };
+  const IDLE = () => ({ lrclib: false, vocals: false, cleaned: false });
+  let busy = { left: IDLE(), right: IDLE() };
   let saveTimer = null;
 
   $: if ($sessionId && sourcesLoadedFor !== $sessionId) loadSources($sessionId);
@@ -53,24 +52,25 @@
     sourcesReady = false;
     try {
       const stored = await getLyricsSources(id);
-      const merged = { lrclib: EMPTY(), vocals: EMPTY(), cleaned: EMPTY() };
-      for (const key of Object.keys(merged)) merged[key] = { ...merged[key], ...(stored.sources?.[key] || {}) };
-      if (!stored.sources || Object.keys(stored.sources).length === 0) {
+      const loaded = { left: SIDE(), right: SIDE() };
+      for (const side of ['left', 'right']) {
+        for (const key of Object.keys(loaded[side])) loaded[side][key] = { ...loaded[side][key], ...(stored.sides?.[side]?.[key] || {}) };
+      }
+      const nothing = ['left', 'right'].every(side => Object.values(loaded[side]).every(s => !s.text));
+      if (nothing) {
         // Sessions from before the tabs: the left field was "Generated Lyrics", the right one (browser only) "Original".
-        merged.vocals.text = $lyricsData.text || '';
+        for (const side of ['left', 'right']) loaded[side].vocals.text = $lyricsData.text || '';
         try {
           const old = JSON.parse(localStorage.getItem(`comparison_lyrics_${id}`) || 'null');
-          if (old?.text) merged.lrclib = { ...merged.lrclib, text: old.text, marks: old.marks || [] };
+          if (old?.text) for (const side of ['left', 'right']) loaded[side].lrclib = { ...loaded[side].lrclib, text: old.text, marks: old.marks || [] };
         } catch { /* nothing usable */ }
       }
-      sources = merged;
+      sides = loaded;
       tabs = { left: stored.tabs?.left || 'lrclib', right: stored.tabs?.right || 'vocals' };
-      tabsPicked = !!stored.tabs?.left;
       if (!artist && stored.artist) artist = stored.artist;
       if (!title && stored.title) title = stored.title;
       if (!language && stored.language) language = stored.language;
       if (!language2 && stored.language2) language2 = stored.language2;
-      songConfirmed = stored.song_confirmed !== false;
     } catch (err) {
       console.warn('[Step2] Could not load lyric sources:', err);
     }
@@ -87,23 +87,25 @@
     clearTimeout(saveTimer);
     saveTimer = null;
     if (!$sessionId || !sourcesReady) return;
-    saveLyricsSources($sessionId, { sources, tabs }).catch(err => console.warn('[Step2] Could not save lyrics:', err));
+    saveLyricsSources($sessionId, { sides, tabs }).catch(err => console.warn('[Step2] Could not save lyrics:', err));
   }
 
-  function updateSource(id, patch) {
-    sources = { ...sources, [id]: { ...sources[id], ...patch } };
+  /** Change one source of one side (the other side keeps its own text). */
+  function updateSource(side, id, patch) {
+    sides = { ...sides, [side]: { ...sides[side], [id]: { ...sides[side][id], ...patch } } };
     scheduleSave();
   }
 
-  function handlePanelChange(event) {
-    const { source, ...patch } = event.detail;
-    updateSource(source, patch);
+  function setBusy(side, id, value) {
+    busy = { ...busy, [side]: { ...busy[side], [id]: value } };
   }
 
-  let tabsPicked = false; // the user chose a tab: no more automatic switching
+  function handlePanelChange(side, event) {
+    const { source, ...patch } = event.detail;
+    updateSource(side, source, patch);
+  }
 
   function handleTab(event) {
-    tabsPicked = true;
     tabs = { ...tabs, [event.detail.side]: event.detail.tab };
     scheduleSave();
   }
@@ -150,61 +152,37 @@
 
   // ── LRCLIB ──────────────────────────────────────────────
   let lyricsCandidates = [];
-  let chosenCandidateId = null;
+  let chosenCandidateId = { left: null, right: null };
   let songDuration = null;
-  let autoSearchedFor = null;
-  let autoSearchTimer = null;
-
-  // Search on its own when artist and title are known and the LRCLIB text is still empty.
-  $: if (sourcesReady && songConfirmed && artist.trim() && title.trim() && !sources.lrclib.text.trim() && !busy.lrclib
-         && autoSearchedFor !== `${$sessionId}|${artist.trim()}|${title.trim()}`) {
-    clearTimeout(autoSearchTimer);
-    const key = `${$sessionId}|${artist.trim()}|${title.trim()}`;
-    autoSearchTimer = setTimeout(() => { autoSearchedFor = key; autoSearch(); }, 800);
-  }
+  let searching = false;
 
   async function searchLrclib(queryArtist, queryTitle) {
-    busy = { ...busy, lrclib: true };
+    searching = true;
+    setBusy(versionsSide, 'lrclib', true);
     try {
       const found = await searchLyricsOnline($sessionId, queryArtist, queryTitle);
       lyricsCandidates = found.candidates || [];
       songDuration = found.song_duration || null;
       return found;
     } finally {
-      busy = { ...busy, lrclib: false };
+      searching = false;
+      setBusy(versionsSide, 'lrclib', false);
     }
   }
 
-  /** On its own when Step 2 opens: fill the LRCLIB tab with the clear match, if there is one. */
-  async function autoSearch() {
-    const query = `"${artist.trim()} – ${title.trim()}"`;
-    try {
-      const found = await searchLrclib(artist.trim(), title.trim());
-      chosenCandidateId = null;
-      if (found.found) {
-        useLyricsCandidate(found);
-        return;
-      }
-      updateSource('lrclib', { info: { message: lyricsCandidates.length
-        ? `No exact match for ${query}. Search LRCLIB to choose a version.`
-        : `No lyrics on LRCLIB for ${query}. Search with another title, or paste the lyrics.` } });
-      // Nothing to show on the left: start there with the vocals instead (as long as no tab was picked).
-      if (!tabsPicked && tabs.left === 'lrclib' && tabs.right === 'vocals') {
-        tabs = { left: 'vocals', right: 'lrclib' };
-        scheduleSave();
-      }
-    } catch (err) {
-      updateSource('lrclib', { info: { message: err.message.replace(/^API error \d+: /, '') } });
-    }
-  }
-
-  // The LRCLIB window: search again and choose a version.
+  // The LRCLIB window, opened from one side: search and choose a version for that side.
   let versionsOpen = false;
   let versionsMessage = '';
+  let versionsSide = 'left';
 
-  function openVersions() {
+  function openVersions(side) {
+    versionsSide = side;
     versionsMessage = '';
     versionsOpen = true;
+    // The first time: search right away with the song's names (the user asked for it by opening the window).
+    if (!lyricsCandidates.length && artist.trim() && title.trim()) {
+      handleVersionsSearch({ detail: { artist: artist.trim(), title: title.trim() } });
+    }
   }
 
   async function handleVersionsSearch(event) {
@@ -219,7 +197,7 @@
   }
 
   function handleVersionChosen(event) {
-    useLyricsCandidate(event.detail);
+    useLyricsCandidate(versionsSide, event.detail);
     versionsOpen = false;
   }
 
@@ -229,10 +207,10 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
-  function useLyricsCandidate(entry) {
-    chosenCandidateId = entry.id;
+  function useLyricsCandidate(side, entry) {
+    chosenCandidateId = { ...chosenCandidateId, [side]: entry.id };
     const length = entry.duration ? ` · ${formatDuration(entry.duration)}` : '';
-    updateSource('lrclib', {
+    updateSource(side, 'lrclib', {
       text: entry.text, marks: [], dividers: [],
       info: { message: `✓ ${entry.lines} lines: ${entry.artist} – ${entry.track}${length}${entry.synced ? ' · synced' : ''}. Repeated choruses must be written out.` },
     });
@@ -257,17 +235,17 @@
     if (transcribeTicker) { clearInterval(transcribeTicker); transcribeTicker = null; }
   }
 
-  async function handleTranscribe(event) {
+  async function handleTranscribe(side, event) {
     const source = event.detail.source;
     const cleaned = source === 'cleaned';
     if (!$sessionId) { errorMessage.set('No session. Upload audio first.'); return; }
     if (!cleaned && !hasVocals) { errorMessage.set('No vocals yet: extract or upload them in Step 1.'); return; }
-    if (sources[source].text.trim() && !(await showConfirm(
+    if (sides[side][source].text.trim() && !(await showConfirm(
       'Listen again and replace this text?', { title: 'Extract lyrics', confirmLabel: 'Replace' },
     ))) return;
     errorMessage.set('');
     isTranscribing = true;
-    busy = { ...busy, [source]: true };
+    setBusy(side, source, true);
     transcribePhase = 'transcribing';
     transcribeStatus = cleaned ? 'Transcribing cleaned vocals with Whisper…' : 'Transcribing vocals with Whisper…';
     transcribeModalOpen = true;
@@ -276,7 +254,7 @@
     try {
       const result = await transcribeAudio($sessionId, language, transcribeAbortController.signal, cleaned, transcribeModelPreset);
       stopTranscribeTicker();
-      updateSource(source, {
+      updateSource(side, source, {
         text: result.text, marks: [], dividers: [],
         info: { message: `Whisper (${result.model}): ${result.words} words, ${result.lines} lines — check and correct below` },
       });
@@ -292,7 +270,7 @@
       errorMessage.set(err.message);
     } finally {
       isTranscribing = false;
-      busy = { ...busy, [source]: false };
+      setBusy(side, source, false);
     }
   }
 
@@ -318,7 +296,7 @@
   }
 
   async function handleGenerate(event) {
-    const text = sources[event.detail.source]?.text || '';
+    const text = sides[event.detail.side]?.[event.detail.source]?.text || '';
     if (!text.trim() || !canGenerate) return;
     if ($generationResult && !(await showConfirm(
       'This replaces the UltraStar file you already have, including your changes in the editor.',
@@ -371,10 +349,10 @@
 
   // ── Test session ────────────────────────────────────────
   async function checkTestSession() {
-    if ($sessionId && $sessionId.startsWith('test-') && !sources.vocals.text.trim()) {
+    if ($sessionId && $sessionId.startsWith('test-') && !sides.left.vocals.text.trim()) {
       try {
         const result = await getTestLyrics();
-        updateSource('vocals', { text: result.lyrics });
+        updateSource('left', 'vocals', { text: result.lyrics });
         artist = artist || 'U2';
         title = title || 'Beautiful Day';
       } catch { /* test lyrics not available */ }
@@ -413,7 +391,6 @@
   });
 
   onDestroy(() => {
-    clearTimeout(autoSearchTimer);
     if (saveTimer) flushSave();
     if (zebraStyleEl && zebraStyleEl.parentNode) zebraStyleEl.parentNode.removeChild(zebraStyleEl);
     zebraStyleEl = null;
@@ -548,13 +525,6 @@
     </div>
   </div>
 
-  {#if !songConfirmed && artist.trim() && title.trim()}
-    <p class="confirm-song">
-      Is this the right song? Correct artist or title above if not.
-      <button class="btn btn-secondary small" on:click={syncMetadata}>✓ Yes, search lyrics</button>
-    </p>
-  {/if}
-
   {#if !hasVocals}
     <div class="no-vocals-warning">
       <p>⚠️ No vocal track yet.</p>
@@ -583,17 +553,17 @@
         {side}
         tab={tabs[side]}
         tabs={tabList}
-        {sources}
-        {busy}
+        sources={sides[side]}
+        busy={busy[side]}
         versionsCount={lyricsCandidates.length}
-        chosen={chosenCandidateId !== null}
+        chosen={chosenCandidateId[side] !== null}
         {canGenerate}
         {generateHint}
         disabled={$isProcessing || isTranscribing}
         on:tab={handleTab}
-        on:change={handlePanelChange}
-        on:versions={openVersions}
-        on:transcribe={handleTranscribe}
+        on:change={(e) => handlePanelChange(side, e)}
+        on:versions={() => openVersions(side)}
+        on:transcribe={(e) => handleTranscribe(side, e)}
         on:generate={handleGenerate}
       />
     {/each}
@@ -618,9 +588,9 @@
     {artist}
     {title}
     candidates={lyricsCandidates}
-    chosenId={chosenCandidateId}
+    chosenId={chosenCandidateId[versionsSide]}
     {songDuration}
-    searching={busy.lrclib}
+    {searching}
     message={versionsMessage}
     on:search={handleVersionsSearch}
     on:choose={handleVersionChosen}
@@ -684,7 +654,6 @@
   .song-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
   .song-row .form-group { flex: 1 1 200px; }
   .song-row .language-group { flex: 0 1 220px; }
-  .confirm-song { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; color: #e0a030; font-size: 0.9rem; margin: 0 0 0.75rem; }
   .players { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.25rem 0 1rem; }
   .player-row { display: flex; align-items: center; gap: 0.75rem; }
   .player-label { flex: 0 0 130px; color: #bbb; font-size: 0.85rem; }

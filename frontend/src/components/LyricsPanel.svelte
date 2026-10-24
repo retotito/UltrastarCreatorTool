@@ -1,8 +1,8 @@
 <script>
   /**
    * One side of Step 2: tabs for the lyric sources (LRCLIB, vocals, cleaned vocals), the tools of the
-   * selected source, its text, and "Generate UltraStar file". The texts live in Step 2 (`sources`), so
-   * both sides showing the same source show the same text.
+   * selected source, its text, and "Generate UltraStar file". Each side has its own texts (`sources`, kept in
+   * Step 2), so the two sides can be compared and edited independently.
    */
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import CodeMirror from 'codemirror';
@@ -164,7 +164,7 @@
       <span class="tool-info">
         {#if busy.lrclib}<span class="spinner" aria-hidden="true"></span> Searching LRCLIB…
         {:else if info?.message}{info.message}
-        {:else}Lyrics published online (lrclib.net), found by artist and title.{/if}
+        {:else}Lyrics published online (lrclib.net): search to load a version into this side.{/if}
       </span>
       <button class="link-btn" on:click={() => dispatch('versions')} disabled={disabled || busy.lrclib}>
         {chosen && versionsCount > 1 ? `Choose another version (${versionsCount - 1})` : 'Search LRCLIB…'}
