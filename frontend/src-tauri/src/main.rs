@@ -64,6 +64,9 @@ fn main() {
                 use std::os::windows::process::CommandExt;
 
                 let mut cmd = std::process::Command::new(&backend_bin);
+                // The backend reports this in /api/health; the start screen compares it with the app's own
+                // version, so a backend left over from an older version is noticed.
+                cmd.env("ULTRASTAR_APP_VERSION", app.package_info().version.to_string());
                 cmd.stdout(std::process::Stdio::piped())
                    .stderr(std::process::Stdio::piped());
                 #[cfg(target_os = "windows")]

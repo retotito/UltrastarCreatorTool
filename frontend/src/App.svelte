@@ -20,10 +20,16 @@
   let setupStatus = null;
   let showSetup = false;
 
+  let backendVersion = null;
+  let appVersion = null;        // the desktop app's version (Tauri); null in the browser (dev mode)
+  let versionMismatch = false;  // a backend from an older version still answers
+  let startupSeconds = 0;
+
   async function pollHealth() {
     try {
       const health = await checkHealth();
       backendStatus = health.status;
+      backendVersion = health.version || null;
     } catch (e) {
       backendStatus = 'offline';
     }
@@ -31,17 +37,25 @@
 
   // Show a startup overlay while the backend is warming up, but not once the
   // SetupScreen has taken over (it has its own "waiting" UI).
-  $: showStartupOverlay = backendStatus !== 'ok' && !showSetup;
+  $: showStartupOverlay = (backendStatus !== 'ok' || versionMismatch) && !showSetup;
 
   async function waitForBackendAndResume() {
-    // Poll until backend is healthy (max 120 attempts × 1s = 2 minutes).
-    for (let i = 0; i < 120; i++) {
-      if (backendStatus === 'ok') break;
+    // Wait as long as it takes: the first start after installing or updating can take minutes (Windows
+    // scans the new backend first). Giving up after 2 minutes left the app on this screen until restarted.
+    try {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      appVersion = await getVersion();
+    } catch { /* not in the desktop app */ }
+    while (backendStatus !== 'ok') {
       await pollHealth();
       if (backendStatus === 'ok') break;
       await new Promise(r => setTimeout(r, 1000));
+      startupSeconds += 1;
     }
-    if (backendStatus !== 'ok') return;
+    if (appVersion && backendVersion && backendVersion !== 'dev' && backendVersion !== appVersion) {
+      versionMismatch = true;   // talking to an old backend would give old behaviour and missing features
+      return;
+    }
 
     // Check setup status (first-run model download)
     try {
@@ -107,9 +121,17 @@
   <div class="startup-overlay">
     <div class="startup-card">
       <h1>UltrastarCreatorTool</h1>
-      <div class="startup-spinner"></div>
-      <p class="startup-msg">Backend is starting up…</p>
-      <p class="startup-hint">This can take up to 30 seconds.</p>
+      {#if versionMismatch}
+        <p class="startup-msg">An older version of the backend is still running ({backendVersion}, the app is {appVersion}).</p>
+        <p class="startup-hint">Quit the app completely and start it again. If this stays, restart the computer.</p>
+      {:else}
+        <div class="startup-spinner"></div>
+        <p class="startup-msg">Backend is starting up…{startupSeconds >= 5 ? ` ${startupSeconds} s` : ''}</p>
+        <p class="startup-hint">
+          {startupSeconds < 30 ? 'This usually takes up to 30 seconds.'
+            : 'The first start after installing or updating can take a few minutes (the computer checks the new program first). Please wait.'}
+        </p>
+      {/if}
     </div>
   </div>
 {/if}
@@ -126,7 +148,7 @@
 {/if}
 
 {#if showSetup}
-  <SetupScreen {setupStatus} on:done={onSetupDone} />
+  <SetupScreen status={setupStatus} on:done={onSetupDone} />
 {/if}
 
 <div class="app" class:wide-width={$currentStep === 2} class:full-width={$currentStep === 4}>

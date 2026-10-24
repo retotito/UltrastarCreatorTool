@@ -395,9 +395,11 @@ async def health_check():
     
     return {
         "status": "ok",
-        "version": "2.0.0",
+        # The app's version, passed by the desktop shell (src-tauri main.rs); "dev" when started by hand. The
+        # start screen compares it with its own, so a backend left over from an older version is noticed.
+        "version": os.environ.get("ULTRASTAR_APP_VERSION", "dev"),
         "models": {
-            "pitch": "PYIN",
+            "pitch": "PYIN" if os.environ.get("ULTRASTAR_PITCH_ENGINE", "fcpe").lower() == "pyin" else "FCPE + GAME",
             "alignment": _alignment_engine_label(),
             "demucs": DEMUCS_AVAILABLE,
         }
@@ -528,6 +530,11 @@ def _check_model_status() -> dict:
     notes_ok = _notes_downloaded(MODELS_DIR)
     log_step("MODEL_STATUS", f"notes (GAME): ok={notes_ok}")
 
+    # Libraries built into the app: they can't be downloaded later, a missing one means a broken installation
+    from services.app_check import missing_packages
+    missing = missing_packages()
+    log_step("MODEL_STATUS", f"packages: {'all there' if not missing else 'MISSING ' + ', '.join(missing)}")
+
     result = {
         "ffmpeg": ffmpeg_ok,
         "whisperx": whisperx_ok,
@@ -536,7 +543,9 @@ def _check_model_status() -> dict:
         "aligner": aligner_ok,
         "pitch": pitch_ok,
         "notes": notes_ok,
-        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok and aligner_ok and pitch_ok and notes_ok,
+        "missing_packages": missing,
+        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok and aligner_ok and pitch_ok and notes_ok
+                 and not missing,
     }
     log_step("MODEL_STATUS", f"final: {result}")
     return result

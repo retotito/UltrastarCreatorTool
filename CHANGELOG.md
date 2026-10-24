@@ -44,6 +44,15 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 🚦 App start more robust
+- The start screen waits as long as the backend needs (it gave up after 2 minutes: the first start after installing
+  or updating, when the computer checks the new program, could hang until the app was started a second time) and
+  shows the elapsed time
+- A backend left over from an older version is noticed (the app passes its version; "quit and start again")
+- The setup screen says when the installation is broken (a library built into the app is missing) instead of
+  features quietly doing less, and now shows which models are already there (it got the start check under the
+  wrong name)
+
 ### 🌐 Two-language songs hyphenated line by line
 - With a second language set, each lyrics line is split into syllables with the rules of its own language (an
   English/Italian duet: "co-se", "pre-se", "co-sì" on the Italian lines; English rules left them whole)

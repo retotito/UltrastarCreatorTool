@@ -101,6 +101,15 @@
     <h1>UltrastarCreatorTool</h1>
     <p class="subtitle">First-time setup — downloading AI models</p>
 
+    {#if status?.missing_packages?.length}
+      <!-- Built into the app, so they can't be downloaded: the installation is broken. -->
+      <div class="install-broken">
+        <strong>❌ The installation is incomplete</strong>
+        <p>These parts of the app are missing: {status.missing_packages.join(', ')}.</p>
+        <p>Please reinstall the app. Downloading the models below doesn't fix this.</p>
+      </div>
+    {/if}
+
     <div class="steps">
       {#each Object.entries(steps) as [key, step]}
         <div class="step" class:done={step.state === 'done'} class:error={step.state === 'error'} class:skipped={step.state === 'skipped'} class:active={step.state === 'downloading'}>
@@ -207,6 +216,8 @@
 
   .step.done   { border-color: #238636; }
   .step.error  { border-color: #da3633; }
+  .install-broken { border: 1px solid #da3633; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; color: #f0b0ad; }
+  .install-broken p { margin: 0.35rem 0 0; font-size: 0.9rem; }
   .step.skipped { border-color: #9e6a03; }
 
   .step-icon {
