@@ -345,11 +345,20 @@ def fix_repeated_lines(pitches: list, syllable_timings: list) -> list:
     return out
 
 
+def freeze_pitches(pitch_data: dict, syllable_timings: list) -> list:
+    """The timings (copies) with their final pitch decided now and kept ("pitch_final"), so changing their
+    start and end afterwards (consonant trimming) doesn't change it."""
+    pitches = syllable_pitches(pitch_data, syllable_timings)
+    return [dict(t, pitch=p, pitch_final=True) for t, p in zip(syllable_timings, pitches)]
+
+
 def syllable_pitches(pitch_data: dict, syllable_timings: list) -> list:
     """MIDI pitch per syllable (None for rap): unvoiced syllables take a neighbour's pitch, octave jumps of
-    the pitch tracker are corrected."""
+    the pitch tracker are corrected. Pitches frozen with freeze_pitches are returned as they are."""
     if not syllable_timings:
         return []
+    if all(t.get("pitch_final") for t in syllable_timings):
+        return [t.get("pitch") for t in syllable_timings]
     raw = [None if t.get("is_rap")
            else int(t["pitch"]) if t.get("pitch")          # a melisma part brings its own pitch
            else syllable_pitch(pitch_data, t["start"], t["end"])

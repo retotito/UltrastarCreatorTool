@@ -135,3 +135,12 @@ class TestRepeatedLines:
         # the whole line an octave up (another singer): only its notes would agree with each other
         when, pitches = self.song([51, 52, 52, 51, 52], [51, 52, 52, 51, 52], [51, 52, 52, 51, 52], [63, 64, 64, 63, 64])
         assert fix_repeated_lines(pitches, when)[15:20] == [63, 64, 64, 63, 64]
+
+
+def test_frozen_pitches_survive_changed_timings(make_pitch_data):
+    from services.pitch_detection import freeze_pitches
+    timings = [{"syllable": "la ", "start": 1.0, "end": 1.5, "line_index": 0}, {"syllable": "yo ", "start": 2.0, "end": 2.5, "is_rap": True}]
+    frozen = freeze_pitches(make_pitch_data([(1.0, 1.5, 62)]), timings)
+    frozen[0]["start"], frozen[0]["end"] = 1.4, 1.45      # trimmed to where nothing is voiced
+    assert syllable_pitches(make_pitch_data([]), frozen) == [62, None]
+    assert "pitch_final" not in timings[0]                 # the input is left alone

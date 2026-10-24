@@ -44,6 +44,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### ✂️ Notes trimmed like by hand
+- Notes start where the voice sings (not on "s", "sh", "f", "t"…), end where it fades and leave air before the
+  next syllable, as in hand fine-tuned charts: note lengths much closer to them (Robert Post: +103 → +36 ms).
+  `ULTRASTAR_TRIM_CONSONANTS=0` turns it off
+
 ### 🛑 Files without sound are refused
 - Uploading a file with no audio track (e.g. a video-only .mp4) now says so right away, instead of failing later
   in the vocal separation ("Demucs failed: index 0 is out of bounds")

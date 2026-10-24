@@ -3967,6 +3967,17 @@ def generate_ultrastar_files(session_id: str):
             log_step("GENERATE", f"Notes (GAME): {found}/{len(syllable_timings)} syllables in {time.time() - started:.0f}s")
         except Exception as e:  # the model can't run: FCPE's pitch stays
             log_step("GENERATE", f"Notes (GAME) skipped: {type(e).__name__}: {e}")
+
+        # Notes start where the voice gets a pitch and end where it fades, with air before the next syllable
+        # (services/consonant_trim.py; ULTRASTAR_TRIM_CONSONANTS=0 turns it off). Last, after the pitches are
+        # decided on the whole syllables (shorter notes made the pitch slightly worse on the reference songs).
+        from services import consonant_trim
+        if consonant_trim.enabled() and syllable_timings and align_engine == "ctc":
+            from services.forced_alignment import frame_loudness
+            from services.pitch_detection import freeze_pitches
+            syllable_timings = consonant_trim.trim(freeze_pitches(pitch_data, syllable_timings),
+                                                   pitch_data, frame_loudness(vocal_path))
+            log_step("GENERATE", "Consonant trimming applied")
         
         # Step 3d: Generate files
         log_step("GENERATE", "Step 4/4: Generating output files")

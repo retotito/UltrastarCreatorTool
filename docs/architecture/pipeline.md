@@ -143,6 +143,17 @@ re-quantisation (`rawTimings`) in step. Off with `ULTRASTAR_MELISMA=off`.
 Measured on 6 reference songs: frame pitch (right pitch class over time) 42.3 → 44.9 %, within a semitone
 53.3 → 56.1 %, syllable pitch 57.4 → 59.0 %; 218 `~` notes against 212 in the charts.
 
+### 7b. Consonant trimming
+`services/consonant_trim.py`, after the notes' pitches are decided (GAME, octave check) and frozen
+(`freeze_pitches`): a note starts at the first voiced frame (FCPE) inside its syllable, so unvoiced consonants
+("s", "sh", "f", "t", "k") are left out; it ends at the last voiced frame and where the loudness drops 6 dB below
+its peak; inside a line it ends at least 140 ms before the next syllable. Melisma parts stay joined. That's how
+notes are fine-tuned by hand. On two such charts (Ben Harper, Robert Post): start error 52/54 → 41/48 ms, end
+error 164/139 → 61/45 ms; in the finished Robert Post chart note lengths +103 → +36 ms against the fine-tuned
+one (the beat grid, 30 ms at BPM 494, takes part of the start gain). Community charts mostly keep consonants:
+timing there is unchanged, and the pitch is decided before trimming because shorter notes made it ~2 points
+worse. `ULTRASTAR_TRIM_CONSONANTS=0` turns it off.
+
 ### 8. Output
 `main.py` `generate_ultrastar_files` → `services/ultrastar.py`:
 
