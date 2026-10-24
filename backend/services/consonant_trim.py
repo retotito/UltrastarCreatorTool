@@ -1,14 +1,16 @@
 """Trim notes the way charters fine-tune them by hand: a note starts where the voice gets a pitch, ends where it
 fades, and leaves some air before the next syllable.
 
-- start: the first voiced frame (pitch tracker) inside the syllable, so unvoiced consonants ("s", "sh", "f", "t",
-  "k", "p", "h") are left out ("sun" starts on the "u"); voiced ones ("m", "n", "l", "r") have a pitch and stay,
+- start: where the aligner hears the syllable's first vowel or sounding consonant ("l", "m", "n", "r", "w"), and
+  not before the first voiced frame (pitch tracker): unvoiced consonants ("s", "sh", "f", "t", "k", "p", "h") and
+  "b", "d", "g" bursts are left out ("sun" starts on the "u", "love" on the "l"),
 - end: the last voiced frame, and no later than where the loudness drops END_DROP_DB below the note's peak,
 - gap: inside a line, a note ends at least GAP_SEC before the next syllable starts.
 
 Melisma parts ("~") of a syllable stay joined: only the first part's start and the last part's end move.
 Measured on two charts fine-tuned this way (Ben Harper "She's Only Happy in the Sun", Robert Post "Got None"):
-start error 52/54 → 41/47 ms, end error 164/139 → 61/45 ms, ends more than 100 ms off 121/254 → 45/77.
+end error 164/139 → 61/46 ms, ends more than 100 ms off 121/152 → 45/83; starts (Robert Post) 53 → 36 ms,
+word starts no longer early (bias −46 → −5 ms) with the aligner's letters, 45 ms with voicing alone.
 Community charts mostly keep consonants and join notes, so this is a style: ULTRASTAR_TRIM_CONSONANTS=0 turns it off.
 """
 
@@ -22,6 +24,7 @@ MAX_END_TRIM_SEC = 0.40     # an end moves at most this much earlier by voicing
 END_DROP_DB = 6.0
 GAP_SEC = 0.14
 MIN_NOTE_SEC = 0.06
+SUNG_LETTERS = set("aeiouylmnrw")   # a note may start on these (the aligner's letters, see services/forced_alignment)
 FRAME_SEC = 0.01            # one pitch frame: the last voiced frame still sounds for its length
 LOUDNESS_FRAME_SEC = 0.02   # services/forced_alignment.frame_loudness
 
@@ -73,14 +76,19 @@ def trim(syllable_timings: List[dict], pitch_data: dict, loudness_db: Optional[n
         if not len(inside):
             continue
         start = min(float(inside[0]), first["start"] + MAX_START_TRIM_SEC)
+        sung = next((at for letter, at in first.get("letters") or [] if letter in SUNG_LETTERS), None)
+        if sung is not None and sung - start <= MAX_START_TRIM_SEC:   # at most this far past the voiced start
+            start = max(start, sung)
         end = min(last["end"], max(float(inside[-1]) + FRAME_SEC, last["end"] - MAX_END_TRIM_SEC))
         if loudness_db is not None:
             end = _loudness_end(loudness_db, start, end)
         if len(g) > 1:   # the parts stay inside their own spans
             start = min(start, out[g[1]]["start"] - MIN_NOTE_SEC)
             end = max(end, last["start"] + MIN_NOTE_SEC)
-        if end - start >= MIN_NOTE_SEC:
-            first["start"], last["end"] = start, end
+        if end - start < MIN_NOTE_SEC:   # short syllables ("I", "a"): keep the start, give the note its minimum
+            end = min(last["end"], start + MIN_NOTE_SEC)
+            start = max(first["start"], min(start, end - MIN_NOTE_SEC))
+        first["start"], last["end"] = start, end
     for g, nxt in zip(groups, groups[1:]):
         last, following = out[g[-1]], out[nxt[0]]
         if last.get("is_rap") or following.get("line_index") != last.get("line_index"):

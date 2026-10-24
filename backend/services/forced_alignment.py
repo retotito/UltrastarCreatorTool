@@ -438,7 +438,12 @@ def align_lyrics_to_emissions(lyrics_text: str, log_probs: np.ndarray, offset: f
     for word, timing in zip(words, timings):
         confidence = float(np.exp(timing.score))
         low = timing.score < LOW_CONFIDENCE_SCORE
-        for syllable, (start, end) in zip(word.syllables, _syllable_spans(word, timing)):
+        at = 0
+        for s_idx, (syllable, (start, end)) in enumerate(zip(word.syllables, _syllable_spans(word, timing))):
+            own = word.letters[s_idx]
+            letters = [(ch, float(span[0])) for ch, span in zip(own, timing.letters[at:at + len(own)])] \
+                if timing.letters else []
+            at += len(own)
             results.append({
                 "syllable": syllable["text"],
                 "start": start,
@@ -449,6 +454,7 @@ def align_lyrics_to_emissions(lyrics_text: str, log_probs: np.ndarray, offset: f
                 "line_index": word.line_index,
                 "split_method": "char" if timing.letters else "proportional",
                 "low_confidence": low,
+                "letters": letters,   # (aligner letter, start s) of the syllable's letters, for consonant trimming
             })
     # Keep notes in order and without overlap.
     for prev, cur in zip(results, results[1:]):

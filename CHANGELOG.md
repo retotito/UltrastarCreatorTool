@@ -49,7 +49,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   (silent "e", "-es"/"-ed" and "-ing" handled). Agreement with the syllables of 7 real charts: 95.4 → 98.3 %
 
 ### ✂️ Notes trimmed like by hand
-- Notes start where the voice sings (not on "s", "sh", "f", "t"…), end where it fades and leave air before the
+- Notes start where the voice sings (not on "s", "sh", "f", "t"…: the aligner's letter times show where the first
+  vowel or l/m/n/r/w begins), end where it fades and leave air before the
   next syllable, as in hand fine-tuned charts: note lengths much closer to them (Robert Post: +103 → +36 ms).
   `ULTRASTAR_TRIM_CONSONANTS=0` turns it off
 - The chart BPM is brought near 600 (slow songs doubled: 356 → 712), so the beat grid is fine enough for it
