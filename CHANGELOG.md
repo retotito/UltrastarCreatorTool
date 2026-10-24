@@ -44,6 +44,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### ✍️ Numbers and signs in lyrics
+- Numbers are timed as they are sung ("12" → "twelve", in Italian "dodici") and "&" as "and"; the chart keeps
+  the text as written
+- Signs on their own ("—", "…") no longer become notes of their own; they stay with the previous word
+
 ### 🎵 Notes from a note model (GAME)
 - Each syllable's pitch now comes from GAME (openvpi), a model that transcribes sung notes, as Tune Studio does;
   much better where two voices overlap. Reference songs: right pitch class 56 → 64 %, octave errors 4.5 → 3.0 %

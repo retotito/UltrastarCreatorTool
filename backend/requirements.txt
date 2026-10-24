@@ -28,6 +28,8 @@ numpy>=1.24.0
 # faster-whisper/whisperx). Model: tuneperfect/tunestudio-aligner (CC-BY-NC-4.0).
 # uroman romanizes every script for the aligner (without it, only Latin script is aligned).
 uroman==1.3.1.1
+# num2words spells numbers for the aligner ("12" → "twelve"; LGPL, used as a library).
+num2words==0.5.14
 
 # MIDI
 mido==1.3.2

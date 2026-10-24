@@ -24,6 +24,30 @@ from typing import List, Optional
 from utils.logger import log_step
 
 
+def _sung(word: str) -> bool:
+    return any(ch.isalnum() or ch == "&" for ch in word)   # "rock & roll": the "&" is sung
+
+
+def _attach_unsung(words: List[str]) -> List[str]:
+    """Join words without letters or digits to their neighbour: the previous word, or the next at the start."""
+    out: List[str] = []
+    pending = ""
+    for word in words:
+        if not word.strip("-"):    # a lone "-" is the syllable divider, as before: dropped
+            continue
+        if not _sung(word):
+            if out:
+                out[-1] = f"{out[-1]} {word}"   # stays one syllable: the space is inside it
+            else:
+                pending = f"{pending}{word} "
+            continue
+        out.append(pending + word)
+        pending = ""
+    if pending and not out:
+        return []
+    return out
+
+
 def parse_lyrics(lyrics_text: str) -> List[List[dict]]:
     """Parse lyrics text into list of lines, each containing syllables.
     
@@ -35,6 +59,8 @@ def parse_lyrics(lyrics_text: str) -> List[List[dict]]:
     - Hyphens split syllables: "beau-ti-ful" -> ["beau", "ti", "ful"]
     - [RAP] / [/RAP] markers preserved
     - Empty lines ignored
+    - A "word" without letters, digits or "&" ("—", "…", "!") is not sung: it joins the previous word
+      ("roses …"), or the next one at the start of a line, instead of becoming a note
     """
     lines = []
     is_rap = False
@@ -52,7 +78,7 @@ def parse_lyrics(lyrics_text: str) -> List[List[dict]]:
             continue
         
         syllables = []
-        words = line.split()
+        words = _attach_unsung(line.split())
         for i, word in enumerate(words):
             parts = word.split('-')
             for j, part in enumerate(parts):

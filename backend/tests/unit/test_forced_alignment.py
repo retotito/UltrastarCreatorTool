@@ -52,8 +52,8 @@ class TestRomanize:
         ("Hello,", "en", "hello"),
         ("Mädchen", "de", "maedchen"),   # as uroman romanized MMS's training text
         ("café", "fr", "cafe"),
-        ("123", "en", ""),
-        ("&", "en", ""),
+        ("123", "en", "onehundredandtwentythree"),
+        ("&", "en", "and"),
         ("Привет", "ru", "privet"),
         ("我爱你", "zh", "woaini"),
         ("ありがとう", "ja", "arigatou"),
@@ -138,11 +138,12 @@ class TestAlignLyrics:
         assert result["confidence"] > 0.8
         assert result["low_confidence"] is False
 
-    def test_words_without_letters_sit_after_the_previous_word(self):
-        log_probs = emissions((None, 10), ("rock", 10), (None, 10), ("roll", 10), (None, 10))
+    def test_an_ampersand_is_aligned_as_the_sung_and(self):
+        log_probs = emissions((None, 10), ("rock", 10), ("and", 10), ("roll", 10), (None, 10))
         results = align_lyrics_to_emissions("rock & roll", log_probs)
         assert [r["syllable"] for r in results] == ["rock ", "& ", "roll "]
         assert results[0]["end"] <= results[1]["start"] < results[2]["start"]
+        assert results[1]["confidence"] > 0.5
 
     def test_notes_are_ordered_and_do_not_overlap(self):
         log_probs = emissions((None, 5), ("abc", 6), ("def", 6), (None, 5))
@@ -211,3 +212,18 @@ class TestCleanups:
 
 def test_frame_rate_is_50_per_second():
     assert FRAME_SEC == 0.02
+
+
+class TestNumbersAndSigns:
+    def test_numbers_are_spelled_in_the_songs_language(self):
+        from services.forced_alignment import romanize
+        assert romanize("12", "en") == "twelve"
+        assert romanize("12", "it") == "dodici"
+        assert romanize("1977", "en") == "nineteenseventyseven"     # read as a year
+        assert romanize("12", "xx") == "twelve"                      # unknown language: English
+
+    def test_signs_without_letters_get_no_note_of_their_own(self):
+        from services.alignment_whisper import parse_lyrics
+        lines = parse_lyrics("Na-na na, oh! — 12 roses …\n… and then\nbeau-ti-ful - world\n— …")
+        assert [[s["text"] for s in line] for line in lines] == [
+            ["Na", "na ", "na, ", "oh! — ", "12 ", "roses … "], ["… and ", "then "], ["beau", "ti", "ful ", "world "]]

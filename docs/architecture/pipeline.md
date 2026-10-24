@@ -91,6 +91,9 @@ against the vocals, so a word Whisper missed still gets its real position.
 1. Lyrics → words and syllables (`parse_lyrics`); each syllable romanised with **uroman** (any script, with the
    language's rules: "Привет" → "privet", "Mädchen" → "maedchen", as in MMS training) and reduced to the
    aligner's letters (a–z, `'`). Without uroman only Latin script works; others raise `UnsupportedText` → fallback.
+   Numbers are spelled in the song's language for the aligner (`spell_numbers`, num2words: "12" → "dodici",
+   years as years), `&` as the sung "and"/"und"/…; the chart keeps the text as written. Words without letters,
+   digits or `&` ("—", "…") join their neighbour in `parse_lyrics` and get no note of their own.
 2. **Emissions**: Tune Studio's singing fine-tune of the MMS aligner (`tuneperfect/tunestudio-aligner`, ONNX,
    pinned) over the whole vocal track in 30 s windows with 2 s context → letter log-probabilities every 20 ms.
    Cached per audio file in the session's `cache/` folder.

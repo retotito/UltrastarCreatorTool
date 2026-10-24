@@ -118,12 +118,41 @@ def _uroman():
     return _uroman_cache["instance"]
 
 
+# "&" as it is sung
+_AND = {"en": "and", "de": "und", "it": "e", "fr": "et", "es": "y", "pt": "e", "nl": "en", "sv": "och",
+        "da": "og", "no": "og", "pl": "i", "cs": "a", "ru": "i", "fi": "ja", "tr": "ve"}
+
+
+def spell_numbers(text: str, language: str = "en") -> str:
+    """Digits as the words that are sung ("12" → "twelve", in Italian "dodici"), so the aligner can hear them.
+    Years (1100–2099) are read as years ("1977" → "nineteen seventy-seven"). Languages num2words doesn't know
+    are spelled in English; without num2words, digits stay (and get no letters)."""
+    if not any(ch.isdigit() for ch in text):
+        return text
+    try:
+        from num2words import num2words
+    except ImportError:
+        return text
+
+    def spell(match) -> str:
+        number = int(match.group())
+        kind = "year" if 1100 <= number <= 2099 and len(match.group()) == 4 else "cardinal"
+        for lang in (language, "en"):
+            try:
+                return f" {num2words(number, lang=lang, to=kind)} "
+            except (NotImplementedError, OverflowError, ValueError, KeyError):
+                continue
+        return match.group()
+    return re.sub(r"\d+", spell, text)
+
+
 def romanize(text: str, language: str = "en") -> str:
     """The aligner's letters for `text`: lowercase a–z and `'`, everything else dropped.
 
-    Any script goes through uroman first (as in MMS training). Without uroman, accents are removed
-    and other scripts raise UnsupportedText.
+    Numbers are spelled out first (spell_numbers). Any script goes through uroman (as in MMS training).
+    Without uroman, accents are removed and other scripts raise UnsupportedText.
     """
+    text = spell_numbers(text, language).replace("&", f" {_AND.get(language, 'and')} ")
     romanizer = _uroman()
     if romanizer is not None and text:
         text = romanizer.romanize_string(text, lcode=ISO_639_3.get(language))
