@@ -82,3 +82,13 @@ def test_scripts_without_written_vowels_are_left_whole():
 def test_english_special_cases_only_apply_to_english():
     assert hyphenate("away", "en") == "a-way"
     assert hyphenate("away", "de") == "away"
+
+
+@pytest.mark.parametrize("word, expected", [
+    ("singing", "sing-ing"), ("pieces", "pie-ces"), ("bandages", "ban-da-ges"), ("unpredictable", "un-pre-dic-ta-ble"),
+    ("maimed", "maimed"), ("times", "times"), ("wanted", "want-ed"), ("lovely", "love-ly"), ("someone", "some-one"),
+    ("yesterday", "yes-ter-day"), ("toy", "toy"), ("little", "lit-tle"), ("dances", "dan-ces"), ("crying", "cry-ing"),
+])
+def test_english_words_split_into_sung_syllables(word, expected):
+    # pyphen hyphenates for typesetting and leaves sung syllables together ("singing", "pieces")
+    assert hyphenate_lyrics(word, "en")["hyphenated"] == expected

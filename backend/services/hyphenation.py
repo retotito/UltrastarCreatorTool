@@ -185,6 +185,70 @@ def split_vowel_groups(word: str) -> str:
     return "-".join(p for p in parts if p)
 
 
+def _english_nuclei(part: str, word_end: bool) -> list:
+    """(start, end) of the vowel groups that are sung in an English word part: no silent final "e" ("time"),
+    "-es"/"-ed" only after s/z/x/ch/sh/ce/ge and t/d ("pie-ces", "want-ed"; "times", "maimed" are one),
+    "y" only as a vowel (not at the start or before a vowel)."""
+    lower = part.lower()
+    vowels = set("aeiouäöüéèêë")
+    groups, i = [], 0
+    while i < len(lower):
+        is_vowel = lower[i] in vowels or (lower[i] == "y" and i > 0 and (i + 1 == len(lower) or lower[i + 1] not in vowels))
+        if is_vowel:
+            j = i + 1
+            while j < len(lower) and (lower[j] in vowels or lower[j] == "y" and (j + 1 == len(lower) or lower[j + 1] not in vowels)):
+                j += 1                                     # "day", "toy": the "y" belongs to its vowel
+            groups.append((i, j))
+            i = j
+        else:
+            i += 1
+    if len(groups) > 1:
+        last = groups[-1]
+        tail = lower[last[0]:]
+        before = lower[:last[0]]
+        if tail == "e" and not (before.endswith("l") and len(before) > 1 and before[-2] not in vowels):
+            groups.pop()                                   # "time", "love-ly", but "ta-ble"
+        elif not word_end:
+            pass
+        elif tail == "es" and not re.search(r"(s|z|x|ch|sh|c|g)$", before):
+            groups.pop()                                   # "times", but "pie-ces", "ban-da-ges"
+        elif tail == "ed" and not re.search(r"[td]$", before):
+            groups.pop()                                   # "maimed", but "want-ed"
+    return groups
+
+
+def english_sung_syllables(hyphenated: str) -> str:
+    """Split parts pyphen left with more than one sung vowel (pyphen hyphenates for typesetting): "singing" →
+    "sing-ing", "pieces" → "pie-ces", "ban-dages" → "ban-da-ges". A single consonant between vowels starts the
+    next syllable, a cluster splits before its last consonant, "-ing" is its own syllable."""
+    parts = hyphenated.split("-")
+    out = []
+    for k, part in enumerate(parts):
+        word_end = k == len(parts) - 1
+        m = re.match(r"^(.*[^aeiouy])(ing)$", part, re.IGNORECASE) if word_end else None
+        if m and len(_english_nuclei(m.group(1), False)) >= 1 and len(m.group(1)) > 1:
+            out.append(english_sung_syllables(m.group(1)).replace("-", "\x00") if len(_english_nuclei(m.group(1), False)) > 1 else m.group(1))
+            out.append(m.group(2))
+            continue
+        nuclei = _english_nuclei(part, word_end)
+        if len(nuclei) < 2:
+            out.append(part)
+            continue
+        cuts = []
+        for (_, end), (start, _) in zip(nuclei, nuclei[1:]):
+            consonants = start - end
+            cut = start - 1 if consonants >= 1 else start
+            if part[start:].lower() == "e" and part[start - 1:start].lower() == "l" and consonants >= 2:
+                cut = start - 2                            # "ta-ble", "lit-tle": consonant + "le" together
+            cuts.append(cut)
+        last = 0
+        for cut in cuts:
+            out.append(part[last:cut])
+            last = cut
+        out.append(part[last:])
+    return "-".join(p for p in out if p).replace("\x00", "-")
+
+
 def get_supported_languages():
     """Language codes with automatic hyphenation (a pyphen dictionary or one syllable per character)."""
     if not PYPHEN_AVAILABLE:
@@ -260,7 +324,8 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
                     hyphenated = custom
                 else:
                     hyphenated = dic.inserted(core, hyphen="-")
-                    # pyphen sometimes returns the word unchanged
+                    if language == "en":
+                        hyphenated = english_sung_syllables(hyphenated)
                 hyphenated_words.append(f"{prefix}{hyphenated}{suffix}")
             else:
                 hyphenated_words.append(word)
