@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.pitch_detection import fill_unvoiced, fix_octaves, syllable_pitch, syllable_pitches
+from services.pitch_detection import fix_repeated_lines, fill_unvoiced, fix_octaves, syllable_pitch, syllable_pitches
 
 
 @pytest.mark.parametrize("raw, expected", [
@@ -104,3 +104,34 @@ class TestFixOctaves:
 
     def test_too_few_notes_are_returned_unchanged(self):
         assert fix_octaves([80], timings(0)) == [80]
+
+
+def line(texts, pitches, index, start):
+    return [{"syllable": t, "start": start + 0.4 * k, "end": start + 0.4 * k + 0.3, "line_index": index}
+            for k, t in enumerate(texts)], pitches
+
+
+class TestRepeatedLines:
+    WORDS = ["A", "ma", "da", "mi", "a"]
+
+    def song(self, *lines_pitches):
+        when, pitches = [], []
+        for n, p in enumerate(lines_pitches):
+            w, _ = line(self.WORDS, p, n, 10.0 * n)
+            when += w
+            pitches += p
+        return when, pitches
+
+    def test_an_octave_off_note_takes_its_repetitions_octave(self):
+        when, pitches = self.song([51, 52, 52, 51, 52], [51, 52, 52, 51, 52], [63, 52, 52, 51, 64], [51, 52, 52, 51, 52])
+        assert fix_repeated_lines(pitches, when)[10:15] == [51, 52, 52, 51, 52]
+
+    def test_nothing_moves_where_the_repetitions_disagree(self):
+        # half of the repetitions sung in another register: no clear melody to move towards
+        when, pitches = self.song([51, 52, 52, 51, 52], [63, 64, 64, 63, 64], [51, 52, 52, 51, 52], [63, 64, 64, 63, 64])
+        assert fix_repeated_lines(pitches, when) == pitches
+
+    def test_a_repetition_sung_elsewhere_is_left_alone(self):
+        # the whole line an octave up (another singer): only its notes would agree with each other
+        when, pitches = self.song([51, 52, 52, 51, 52], [51, 52, 52, 51, 52], [51, 52, 52, 51, 52], [63, 64, 64, 63, 64])
+        assert fix_repeated_lines(pitches, when)[15:20] == [63, 64, 64, 63, 64]

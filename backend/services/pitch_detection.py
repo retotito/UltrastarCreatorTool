@@ -298,6 +298,53 @@ def fix_octaves(pitches: list, syllable_timings: list) -> list:
     return out
 
 
+# Repeated lines (choruses): a note an octave or two off the same note in the line's other repetitions is moved
+# there when the rest of its line agrees with them. A duet's male line with syllables at the female's pitch
+# (Amada Mia: "Ama 63, da 64, mia 53, amo 51, re 52, mio 64", elsewhere ~52) is ambiguous on its own.
+REPEAT_MIN = 3            # repetitions needed (same words, same number of notes)
+REPEAT_CLOSE = 2          # semitones from the repetitions' median that count as agreeing
+REPEAT_AGREE = 0.6        # share of repetitions that must agree on a note before others are moved to it
+REPEATS = True   # off for experiments
+
+
+def _line_words(syllables: list) -> str:
+    return "".join(ch for s in syllables for ch in s.lower() if ch.isalpha())
+
+
+def fix_repeated_lines(pitches: list, syllable_timings: list) -> list:
+    """Move octave-off notes of repeated lines to their repetitions' octave (in a copy), see REPEAT_*."""
+    out = list(pitches)
+    lines: dict = {}
+    for i, t in enumerate(syllable_timings):
+        lines.setdefault(t.get("line_index", 0), []).append(i)
+    groups: dict = {}
+    for members in lines.values():
+        if all(pitches[i] for i in members) and len(members) >= 3:   # "Uh! ah!" is too short to vote on
+            key = (_line_words([syllable_timings[i].get("syllable", "") for i in members]), len(members))
+            if key[0]:
+                groups.setdefault(key, []).append(members)
+    for repetitions in groups.values():
+        if len(repetitions) < REPEAT_MIN:
+            continue
+        consensus = []
+        for j in range(len(repetitions[0])):
+            sung = [pitches[line[j]] for line in repetitions]
+            middle = float(np.median(sung))
+            clear = sum(abs(p - middle) <= REPEAT_CLOSE for p in sung) >= REPEAT_AGREE * len(sung)
+            consensus.append(middle if clear else None)   # unclear: the repetitions themselves disagree
+        for line in repetitions:
+            agree = sum(c is not None and abs(pitches[i] - c) <= REPEAT_CLOSE for i, c in zip(line, consensus))
+            if agree * 2 < len(line):    # this repetition is sung elsewhere (another voice or register)
+                continue
+            for i, c in zip(line, consensus):
+                if c is None:
+                    continue
+                shift = 12 * round((c - pitches[i]) / 12)
+                if shift and abs(pitches[i] + shift - c) <= REPEAT_CLOSE:
+                    out[i] = pitches[i] + shift
+    return out
+
+
 def syllable_pitches(pitch_data: dict, syllable_timings: list) -> list:
     """MIDI pitch per syllable (None for rap): unvoiced syllables take a neighbour's pitch, octave jumps of
     the pitch tracker are corrected."""
@@ -307,7 +354,8 @@ def syllable_pitches(pitch_data: dict, syllable_timings: list) -> list:
            else int(t["pitch"]) if t.get("pitch")          # a melisma part brings its own pitch
            else syllable_pitch(pitch_data, t["start"], t["end"])
            for t in syllable_timings]
-    return fix_octaves(fill_unvoiced(raw), syllable_timings)
+    fixed = fix_octaves(fill_unvoiced(raw), syllable_timings)
+    return fix_repeated_lines(fixed, syllable_timings) if REPEATS else fixed
 
 
 def get_pitch_subsegments(

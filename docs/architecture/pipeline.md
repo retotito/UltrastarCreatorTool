@@ -65,6 +65,13 @@ off (rare) is not brought back. Tune Studio additionally weighs the voice's harm
 harmonic energy: whether it really is that low or high). Ported and measured on 2026-10-24, it didn't help here
 (reference songs 4.85 → 4.98 % octave errors; Amada Mia 35 → 36 of 97 low notes), so it isn't used.
 
+After it, **repeated lines** (`fix_repeated_lines`): lines with the same words and number of notes (3+) are
+compared note by note; where at least 60 % of the repetitions agree on a note, a repetition with that note one or
+two octaves off is moved to it, if the rest of that repetition agrees too. Reference songs: octave errors
+4.85 → 4.5 %. It can't help where the repetitions themselves disagree, as in a duet where the other singer
+covers a line (Amada Mia: the pitch tracker follows the louder voice; the right note isn't in its output).
+A spike filter (notes far from their line's median) was tried and dropped: it also "fixed" real octave leaps.
+
 Measured on 6 reference songs (pitch class, octave ignored): FCPE 57.6 % exact / 77.3 % within a semitone;
 PYIN 52.7 % / 70.5 %. Octave check: notes in the wrong octave 5.2 % → 4.4 %, jumps of more than an octave
 inside a line 27 → 0. Melisma syllables can't match yet: one note per syllable (see `~` notes, plan step 4).
