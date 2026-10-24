@@ -150,6 +150,12 @@ def subtitle_tracks(info: dict, language: Optional[str] = None) -> List[dict]:
                "label": f"{language_name(track_language(k))} (by the uploader)"} for k in manual]
     tracks += [{"lang": k, "auto": True, "language": track_language(k),
                 "label": f"{language_name(track_language(k))} (automatic captions)"} for k in heard]
+    # The same language more than once (Despacito: three English tracks): "English", "English 2", "English 3".
+    seen: dict = {}
+    for t in tracks:
+        seen[t["label"]] = seen.get(t["label"], 0) + 1
+        if seen[t["label"]] > 1:
+            t["label"] = t["label"].replace(" (", f" {seen[t['label']]} (", 1)
     return tracks
 
 

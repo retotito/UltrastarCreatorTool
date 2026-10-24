@@ -289,6 +289,9 @@ def test_subtitle_tracks_prefer_the_uploaders_in_the_songs_language():
     assert [(t["lang"], t["auto"]) for t in tracks] == [("de-DE", False), ("en", False), ("de-orig", True)]
     assert [t["label"] for t in tracks] == ["German (by the uploader)", "English (by the uploader)", "German (automatic captions)"]
     assert subtitle_tracks({}, "en") == []
+    same = subtitle_tracks({"subtitles": {"en": [], "en-GB": [], "es": []}}, "es")
+    assert [t["label"] for t in same] == ["Spanish (by the uploader)", "English (by the uploader)",
+                                          "English 2 (by the uploader)"]
 
 
 def test_vtt_becomes_plain_lyrics_lines():
