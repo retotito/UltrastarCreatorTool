@@ -51,46 +51,38 @@ rm -rf "$SIDECAR_RESOURCES"
 mkdir -p frontend/src-tauri/resources
 cp -r dist-backend/backend "$SIDECAR_RESOURCES"
 
-# ── Step 2: Build Tauri app ──────────────────────────────────────────────────
+# ── Step 2: Build the Tauri app (.app only) ─────────────────────────────────
+# The .dmg is made below from the re-signed .app: Tauri's own .dmg step removes the .app afterwards, so the
+# re-signing never ran and the .dmg held an app with only the linker's signature (strict check failed).
 echo "→ Building Tauri app..."
 cd frontend
-npm run tauri build || true  # DMG creation may fail on macOS 26 — handled below
+npm run tauri build -- --bundles app
 
 # ── Re-sign .app (fixes SIGKILL for unsigned dylibs from pyannote/speechbrain) ──
 APP=$(find src-tauri/target/release/bundle/macos -name "*.app" 2>/dev/null | head -1)
-if [[ -n "$APP" ]]; then
-  echo "→ Ad-hoc re-signing $APP ..."
-  codesign --force --deep --sign - "$APP" 2>&1
-  echo "✓ Re-signed"
+if [[ -z "$APP" ]]; then
+  echo "ERROR: no .app was built"
+  exit 1
 fi
+echo "→ Ad-hoc re-signing $APP ..."
+codesign --force --deep --sign - "$APP" 2>&1
+codesign --verify --deep --strict "$APP"
+echo "✓ Re-signed and verified"
 
-# ── Done ─────────────────────────────────────────────────────────────────────
-DMG=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
-if [[ -z "$DMG" ]] && [[ -n "$APP" ]]; then
-  # Tauri's bundle_dmg.sh failed (known issue with macOS 26 / large bundles).
-  # Create the DMG manually with hdiutil.
-  echo "→ Tauri DMG failed — creating DMG manually with hdiutil..."
-  APP_NAME=$(basename "$APP" .app)
-  DMG_DIR="src-tauri/target/release/bundle/dmg"
-  mkdir -p "$DMG_DIR"
-  DMG_OUT="$DMG_DIR/${APP_NAME}_2.0.0_aarch64.dmg"
-  # Create a temporary staging folder with the .app and an Applications symlink
-  STAGING=$(mktemp -d)
-  cp -r "$APP" "$STAGING/"
-  ln -s /Applications "$STAGING/Applications"
-  hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG_OUT"
-  rm -rf "$STAGING"
-  DMG="$DMG_OUT"
-  echo "✓ DMG created: $DMG_OUT"
-fi
+# ── .dmg from the signed .app ────────────────────────────────────────────────
+APP_NAME=$(basename "$APP" .app)
+VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -1)
+DMG_DIR="src-tauri/target/release/bundle/dmg"
+mkdir -p "$DMG_DIR"
+DMG="$DMG_DIR/${APP_NAME}_${VERSION}_${ARCH/arm64/aarch64}.dmg"
+STAGING=$(mktemp -d)
+ditto "$APP" "$STAGING/$(basename "$APP")"
+ln -s /Applications "$STAGING/Applications"
+hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
+rm -rf "$STAGING"
 
-if [[ -n "$DMG" ]]; then
-  echo ""
-  echo "✓ Build complete!"
-  echo "  .dmg → $SCRIPT_DIR/frontend/$DMG"
-  echo ""
-  echo "  Install: open frontend/$DMG"
-else
-  echo ""
-  echo "✓ Tauri build complete (no .dmg found — check src-tauri/target/release/bundle/)"
-fi
+echo ""
+echo "✓ Build complete!"
+echo "  .dmg → $SCRIPT_DIR/frontend/$DMG"
+echo ""
+echo "  Install: open frontend/$DMG"
