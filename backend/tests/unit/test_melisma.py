@@ -45,8 +45,16 @@ def test_clear_steps_become_tilde_notes():
 
 
 def test_a_slide_into_the_note_is_not_a_note():
-    pitch = track((1.0, 1.15, 57), (1.15, 2.0, 60))              # 150 ms scoop from below
-    assert len(split_melismas([syl("gas ", 1.0, 2.0)], pitch)) == 1
+    pitch = track((1.0, 1.15, 57), (1.15, 1.9, 60))              # 150 ms scoop from below
+    assert len(split_melismas([syl("gas ", 1.0, 1.9)], pitch)) == 1
+
+
+def test_long_held_syllables_are_split_finer():
+    # held 4 s: a 150 ms scoop counts there, and more than 6 notes are allowed (charters who fine-tune write them)
+    steps = [(1.0, 1.15, 57)] + [(1.15 + 0.35 * k, 1.5 + 0.35 * k, 60 + 2 * (k % 2)) for k in range(8)]
+    pitch = track(*steps)
+    parts = split_melismas([syl("sun ", 1.0, 3.95)], pitch)
+    assert len(parts) == 9 and parts[0]["end"] == pytest.approx(1.15, abs=0.02)
 
 
 def test_mid_word_syllables_keep_the_word_going():

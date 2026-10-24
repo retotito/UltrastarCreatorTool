@@ -25,6 +25,11 @@ FRAME_SEC = 0.01
 EDGE_SLIDE_SEC = 0.25
 # Chosen on 6 reference songs (eval/run_eval.py, engine ctc-split): frame pitch 42.3 → 44.9 %,
 # within a semitone 53.3 → 56.1 %, syllable pitch 57.4 → 59.0 %, 218 "~" notes vs 212 in the charts.
+# Long syllables (held notes, often extended by services/note_holds) are split finer, as charters who fine-tune
+# do: Ben Harper's long syllables 72 → 105 notes (fine-tuned chart: 98) at the same pitch accuracy inside them.
+LONG_SYLLABLE_SEC = 1.0
+LONG_MAX_PARTS = 12
+LONG_EDGE_SLIDE_SEC = 0.1
 
 
 def _running_median(values: np.ndarray, width: int) -> np.ndarray:
@@ -67,13 +72,16 @@ def segment(times: np.ndarray, midi: np.ndarray, start: float, end: float,
             merged[-1][1] = part[1]
         else:
             merged.append(part)
-    while len(merged) > 1 and EDGE_SLIDE_SEC and merged[0][1] - merged[0][0] < EDGE_SLIDE_SEC:
+    long = end - start >= LONG_SYLLABLE_SEC
+    edge_slide = LONG_EDGE_SLIDE_SEC if long else EDGE_SLIDE_SEC
+    max_parts = LONG_MAX_PARTS if long else MAX_PARTS
+    while len(merged) > 1 and edge_slide and merged[0][1] - merged[0][0] < edge_slide:
         merged[1][0] = merged[0][0]
         del merged[0]
-    while len(merged) > 1 and EDGE_SLIDE_SEC and merged[-1][1] - merged[-1][0] < EDGE_SLIDE_SEC:
+    while len(merged) > 1 and edge_slide and merged[-1][1] - merged[-1][0] < edge_slide:
         merged[-2][1] = merged[-1][1]
         del merged[-1]
-    while len(merged) > MAX_PARTS:
+    while len(merged) > max_parts:
         shortest = min(range(len(merged)), key=lambda k: merged[k][1] - merged[k][0])
         into = shortest - 1 if shortest > 0 else 1
         merged[into][0] = min(merged[into][0], merged[shortest][0])

@@ -143,6 +143,11 @@ re-quantisation (`rawTimings`) in step. Off with `ULTRASTAR_MELISMA=off`.
 Measured on 6 reference songs: frame pitch (right pitch class over time) 42.3 → 44.9 %, within a semitone
 53.3 → 56.1 %, syllable pitch 57.4 → 59.0 %; 218 `~` notes against 212 in the charts.
 
+Syllables of 1 s or more (held notes, see 7a) are split finer, as hand fine-tuned charts do: up to 12 notes
+(else 6) and slides from 0.1 s count (else 0.25 s). Ben Harper's long syllables: 72 → 105 notes (fine-tuned
+chart 98) at the same pitch accuracy inside them (71.2 → 70.6 % exact, 83.6 → 84.0 % within a semitone);
+Robert Post 98.0 → 98.8 %. Community charts split more coarsely: frame pitch there unchanged, more `~` notes.
+
 ### 7a. One note pipeline for the song and for a range
 First **held notes** (`services/note_holds.py`): the aligner places letters, and a long-held vowel adds none, so
 it ends the last word before a pause far too early (Ben Harper's final "sun": held 5.3 s, aligned 0.2 s; Robert
