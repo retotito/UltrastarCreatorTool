@@ -41,6 +41,7 @@ Developer documentation for Ultrastar Creator Tool. For what the app does and ho
 **Decisions**
 - [0001: Keep the Python sidecar](decisions/0001-keep-python-sidecar.md)
 - [0002: Forced alignment of user lyrics](decisions/0002-forced-alignment-of-user-lyrics.md)
+- [0003: GAME decides syllable pitches](decisions/0003-game-note-model.md)
 
 **Plans**
 - [Forced alignment of user lyrics](plans/forced-alignment.md)

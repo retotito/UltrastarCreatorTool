@@ -44,6 +44,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 🎵 Notes from a note model (GAME)
+- Each syllable's pitch now comes from GAME (openvpi), a model that transcribes sung notes, as Tune Studio does;
+  much better where two voices overlap. Reference songs: right pitch class 56 → 64 %, octave errors 4.5 → 3.0 %
+- First-run setup downloads it (~362 MB, non-commercial licence, see docs/decisions/0003)
+
 ### 🎼 Octave check keeps low voices
 - Notes are moved at most one octave (was three). In duets the low male voice was pushed up towards the female
   voice; on "Amada Mia, Amore Mio" 35 of 97 low notes now match Tune Studio's chart, before 3

@@ -32,6 +32,7 @@ nohup.out
 backend/downloads/
 backend/uploads/
 backend/tools/
+backend/models/
 backend/corrections/
 backend/reference_songs/
 backend/training_data/

@@ -118,6 +118,7 @@ UPLOAD_DIR = os.path.join(_DATA_DIR, "uploads")
 REFERENCE_DIR = os.path.join(_DATA_DIR, "reference_songs")
 SESSIONS_DIR = os.path.join(_DATA_DIR, "sessions")
 TOOLS_DIR = os.path.join(_DATA_DIR, "tools")  # yt-dlp and QuickJS, downloaded on first use
+MODELS_DIR = os.path.join(_DATA_DIR, "models")  # GAME note model (services/game_notes.py)
 
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 os.makedirs(CORRECTIONS_DIR, exist_ok=True)
@@ -522,6 +523,11 @@ def _check_model_status() -> dict:
     pitch_ok = fcpe_model_downloaded()
     log_step("MODEL_STATUS", f"pitch (FCPE): ok={pitch_ok}")
 
+    # GAME note model (services/game_notes.py)
+    from services.game_notes import is_downloaded as _notes_downloaded
+    notes_ok = _notes_downloaded(MODELS_DIR)
+    log_step("MODEL_STATUS", f"notes (GAME): ok={notes_ok}")
+
     result = {
         "ffmpeg": ffmpeg_ok,
         "whisperx": whisperx_ok,
@@ -529,7 +535,8 @@ def _check_model_status() -> dict:
         "wav2vec2": wav2vec2_ok,
         "aligner": aligner_ok,
         "pitch": pitch_ok,
-        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok and aligner_ok and pitch_ok,
+        "notes": notes_ok,
+        "ready": ffmpeg_ok and whisperx_ok and demucs_ok and wav2vec2_ok and aligner_ok and pitch_ok and notes_ok,
     }
     log_step("MODEL_STATUS", f"final: {result}")
     return result
@@ -778,6 +785,27 @@ async def setup_download():
                 yield send("error", "pitch", f"Download failed: {e}")
         else:
             yield send("done", "pitch", "Pitch model already downloaded")
+
+        await asyncio.sleep(0.05)
+
+        # ── GAME note model (~362 MB) ──
+        if not status.get("notes"):
+            yield send("progress", "notes", "Downloading note model (~362 MB)…", percent=0)
+            from services.game_notes import download as download_notes
+            got = {"done": 0, "total": 1}
+            fut = asyncio.get_event_loop().run_in_executor(
+                None, lambda: download_notes(MODELS_DIR, lambda d, t: got.update(done=d, total=t)))
+            try:
+                while not fut.done():
+                    await asyncio.sleep(1.0)
+                    yield send("progress", "notes", f"Downloading… {got['done'] / 1_000_000:.0f} / "
+                               f"{got['total'] / 1_000_000:.0f} MB", percent=int(got["done"] * 100 / got["total"]))
+                await fut
+                yield send("done", "notes", "Note model ready")
+            except Exception as e:
+                yield send("error", "notes", f"Download failed: {e}")
+        else:
+            yield send("done", "notes", "Note model already downloaded")
 
         await asyncio.sleep(0.05)
         import json
@@ -3830,6 +3858,18 @@ def generate_ultrastar_files(session_id: str):
             syllable_count = len(syllable_timings)
             syllable_timings = melisma.split_melismas(syllable_timings, pitch_data)
             log_step("GENERATE", f"Melisma: {len(syllable_timings) - syllable_count} extra notes")
+
+        # Notes: GAME's sung note per syllable (better than the pitch curve's median, most of all where two
+        # voices overlap); syllables it finds nothing in keep FCPE's. See docs/architecture/pipeline.md.
+        from services import game_notes
+        check_cancelled()
+        found = 0
+        try:
+            started = time.time()
+            found = game_notes.apply(MODELS_DIR, vocal_path, syllable_timings, language)
+            log_step("GENERATE", f"Notes (GAME): {found}/{len(syllable_timings)} syllables in {time.time() - started:.0f}s")
+        except Exception as e:  # the model can't run: FCPE's pitch stays
+            log_step("GENERATE", f"Notes (GAME) skipped: {type(e).__name__}: {e}")
         
         # Step 3d: Generate files
         log_step("GENERATE", "Step 4/4: Generating output files")
@@ -3854,6 +3894,8 @@ def generate_ultrastar_files(session_id: str):
         
         # Determine pitch/alignment methods (from actual results)
         pitch_method = pitch_data.get("method", "PYIN")  # the engine that actually ran (FCPE, or PYIN as fallback)
+        if found:
+            pitch_method += f" + GAME notes ({found}/{len(syllable_timings)} syllables)"
         
         # Check what method was actually used by looking at syllable_timings
         if syllable_timings:

@@ -2,7 +2,7 @@
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { checkSetupStatus, streamSetupDownload } from '../services/api.js';
 
-  export let status = null; // { ffmpeg, whisperx, demucs, wav2vec2, aligner, ready }
+  export let status = null; // { ffmpeg, whisperx, demucs, wav2vec2, aligner, pitch, notes, ready }
 
   const dispatch = createEventDispatcher();
 
@@ -14,6 +14,7 @@
     wav2vec2: { label: 'wav2vec2 alignment model',    size: '~360 MB',  state: 'pending', message: '', elapsed: 0, percent: null },
     aligner:  { label: 'Lyrics aligner (Tune Studio, non-commercial licence)', size: '~1.2 GB', state: 'pending', message: '', elapsed: 0, percent: null },
     pitch:    { label: 'Pitch model (FCPE)',          size: '~48 MB',   state: 'pending', message: '', elapsed: 0, percent: null },
+    notes:    { label: 'Note model (GAME by openvpi, non-commercial licence)', size: '~362 MB', state: 'pending', message: '', elapsed: 0, percent: null },
   };
 
   let downloading = false;
@@ -43,6 +44,7 @@
     if (status.wav2vec2)  steps.wav2vec2.state = 'done';
     if (status.aligner)   steps.aligner.state  = 'done';
     if (status.pitch)     steps.pitch.state    = 'done';
+    if (status.notes)     steps.notes.state    = 'done';
     if (status.ready) allDone = true;
     steps = steps; // trigger reactivity
   }

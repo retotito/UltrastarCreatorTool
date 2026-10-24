@@ -56,6 +56,11 @@ A syllable's pitch (`syllable_pitch`) is the median of the unrounded pitch over 
 slide into notes from below), rounded to a semitone. Syllables without any pitch take the previous sung
 syllable's pitch (`fill_unvoiced`), not a fixed C4.
 
+**Notes (GAME)** (`services/game_notes.py`, see [ADR 0003](../decisions/0003-game-note-model.md)): after the
+melisma split, openvpi's GAME transcribes each lyrics line into notes (the syllable starts as known boundaries)
+and each syllable without a pitch of its own takes its longest voiced note; FCPE's median stays where GAME finds
+none. Reference songs: pitch class 56 → 64 %, octave errors 4.5 → 3.0 %. `ULTRASTAR_NOTE_ENGINE=fcpe` turns it off.
+
 Then the **octave check** (`fix_octaves`, after Tune Studio's `fixOctaves`) picks for every note a shift of
 −1, 0 or +1 octave so the whole song costs least: leaps beyond a fifth between neighbours are expensive (cheaper
 after a pause), moving a note costs, and leaving the song's range costs a little. It removes the pitch tracker's
