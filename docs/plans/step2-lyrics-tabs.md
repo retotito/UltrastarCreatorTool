@@ -33,9 +33,10 @@ Artist [          ]  Title [          ]  Language [ ▾ ]
 3. **Hyphenation is automatic and invisible**: the text is hyphenated right before generating; the tab's text
    isn't changed. Hyphens the user wrote are kept **per word** (before: a whole line was skipped if it contained
    one `-`). Wrong splits are fixed in the editor.
-4. **Nothing happens on its own** (changed 2026-10-25; before, LRCLIB searched automatically and the sides
-   swapped when it found nothing): the user opens "Search LRCLIB…" on a side (it searches with the song's names
-   right away) and chooses a version, or starts Whisper.
+4. **Little happens on its own** (changed 2026-10-25; before, LRCLIB searched whenever its text was empty and the
+   sides swapped when it found nothing): the first time Step 2 opens a song, LRCLIB is searched once and a clear
+   match fills the **left** side's LRCLIB text (remembered per song in the browser, so it doesn't search again).
+   Everything else is by hand: "Search LRCLIB…" on a side (searches with the song's names right away), Whisper.
 5. **Defaults**: left LRCLIB, right Vocals.
 6. **Artist and title for file uploads** from the file's tags, else from the file name ("Artist - Title.mp3").
 7. **Texts are saved in the session** (not only the browser), so they survive another computer or cleared data.

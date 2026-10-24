@@ -170,6 +170,36 @@
     }
   }
 
+  // The first time Step 2 opens a song: LRCLIB is searched once with its names, and a clear match fills the
+  // left side's LRCLIB text (only that; the right side and the tabs stay as they are).
+  function autoSearchedKey(id) { return `lrclib_auto_searched_${id}`; }
+  function alreadyAutoSearched(id) {
+    try { return localStorage.getItem(autoSearchedKey(id)) === '1'; } catch { return false; }
+  }
+  $: if (sourcesReady && $sessionId && artist.trim() && title.trim() && !sides.left.lrclib.text.trim()
+         && !alreadyAutoSearched($sessionId)) {
+    autoSearchLeft($sessionId);
+  }
+
+  async function autoSearchLeft(id) {
+    try { localStorage.setItem(autoSearchedKey(id), '1'); } catch { /* per-browser convenience only */ }
+    const query = `"${artist.trim()} – ${title.trim()}"`;
+    versionsSide = 'left';
+    try {
+      const found = await searchLrclib(artist.trim(), title.trim());
+      if (id !== $sessionId) return;
+      if (found.found) {
+        useLyricsCandidate('left', found);
+      } else {
+        updateSource('left', 'lrclib', { info: { message: lyricsCandidates.length
+          ? `No exact match for ${query}. Search LRCLIB to choose a version.`
+          : `No lyrics on LRCLIB for ${query}. Search with another title, or paste the lyrics.` } });
+      }
+    } catch (err) {
+      updateSource('left', 'lrclib', { info: { message: err.message.replace(/^API error \d+: /, '') } });
+    }
+  }
+
   // The LRCLIB window, opened from one side: search and choose a version for that side.
   let versionsOpen = false;
   let versionsMessage = '';

@@ -46,7 +46,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ### ↔️ Step 2: two independent sides, nothing automatic
 - Each side has its own texts for LRCLIB, Vocals and Cleaned vocals: load a version or Whisper into one side,
-  edit it, compare with the other. Nothing is searched or switched on its own any more
+  edit it, compare with the other. Only the first visit loads LRCLIB on its own, into the left side; nothing is
+  switched on its own any more
 - Existing sessions keep their texts (on both sides)
 
 ### 🎶 Long notes split like by hand
