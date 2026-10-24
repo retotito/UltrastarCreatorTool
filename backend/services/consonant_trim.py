@@ -1,16 +1,15 @@
 """Trim notes the way charters fine-tune them by hand: a note starts where the voice gets a pitch, ends where it
 fades, and leaves some air before the next syllable.
 
-- start: where the aligner hears the syllable's first vowel or sounding consonant ("l", "m", "n", "r", "w"), and
-  not before the first voiced frame (pitch tracker): unvoiced consonants ("s", "sh", "f", "t", "k", "p", "h") and
-  "b", "d", "g" bursts are left out ("sun" starts on the "u", "love" on the "l"),
+- start: after the first voiced frame (pitch tracker), moved halfway towards where the aligner hears the syllable's
+  first vowel or sounding consonant ("l", "m", "n", "r", "w"; LETTER_WEIGHT): unvoiced consonants ("s", "sh", "f",
+  "t", "k", "p", "h") are mostly left out,
 - end: the last voiced frame, and no later than where the loudness drops END_DROP_DB below the note's peak,
 - gap: inside a line, a note ends at least GAP_SEC before the next syllable starts.
 
 Melisma parts ("~") of a syllable stay joined: only the first part's start and the last part's end move.
 Measured on two charts fine-tuned this way (Ben Harper "She's Only Happy in the Sun", Robert Post "Got None"):
-end error 164/139 → 61/46 ms, ends more than 100 ms off 121/152 → 45/83; starts (Robert Post) 53 → 36 ms,
-word starts no longer early (bias −46 → −5 ms) with the aligner's letters, 45 ms with voicing alone.
+end error 187/85 → 73/46 ms, ends more than 100 ms off 125/152 → 50/81; start error 50/53 → 52/35 ms.
 Community charts mostly keep consonants and join notes, so this is a style: ULTRASTAR_TRIM_CONSONANTS=0 turns it off.
 """
 
@@ -24,7 +23,11 @@ MAX_END_TRIM_SEC = 0.40     # an end moves at most this much earlier by voicing
 END_DROP_DB = 6.0
 GAP_SEC = 0.14
 MIN_NOTE_SEC = 0.06
-SUNG_LETTERS = set("aeiouylmnrw")   # a note may start on these (the aligner's letters, see services/forced_alignment)
+SUNG_LETTERS = set("aeiouylmnrw")
+# How far a start moves from the voiced start towards the first sung letter (0…1). The two fine-tuned charts
+# disagree: Robert Post (BPM 612) starts after the consonant (start error 48 → 35 ms with 1.0), Ben Harper (BPM 178,
+# an 84 ms grid) rather on it (44 → 69 ms with 1.0). 0.5 is best for both together (weighted 46.8 → 40.2 ms).
+LETTER_WEIGHT = 0.5   # a note may start on these (the aligner's letters, see services/forced_alignment)
 FRAME_SEC = 0.01            # one pitch frame: the last voiced frame still sounds for its length
 LOUDNESS_FRAME_SEC = 0.02   # services/forced_alignment.frame_loudness
 
@@ -78,7 +81,7 @@ def trim(syllable_timings: List[dict], pitch_data: dict, loudness_db: Optional[n
         start = min(float(inside[0]), first["start"] + MAX_START_TRIM_SEC)
         sung = next((at for letter, at in first.get("letters") or [] if letter in SUNG_LETTERS), None)
         if sung is not None and sung - start <= MAX_START_TRIM_SEC:   # at most this far past the voiced start
-            start = max(start, sung)
+            start = max(start, start + LETTER_WEIGHT * (sung - start))
         end = min(last["end"], max(float(inside[-1]) + FRAME_SEC, last["end"] - MAX_END_TRIM_SEC))
         if loudness_db is not None:
             end = _loudness_end(loudness_db, start, end)

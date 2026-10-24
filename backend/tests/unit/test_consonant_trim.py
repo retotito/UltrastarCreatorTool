@@ -61,16 +61,17 @@ def test_switched_off(monkeypatch):
 
 
 def test_the_start_waits_for_the_first_sung_letter():
-    # "sun": the voice is already "voiced" at 1.02 (breath, bleed), but the aligner hears the "u" at 1.10
+    # "sun": the voice is already "voiced" at 1.02 (breath, bleed), the aligner hears the "u" at 1.10: halfway
     timing = syl("sun ", 1.0, 1.9, letters=[("s", 1.0), ("u", 1.10), ("n", 1.4)])
     (out,) = ct.trim([timing], pitch_track([(1.02, 1.7)]))
-    assert out["start"] == pytest.approx(1.10)
+    assert out["start"] == pytest.approx(1.02 + ct.LETTER_WEIGHT * 0.08)
     # "love": a sounding consonant, the note starts on the "l"
     (out,) = ct.trim([syl("love ", 2.0, 2.6, letters=[("l", 2.03), ("o", 2.12), ("v", 2.4), ("e", 2.5)])],
                      pitch_track([(2.0, 2.6)]))
-    assert out["start"] == pytest.approx(2.03)
+    assert out["start"] == pytest.approx(2.0 + ct.LETTER_WEIGHT * 0.03)
 
 
 def test_short_syllables_keep_their_trimmed_start():
-    (out,) = ct.trim([syl("a ", 1.0, 1.12, letters=[("a", 1.08)])], pitch_track([(1.0, 1.12)]))
-    assert out["start"] == pytest.approx(1.06) and out["end"] == pytest.approx(1.12)   # 60 ms minimum
+    # "a" from 1.00 to 1.10, the vowel heard at 1.09: halfway would leave 55 ms, so the note keeps its 60 ms minimum
+    (out,) = ct.trim([syl("a ", 1.0, 1.10, letters=[("a", 1.09)])], pitch_track([(1.0, 1.10)]))
+    assert out["start"] == pytest.approx(1.04) and out["end"] == pytest.approx(1.10)

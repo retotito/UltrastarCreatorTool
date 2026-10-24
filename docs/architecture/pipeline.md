@@ -145,10 +145,11 @@ Measured on 6 reference songs: frame pitch (right pitch class over time) 42.3 �
 
 ### 7b. Consonant trimming
 `services/consonant_trim.py`, after the notes' pitches are decided (GAME, octave check) and frozen
-(`freeze_pitches`): a note starts where the aligner hears the syllable's first vowel or sounding consonant
-(l, m, n, r, w; the alignment results carry each syllable's `letters` with their times), not before the first
-voiced frame (FCPE), so unvoiced consonants ("s", "sh", "f", "t", "k") are left out (Robert Post: word starts
-bias −46 → −9 ms, error 51 → 33 ms; voicing alone gave 45 ms); it ends at the last voiced frame and where the loudness drops 6 dB below
+(`freeze_pitches`): a note starts after the first voiced frame (FCPE), moved halfway towards where the aligner
+hears the syllable's first vowel or sounding consonant (l, m, n, r, w; the alignment results carry each syllable's
+`letters` with their times), so unvoiced consonants ("s", "sh", "f", "t", "k") are mostly left out. Halfway because
+the two fine-tuned charts disagree: Robert Post (BPM 612) starts after the consonant (start error 48 → 35 ms at the
+letter), Ben Harper (BPM 178) rather on it (44 → 69 ms); halfway gives 35 and 52 ms. It ends at the last voiced frame and where the loudness drops 6 dB below
 its peak; inside a line it ends at least 140 ms before the next syllable. Melisma parts stay joined. That's how
 notes are fine-tuned by hand. On two such charts (Ben Harper, Robert Post): start error 52/54 → 41/48 ms, end
 error 164/139 → 61/45 ms; in the finished Robert Post chart note lengths +103 → +36 ms against the fine-tuned
