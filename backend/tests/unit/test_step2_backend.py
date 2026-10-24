@@ -33,7 +33,7 @@ class TestSources:
         assert merge(old, {})["sides"]["right"]["vocals"]["text"] == "heard"
 
     @pytest.mark.parametrize("update", [
-        {"sides": {"left": {"youtube": {"text": "x"}}}},
+        {"sides": {"left": {"spotify": {"text": "x"}}}},
         {"sides": {"middle": {"lrclib": {"text": "x"}}}},
         {"sides": {"left": {"lrclib": {"text": 5}}}},
         {"sides": {"left": {"lrclib": {"text": "x" * (lyrics_sources.MAX_TEXT + 1)}}}},

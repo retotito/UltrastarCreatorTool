@@ -44,6 +44,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 📺 Lyrics from the YouTube video's subtitles
+- Songs imported from YouTube get a "YouTube" tab in Step 2: "Load subtitles" takes the video's subtitles as lyrics
+  (written by the uploader first, else YouTube's automatic captions). Lyrics only shown in the picture can't be read
+
 ### ↔️ Step 2: two independent sides, nothing automatic
 - Each side has its own texts for LRCLIB, Vocals and Cleaned vocals: load a version or Whisper into one side,
   edit it, compare with the other. Only the first visit loads LRCLIB on its own, into the left side; nothing is

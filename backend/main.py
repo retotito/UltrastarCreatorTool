@@ -3495,7 +3495,40 @@ async def get_lyrics_sources(session_id: str):
     return {"sides": sides_of(stored), "tabs": stored.get("tabs", {}),
             "artist": session.get("artist", ""), "title": session.get("title", ""),
             "language": session.get("language"), "language2": session.get("language2"),
-            "song_confirmed": session.get("song_confirmed", True)}
+            "song_confirmed": session.get("song_confirmed", True),
+            "has_youtube": bool(session.get("youtube_url"))}
+
+
+@app.get("/api/youtube-subtitles/{session_id}")
+async def youtube_subtitles(session_id: str, lang: str = "", auto: bool = False):
+    """The subtitles of the song's YouTube video as lyrics lines (Step 2's YouTube tab): the tracks there are and
+    the text of the chosen one (`lang`/`auto`), else of the best one (by the uploader, in the song's language)."""
+    import asyncio
+    from services.youtube import YouTubeError, subtitle_tracks, video_id, vtt_to_lyrics
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    vid = video_id(session.get("youtube_url") or "")
+    if not vid:
+        raise ServiceError("Not from YouTube", "This song wasn't imported from a YouTube link.")
+    yt = _youtube()
+    try:
+        info = await asyncio.to_thread(yt.inspect, vid)
+        tracks = subtitle_tracks(info, session.get("language"))
+        if not tracks:
+            return {"tracks": [], "track": None, "text": "",
+                    "message": "This video has no subtitles (lyrics shown only in the picture can't be read)."}
+        track = next((t for t in tracks if t["lang"] == lang and t["auto"] == auto), tracks[0])
+        folder = os.path.join(SESSIONS_DIR, session_id, "temp", "subtitles")
+        try:
+            vtt = await asyncio.to_thread(yt.subtitles, vid, track, folder)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+    except YouTubeError as e:
+        raise ServiceError("YouTube", str(e))
+    text = vtt_to_lyrics(vtt)
+    log_step("YOUTUBE", f"Session {session_id}: subtitles {track['label']}, {len(text.splitlines())} lines")
+    return {"tracks": tracks, "track": track, "text": text}
 
 
 @app.put("/api/lyrics-sources/{session_id}")

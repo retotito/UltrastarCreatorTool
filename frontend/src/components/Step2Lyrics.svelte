@@ -12,7 +12,7 @@
   import { sessionId, lyricsData, uploadData, currentStep, isProcessing, processingStatus, errorMessage, generationModalOpen, generationUseCleaned, generationResult } from '../stores/appStore.js';
   import { showConfirm } from '../stores/dialogStore.js';
   import { SUPPORTED_LANGUAGES } from '../lib/languages';
-  import { submitLyrics, searchLyricsOnline, getLyricsSources, saveLyricsSources, getTestLyrics, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata, getEditorData, generateEmptyUltrastar } from '../services/api.js';
+  import { getYouTubeSubtitles, submitLyrics, searchLyricsOnline, getLyricsSources, saveLyricsSources, getTestLyrics, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata, getEditorData, generateEmptyUltrastar } from '../services/api.js';
 
   // ── Song ────────────────────────────────────────────────
   let artist = $lyricsData.artist || '';
@@ -36,12 +36,14 @@
   // Each side has its own texts per source, so the two sides are compared and edited independently; nothing is
   // filled in on its own: the user loads LRCLIB or Whisper into a side.
   const EMPTY = () => ({ text: '', marks: [], dividers: [], info: null });
-  const SIDE = () => ({ lrclib: EMPTY(), vocals: EMPTY(), cleaned: EMPTY() });
+  const SIDE = () => ({ lrclib: EMPTY(), youtube: EMPTY(), vocals: EMPTY(), cleaned: EMPTY() });
   let sides = { left: SIDE(), right: SIDE() };
   let tabs = { left: 'lrclib', right: 'vocals' };
   let sourcesLoadedFor = null;
   let sourcesReady = false;
-  const IDLE = () => ({ lrclib: false, vocals: false, cleaned: false });
+  const IDLE = () => ({ lrclib: false, youtube: false, vocals: false, cleaned: false });
+  let hasYoutube = false;              // imported from a YouTube link: its subtitles are a source
+  let subtitleTracks = [];             // [{ lang, auto, label }] of the video, once asked for
   let busy = { left: IDLE(), right: IDLE() };
   let saveTimer = null;
 
@@ -67,6 +69,8 @@
       }
       sides = loaded;
       tabs = { left: stored.tabs?.left || 'lrclib', right: stored.tabs?.right || 'vocals' };
+      hasYoutube = !!stored.has_youtube;
+      subtitleTracks = [];
       if (!artist && stored.artist) artist = stored.artist;
       if (!title && stored.title) title = stored.title;
       if (!language && stored.language) language = stored.language;
@@ -137,10 +141,15 @@
   $: mixUrl = $sessionId && $uploadData.hasOriginal ? getAudioUrl($sessionId, 'original') : '';
   $: tabList = [
     { id: 'lrclib', label: 'LRCLIB' },
+    ...(hasYoutube ? [{ id: 'youtube', label: 'YouTube' }] : []),
     { id: 'vocals', label: 'Vocals' },
     ...(hasCleaned ? [{ id: 'cleaned', label: 'Cleaned vocals' }] : []),
   ];
   // A side left on "Cleaned vocals" when there is no cleanup (any more) shows the vocals.
+  // A side left on "YouTube" for a song that isn't from YouTube shows LRCLIB.
+  $: if (sourcesReady && !hasYoutube && (tabs.left === 'youtube' || tabs.right === 'youtube')) {
+    tabs = { left: tabs.left === 'youtube' ? 'lrclib' : tabs.left, right: tabs.right === 'youtube' ? 'lrclib' : tabs.right };
+  }
   $: if (!hasCleaned && (tabs.left === 'cleaned' || tabs.right === 'cleaned')) {
     tabs = { left: tabs.left === 'cleaned' ? 'vocals' : tabs.left, right: tabs.right === 'cleaned' ? 'vocals' : tabs.right };
   }
@@ -244,6 +253,34 @@
       text: entry.text, marks: [], dividers: [],
       info: { message: `✓ ${entry.lines} lines: ${entry.artist} – ${entry.track}${length}${entry.synced ? ' · synced' : ''}. Repeated choruses must be written out.` },
     });
+  }
+
+  // ── YouTube subtitles ───────────────────────────────────
+  /** Load the video's subtitles (`track`, else the best one) into one side's YouTube tab. */
+  async function handleSubtitles(side, event) {
+    const track = event.detail?.track || null;
+    if (sides[side].youtube.text.trim() && !(await showConfirm(
+      'Load the subtitles again and replace this text?', { title: 'YouTube subtitles', confirmLabel: 'Replace' },
+    ))) return;
+    setBusy(side, 'youtube', true);
+    try {
+      const found = await getYouTubeSubtitles($sessionId, track?.lang || '', !!track?.auto);
+      subtitleTracks = found.tracks || [];
+      if (!found.text) {
+        updateSource(side, 'youtube', { info: { message: found.message || 'These subtitles are empty.' } });
+        return;
+      }
+      const lines = found.text.split('\n').length;
+      const auto = found.track?.auto ? ' — speech recognition, check it carefully' : '';
+      updateSource(side, 'youtube', {
+        text: found.text, marks: [], dividers: [],
+        info: { message: `✓ ${lines} lines from the video's subtitles: ${found.track.label}${auto}. Repeated choruses must be written out.` },
+      });
+    } catch (err) {
+      updateSource(side, 'youtube', { info: { message: err.message.replace(/^API error \d+: /, '') } });
+    } finally {
+      setBusy(side, 'youtube', false);
+    }
   }
 
   // ── Whisper ─────────────────────────────────────────────
@@ -594,6 +631,8 @@
         on:change={(e) => handlePanelChange(side, e)}
         on:versions={() => openVersions(side)}
         on:transcribe={(e) => handleTranscribe(side, e)}
+        on:subtitles={(e) => handleSubtitles(side, e)}
+        {subtitleTracks}
         on:generate={handleGenerate}
       />
     {/each}

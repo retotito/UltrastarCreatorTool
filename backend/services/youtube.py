@@ -135,6 +135,52 @@ def summary(info: dict) -> dict:
     }
 
 
+LANGUAGE_KEY = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+
+def subtitle_tracks(info: dict, language: Optional[str] = None) -> List[dict]:
+    """The video's subtitles that may hold the lyrics, best first: written by the uploader (in the song's
+    language first), then YouTube's automatic captions in the language it heard ("en-orig"; speech recognition,
+    weak on singing). [{"lang", "auto", "label"}]."""
+    def base(key):
+        return key.split("-")[0].lower()
+    manual = [k for k in (info.get("subtitles") or {}) if k != "live_chat" and LANGUAGE_KEY.match(k)]
+    manual.sort(key=lambda k: (base(k) != (language or "").lower(), k))
+    heard = [k for k in (info.get("automatic_captions") or {}) if k.endswith("-orig") and LANGUAGE_KEY.match(k)]
+    tracks = [{"lang": k, "auto": False, "label": f"{k} (by the uploader)"} for k in manual]
+    tracks += [{"lang": k, "auto": True, "label": f"{k[:-len('-orig')]} (automatic captions)"} for k in heard]
+    return tracks
+
+
+_TIMING = re.compile(r"-->")
+_TAGS = re.compile(r"<[^>]*>")
+_NOISE = re.compile(r"[♪♫♬♩]|\[[^\]]*\]|\((?:music|applause|laughter|instrumental)[^)]*\)", re.IGNORECASE)
+
+
+def vtt_to_lyrics(vtt: str) -> str:
+    """WebVTT subtitles as lyrics lines: no header, cue numbers, timings, tags or "♪"/"[Music]"; a line repeated
+    by the next cue (rolling automatic captions) is kept once."""
+    import html
+    lines: List[str] = []
+    in_block = False
+    for raw in (vtt or "").replace("\r", "").split("\n"):
+        line = raw.strip()
+        if not line:
+            in_block = False
+            continue
+        if line.startswith("WEBVTT") or line.startswith(("NOTE", "STYLE", "REGION")):
+            in_block = not line.startswith("WEBVTT")
+            continue
+        if in_block or _TIMING.search(line) or line.isdigit() or re.match(r"^(Kind|Language):", line):
+            continue
+        text = html.unescape(_TAGS.sub("", line))
+        text = re.sub(r"\s+", " ", _NOISE.sub("", text)).strip(" -")
+        if not text or text in lines[-2:]:
+            continue
+        lines.append(text)
+    return "\n".join(lines)
+
+
 def explain(stderr: str) -> YouTubeError:
     """yt-dlp's error output as something to tell the user."""
     lines = [line for line in (stderr or "").splitlines() if line.strip()]
@@ -226,6 +272,29 @@ class YouTube:
                 return json.loads(result.stdout)
             except ValueError:
                 raise YouTubeError("yt-dlp's answer couldn't be read. Try again.")
+        return self._with_update(attempt)
+
+    def subtitles(self, vid: str, track: dict, folder: str) -> str:
+        """One subtitle track (see subtitle_tracks) as WebVTT text, no video downloaded. Raises YouTubeError."""
+        if not ID.match(vid or "") or not LANGUAGE_KEY.match(track.get("lang", "")):
+            raise YouTubeError("That isn't a YouTube video.", retryable=False)
+        os.makedirs(folder, exist_ok=True)
+
+        def attempt(programs):
+            for old in glob.glob(os.path.join(glob.escape(folder), "subs*")):
+                os.remove(old)
+            result = self._run(self._base_args(programs) + [
+                "--skip-download", "--write-auto-subs" if track.get("auto") else "--write-subs",
+                "--sub-langs", track["lang"], "--sub-format", "vtt",
+                "-o", os.path.join(folder, "subs.%(ext)s"), "--", watch_url(vid),
+            ], capture_output=True, text=True, timeout=INSPECT_TIMEOUT_SEC)
+            if result.returncode != 0:
+                raise explain(result.stderr)
+            files = glob.glob(os.path.join(glob.escape(folder), "subs*.vtt"))
+            if not files:
+                raise YouTubeError("YouTube sent no subtitles for this language.", retryable=False)
+            with open(files[0], encoding="utf-8", errors="replace") as f:
+                return f.read()
         return self._with_update(attempt)
 
     def download_audio(self, vid: str, folder: str,

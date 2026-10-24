@@ -278,3 +278,52 @@ def test_cancel_stops_yt_dlp_and_removes_the_partial_file(tmp_path):
 def test_ids_are_checked_before_yt_dlp_runs():
     with pytest.raises(YouTubeError):
         YouTube(FakeTools(), None, run=lambda *a, **k: completed()).inspect("--exec=x")
+
+
+# ── subtitles ────────────────────────────────────────────────
+def test_subtitle_tracks_prefer_the_uploaders_in_the_songs_language():
+    from services.youtube import subtitle_tracks
+    info = {"subtitles": {"en": [], "de-DE": [], "live_chat": []},
+            "automatic_captions": {"de-orig": [], "en": [], "fr": []}}
+    tracks = subtitle_tracks(info, "de")
+    assert [(t["lang"], t["auto"]) for t in tracks] == [("de-DE", False), ("en", False), ("de-orig", True)]
+    assert subtitle_tracks({}, "en") == []
+
+
+def test_vtt_becomes_plain_lyrics_lines():
+    from services.youtube import vtt_to_lyrics
+    vtt = """WEBVTT
+Kind: captions
+Language: en
+
+NOTE made by hand
+
+1
+00:00:01.000 --> 00:00:03.000
+♪ I know you may not &amp; want to see me ♪
+
+2
+00:00:03.000 --> 00:00:05.000 align:start position:0%
+I know you may not &amp; want to see me
+On your <c>way</c><00:00:04.500><c> down</c>
+
+00:00:05.000 --> 00:00:06.000
+[Music]
+"""
+    assert vtt_to_lyrics(vtt) == "I know you may not & want to see me\nOn your way down"
+
+
+def test_subtitles_ask_yt_dlp_for_the_track_only(tmp_path):
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        (tmp_path / "subs.en.vtt").write_text("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nla la\n")
+        return completed()
+    vtt = YouTube(FakeTools(), None, run=run).subtitles("_KztNIg4cvE", {"lang": "en", "auto": False}, str(tmp_path))
+    assert "la la" in vtt
+    args = calls[0]
+    assert "--skip-download" in args and "--write-subs" in args and args[args.index("--sub-langs") + 1] == "en"
+    assert args[-2:] == ["--", "https://www.youtube.com/watch?v=_KztNIg4cvE"]
+    with pytest.raises(YouTubeError):
+        YouTube(FakeTools(), None, run=run).subtitles("_KztNIg4cvE", {"lang": "--exec=x", "auto": False}, str(tmp_path))

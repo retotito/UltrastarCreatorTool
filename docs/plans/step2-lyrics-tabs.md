@@ -24,8 +24,8 @@ Artist [          ]  Title [          ]  Language [ ▾ ]
 ## Decisions (2026-10-22)
 
 1. **Tabs are lyric sources, each side has its own texts** (changed 2026-10-25; before, both sides showed one
-   shared text per source): LRCLIB, Vocals (Whisper), Cleaned vocals (Whisper on the Step 4 cleanup, tab only when
-   one exists). Loading LRCLIB or Whisper fills only the side it was started from; editing one side never changes
+   shared text per source): LRCLIB, YouTube (the video's subtitles, for songs imported from YouTube), Vocals
+   (Whisper), Cleaned vocals (Whisper on the Step 4 cleanup, tab only when one exists). Loading LRCLIB or Whisper fills only the side it was started from; editing one side never changes
    the other. Stored as `lyrics_sources.sides.{left,right}`; older sessions' shared texts go to both sides.
 2. **Generate per side** replaces "Lyrics for generation: left / right" and the separate "Generate from Cleaned
    Vocals" button. The timing audio follows the tab: Vocals → vocals, Cleaned vocals → cleaned vocals, LRCLIB

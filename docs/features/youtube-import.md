@@ -28,6 +28,15 @@ language, plus an optional second one (`language2`; written as `#LANGUAGE:Englis
 get the same window (names from their tags and file name). Step 2 searches LRCLIB only when asked, with the
 confirmed names.
 
+## Subtitles as lyrics (Step 2)
+
+Songs imported from YouTube get a **YouTube** tab on each side of Step 2. "Load subtitles" asks
+`/api/youtube-subtitles/{id}`: the video's tracks (`services/youtube.py` `subtitle_tracks`), best first, written by
+the uploader (in the song's language first), then YouTube's automatic captions in the language it heard
+(`-orig`; speech recognition, weak on singing). yt-dlp fetches only the chosen track as WebVTT (`--skip-download`),
+`vtt_to_lyrics` makes lyrics lines of it (no timings, tags, "♪", "[Music]"; a line repeated by rolling captions
+once). With several tracks the tab offers a choice.
+
 ## Tools: yt-dlp and QuickJS
 
 `backend/services/download_tools.py` downloads them on first use into the app's data folder (`tools/`; in dev
@@ -54,6 +63,4 @@ available in your country, live, removed, no network, "confirm you're not a bot"
 ## Not (yet) done
 
 - No video download (not needed for charting).
-- Lyrics: YouTube's automatic captions are speech recognition and not better than Whisper on singing, so they are
-  only used for the language. Captions written by the uploader are listed (`subtitle_languages`) but not used yet;
-  Step 2 should offer them next to the LRCLIB suggestions.
+- Lyrics shown only in the picture (burned in) can't be read; that would need text recognition on the video.

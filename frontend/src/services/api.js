@@ -465,3 +465,9 @@ export async function saveMicTrail(sessionId, trailData) {
 }
 
 
+
+/** The song's YouTube subtitles as lyrics: { tracks, track, text, message? }. Without lang: the best track. */
+export async function getYouTubeSubtitles(sessionId, lang = '', auto = false) {
+  const qs = new URLSearchParams({ lang, auto: auto ? 'true' : 'false' });
+  return request('GET', `/youtube-subtitles/${sessionId}?${qs}`);
+}

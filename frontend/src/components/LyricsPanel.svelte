@@ -21,6 +21,9 @@
   export let canGenerate = false;
   export let generateHint = '';
   export let disabled = false;
+  /** YouTube: the video's subtitle tracks, once asked for ([{ lang, auto, label }]) */
+  export let subtitleTracks = [];
+  let chosenTrack = '';
 
   const dispatch = createEventDispatcher();
   let textarea;
@@ -169,6 +172,24 @@
       <button class="link-btn" on:click={() => dispatch('versions')} disabled={disabled || busy.lrclib}>
         {chosen && versionsCount > 1 ? `Choose another version (${versionsCount - 1})` : 'Search LRCLIB…'}
       </button>
+    {:else if tab === 'youtube'}
+      <div class="tool-row">
+        <span class="tool-info">
+          {#if busy.youtube}<span class="spinner" aria-hidden="true"></span> Getting the subtitles…
+          {:else if info?.message}{info.message}
+          {:else}The YouTube video's subtitles, if it has any (written by the uploader, else automatic captions).{/if}
+        </span>
+        {#if subtitleTracks.length > 1}
+          <select class="track-select" bind:value={chosenTrack} disabled={disabled || busy.youtube} aria-label="Subtitle track">
+            <option value="">Best track</option>
+            {#each subtitleTracks as t, k}<option value={String(k)}>{t.label}</option>{/each}
+          </select>
+        {/if}
+        <button class="btn btn-transcribe small" disabled={disabled || busy.youtube}
+                on:click={() => dispatch('subtitles', { track: chosenTrack === '' ? null : subtitleTracks[Number(chosenTrack)] })}>
+          📺 {text.trim() ? 'Load again' : 'Load subtitles'}
+        </button>
+      </div>
     {:else}
       <div class="tool-row">
         <span class="tool-info">
@@ -219,6 +240,8 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .panel-tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; font-weight: 600; }
   /* Same height on every tab, so both text fields start at the same line and can be compared. */
+  .track-select { background: #11111d; color: #e0e0e0; border: 1px solid #444; border-radius: 6px; padding: 0.2rem 0.3rem;
+    font-size: 0.78rem; max-width: 12rem; }
   .panel-tools { display: flex; flex-direction: column; justify-content: center; gap: 0.25rem; height: 4.2rem; overflow: hidden; }
   .tool-info { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .tool-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }

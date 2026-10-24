@@ -1,8 +1,8 @@
 """Step 2's lyric sources, kept in the session: each side (left, right) has its own text per source, shown in its
 tabs, so the two sides can be compared and edited independently.
 
-Sources: "lrclib" (lyrics found online), "vocals" (Whisper on the vocals), "cleaned" (Whisper on the
-cleaned vocals). Each has `text`, and optionally `marks` (colour highlights), `dividers` (line numbers
+Sources: "lrclib" (lyrics found online), "youtube" (the video's subtitles, songs imported from YouTube),
+"vocals" (Whisper on the vocals), "cleaned" (Whisper on the cleaned vocals). Each has `text`, and optionally `marks` (colour highlights), `dividers` (line numbers
 with a divider) and `info` (what produced the text, for the tab's status line).
 
 Stored as {"sides": {"left": {source: …}, "right": {…}}, "tabs": {"left": source, "right": source}}. Sessions
@@ -11,7 +11,7 @@ from before had one text per source for both sides ("sources"): `sides_of` gives
 
 from typing import Any, Dict
 
-SOURCES = ("lrclib", "vocals", "cleaned")
+SOURCES = ("lrclib", "youtube", "vocals", "cleaned")
 SIDES = ("left", "right")
 MAX_TEXT = 200_000
 MAX_MARKS = 2_000
