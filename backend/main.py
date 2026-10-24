@@ -3853,7 +3853,7 @@ def generate_ultrastar_files(session_id: str):
         )
         
         # Determine pitch/alignment methods (from actual results)
-        pitch_method = "PYIN"
+        pitch_method = pitch_data.get("method", "PYIN")  # the engine that actually ran (FCPE, or PYIN as fallback)
         
         # Check what method was actually used by looking at syllable_timings
         if syllable_timings:

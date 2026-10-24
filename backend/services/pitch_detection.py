@@ -82,7 +82,8 @@ def detect_pitches_pyin(audio_path: str) -> dict:
         "frequencies": frequency,
         "confidences": confidence,
         "midi_notes": midi_notes,
-        "sample_rate": sr
+        "sample_rate": sr,
+        "method": "PYIN",
     }
 
 
@@ -145,6 +146,7 @@ def detect_pitches_fcpe(audio_path: str) -> dict:
         "confidences": voiced.astype(float),
         "midi_notes": midi_notes,
         "sample_rate": FCPE_SAMPLE_RATE,
+        "method": "FCPE",
     }
 
 
