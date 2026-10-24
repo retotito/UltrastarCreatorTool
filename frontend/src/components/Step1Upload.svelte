@@ -1,6 +1,7 @@
 <script>
   import { sessionId, uploadData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
   import SongNameModal from './SongNameModal.svelte';
+  import { languageHeader } from '../lib/languages';
   import { inspectYouTube, streamYouTubeImport, newSession, uploadAudio, extractVocals, cancelExtractVocals, streamExtractVocals, uploadCorrectedVocals, uploadMixAudio, deleteAudio, getAudioUrl, resumeLastSession, getGenerationResult } from '../services/api.js';
 
   let audioPlayerMix;
@@ -62,6 +63,7 @@
 
   // ── Song name ("Which song is this?") ───────────────────
   let songModalOpen = false;
+  let songModalIdentify = true;   // a new song: propose names; "✏️ Change": keep the confirmed ones
 
   /** After an upload or download: the backend marks every new song (a new full mix, or vocals alone) unconfirmed,
    * so the song window asks for its names and languages. Languages are pre-selected only when the session or
@@ -70,6 +72,7 @@
     lyricsData.update(d => ({ ...d, artist: result.artist || d.artist || '', title: result.title || d.title || '' }));
     if (result.song_confirmed === false) {
       lyricsData.update(d => ({ ...d, language: result.language || '', language2: result.language2 || '' }));
+      songModalIdentify = true;
       songModalOpen = true;
     }
   }
@@ -322,8 +325,16 @@
     </div>
   {/if}
 
+  {#if $sessionId && ($uploadData.hasOriginal || $uploadData.hasVocals) && !songModalOpen}
+    <p class="song-line">
+      🎵 <strong>{$lyricsData.artist || '?'} – {$lyricsData.title || '?'}</strong>
+      <span class="song-languages">{$lyricsData.language ? languageHeader($lyricsData.language, $lyricsData.language2) : 'no language selected'}</span>
+      <button class="link-btn" on:click={() => { songModalIdentify = false; songModalOpen = true; }}>✏️ Change</button>
+    </p>
+  {/if}
+
   {#if songModalOpen && $sessionId}
-    <SongNameModal sessionId={$sessionId} artist={$lyricsData.artist} title={$lyricsData.title}
+    <SongNameModal sessionId={$sessionId} artist={$lyricsData.artist} title={$lyricsData.title} identify={songModalIdentify} on:cancel={() => songModalOpen = false}
                    language={$lyricsData.language} language2={$lyricsData.language2 || ''} on:confirm={handleSongConfirmed} />
   {/if}
 
@@ -577,6 +588,10 @@
 
 
   /* ── YouTube link ── */
+  .song-line { color: #bbb; font-size: 0.9rem; margin: 0 0 1rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .song-languages { color: #888; font-size: 0.85rem; }
+  .song-languages::before { content: '· '; }
+  .link-btn { background: none; border: none; color: #4fc3f7; cursor: pointer; text-decoration: underline; font-size: 0.85rem; padding: 0; }
   .youtube-import { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.75rem; }
   .youtube-row { display: flex; gap: 0.4rem; }
   .youtube-row input {

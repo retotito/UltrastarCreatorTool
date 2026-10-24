@@ -15,6 +15,7 @@
   export let title = '';
   export let language = '';
   export let language2 = '';
+  export let identify = true;   // propose names from lrclib.net (a new song); false when changing confirmed names
 
   const dispatch = createEventDispatcher();
   let searching = false;
@@ -69,7 +70,7 @@
     const scrollbar = window.innerWidth - document.documentElement.clientWidth;
     body.style.overflow = 'hidden';
     if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
-    propose();
+    if (identify) propose();
   });
   onDestroy(() => {
     if (!previous) return;
@@ -114,6 +115,10 @@
     </div>
 
     <div class="song-actions">
+      {#if !identify}
+        <!-- changing confirmed names: closing without saving keeps them -->
+        <button class="btn btn-secondary" on:click={() => dispatch('cancel')} disabled={saving}>Cancel</button>
+      {/if}
       <!-- The tooltip sits on a wrapper: a disabled button gets no hover, so it shows no title of its own. -->
       <span title={missingHint}>
         <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !!missingHint}>
@@ -156,6 +161,8 @@
   .btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; }
   .btn-primary { background: #1976d2; color: white; }
   .btn-primary:hover:not(:disabled) { background: #1565c0; }
+  .btn-secondary { background: #333; color: #e0e0e0; }
+  .btn-secondary:hover:not(:disabled) { background: #444; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
   .song-actions span:has(.btn:disabled) { cursor: not-allowed; }
   .busy-bar { height: 3px; border-radius: 2px; background: linear-gradient(90deg, transparent, #4fc3f7, transparent);
