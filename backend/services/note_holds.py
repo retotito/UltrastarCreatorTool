@@ -17,6 +17,8 @@ MAX_HOLD_SEC = 10.0          # a note grows at most this much
 MAX_SILENT_SEC = 0.2         # unvoiced frames tolerated inside a hold (breathy moments)
 MAX_STEP_SEMITONES = 4.0     # a bigger jump between voiced frames: another voice, not this note
 HOLD_DROP_DB = 20.0
+LOUDNESS_WINDOW_SEC = 0.06   # judged on the next 60 ms: after a short break the voice comes back quiet for a frame
+                             # or two (Ben Harper's "sun" at 3:25.8: −34 dB, 40 ms later −16 dB)
 GAP_SEC = 0.14               # as services/consonant_trim
 MIN_ROOM_SEC = 0.4           # only before a pause: inside a line the notes keep their air (consonant trimming)
 LOUDNESS_FRAME_SEC = 0.02    # services/forced_alignment.frame_loudness
@@ -64,7 +66,8 @@ def extend_holds(syllable_timings: List[dict], pitch_data: dict, loudness_db: Op
                     break
                 if peak is not None:
                     frame = int(now / LOUDNESS_FRAME_SEC)
-                    if frame < len(loudness_db) and loudness_db[frame] < peak - HOLD_DROP_DB:
+                    window = loudness_db[frame:frame + max(1, int(round(LOUDNESS_WINDOW_SEC / LOUDNESS_FRAME_SEC)))]
+                    if len(window) and window.max() < peak - HOLD_DROP_DB:
                         break
                 last_pitch, last_voiced = float(midi[k]), now
             k += 1

@@ -153,7 +153,8 @@ First **held notes** (`services/note_holds.py`): the aligner places letters, and
 it ends the last word before a pause far too early (Ben Harper's final "sun": held 5.3 s, aligned 0.2 s; Robert
 Post's "me": 5.6 s, 0.6 s). A syllable followed by at least 0.4 s of room grows while the pitch tracker hears a
 pitch that moves smoothly (≤ 4 semitones between frames, ≤ 0.2 s unvoiced) and the voice is within 20 dB of the
-syllable's peak; consonant trimming then cuts such a note only 10 dB down (6 dB shortened "me" again). On the
+syllable's peak, judged on the next 60 ms (after a short break the voice comes back quiet for a frame or two:
+Ben Harper's "sun" at 3:23 stopped there, now 203.4–207.0 s, fine-tuned 203.5–207.0 s); consonant trimming then cuts such a note only 10 dB down (6 dB shortened "me" again). On the
 two fine-tuned charts long notes cut short 2/20 and 3/19 → 1/20 and 1/19, other note ends unchanged (46 → 47 ms,
 73 → 73 ms). `ULTRASTAR_HOLD_NOTES=0` turns it off.
 

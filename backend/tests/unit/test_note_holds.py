@@ -49,3 +49,14 @@ def test_inside_a_line_notes_keep_their_air():
 def test_switched_off(monkeypatch):
     monkeypatch.setenv("ULTRASTAR_HOLD_NOTES", "0")
     assert not nh.enabled()
+
+
+def test_a_quiet_frame_after_a_short_break_does_not_end_the_hold():
+    # "sun" sung 1.0–3.0, a 0.12 s break, the voice comes back quiet for 40 ms, then sings on until 5.0
+    pitch = track([(1.0, 3.0, 66), (3.12, 5.0, 64)])
+    loudness = np.full(400, -60.0)
+    loudness[50:150] = -13.0
+    loudness[156:158] = -34.0      # the first 40 ms after the break
+    loudness[158:250] = -16.0
+    out = nh.extend_holds([syl("sun ", 1.0, 2.9)], pitch, loudness)
+    assert out[0]["end"] == pytest.approx(5.0, abs=0.02)
