@@ -250,25 +250,28 @@ def fill_unvoiced(pitches: list, default: int = 60) -> list:
 
 # Octave check weights (Tune Studio's fixOctaves): a leap beyond a fifth costs LEAP per semitone, less
 # after a pause; moving a note costs STAY per octave; leaving the song's range (median ± 9) costs CENTER
-# per semitone. Notes may move up to three octaves: FCPE sometimes lands that far off on noisy frames
-# (Freak Power: "out" at 80 in a line around 43).
+# per semitone. Notes move at most one octave, as in Tune Studio: with up to three, a low male voice that FCPE
+# heard an octave too low (MIDI ~40 instead of ~52) was pulled up two octaves, towards the female voice of a duet
+# (Amada Mia, Amore Mio: 3 of 97 low notes in Tune Studio's octave, 35 with one). On the 6 reference songs this
+# costs 0.2 points of octave errors (4.7 → 4.9 %), from single notes FCPE put more than an octave off.
 OCTAVE_LEAP = 0.6
 OCTAVE_STAY = 2.0
 OCTAVE_CENTER = 0.3
 OCTAVE_PAUSE_SEC = 0.5
+OCTAVE_SHIFTS = (-12, 0, 12)
 
 
 def fix_octaves(pitches: list, syllable_timings: list) -> list:
     """Move notes an octave up or down where the pitch tracker jumped an octave (in a copy).
 
-    For every sung note one of {-12, 0, +12} is chosen so that the whole song costs the least: big
+    For every sung note one of OCTAVE_SHIFTS ({-12, 0, +12}) is chosen so that the whole song costs the least: big
     leaps between neighbouring notes are expensive (cheaper after a pause, where a phrase may start
     elsewhere), moving a note and leaving the song's range cost a little. `None` (rap) is skipped.
     """
     sung = [i for i, p in enumerate(pitches) if p]
     if len(sung) < 2:
         return list(pitches)
-    shifts = (-36, -24, -12, 0, 12, 24, 36)
+    shifts = OCTAVE_SHIFTS
     middle = float(np.median([pitches[i] for i in sung]))
 
     def own(i, shift):

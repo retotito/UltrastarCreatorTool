@@ -56,10 +56,13 @@ A syllable's pitch (`syllable_pitch`) is the median of the unrounded pitch over 
 slide into notes from below), rounded to a semitone. Syllables without any pitch take the previous sung
 syllable's pitch (`fill_unvoiced`), not a fixed C4.
 
-Then the **octave check** (`fix_octaves`, after Tune Studio's `fixOctaves`) picks for every note a shift of up to
-±3 octaves so the whole song costs least: leaps beyond a fifth between neighbours are expensive (cheaper after a
-pause), moving a note costs per octave, and leaving the song's range costs a little. It removes the pitch
-tracker's octave slips (e.g. "out" at 80 in a line around 43).
+Then the **octave check** (`fix_octaves`, after Tune Studio's `fixOctaves`) picks for every note a shift of
+−1, 0 or +1 octave so the whole song costs least: leaps beyond a fifth between neighbours are expensive (cheaper
+after a pause), moving a note costs, and leaving the song's range costs a little. It removes the pitch tracker's
+octave slips. One octave at most, as in Tune Studio: with up to three, a duet's low male voice (heard by FCPE an
+octave too low) was pulled two octaves up towards the female voice. The price: a note FCPE put several octaves
+off (rare) is not brought back. Tune Studio additionally weighs the voice's harmonics per note (whether it really
+is that low or high); we don't yet.
 
 Measured on 6 reference songs (pitch class, octave ignored): FCPE 57.6 % exact / 77.3 % within a semitone;
 PYIN 52.7 % / 70.5 %. Octave check: notes in the wrong octave 5.2 % → 4.4 %, jumps of more than an octave

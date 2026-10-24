@@ -70,10 +70,23 @@ def timings(*starts, length=0.3):
 
 class TestFixOctaves:
     def test_a_single_octave_jump_inside_a_phrase_is_moved_back(self):
-        # "out" detected three octaves too high in a line around 43: Freak Power's chorus, test2
-        pitches = [45, 44, 44, 40, 43, 80]
+        pitches = [45, 44, 44, 40, 43, 56]
         fixed = fix_octaves(pitches, timings(0.0, 0.4, 0.8, 1.2, 1.6, 2.0))
         assert fixed == [45, 44, 44, 40, 43, 44]
+
+    def test_notes_move_one_octave_at_most(self):
+        # Known limit: "out" detected three octaves too high (Freak Power, test2) can't be brought back
+        pitches = [45, 44, 44, 40, 43, 80]
+        fixed = fix_octaves(pitches, timings(0.0, 0.4, 0.8, 1.2, 1.6, 2.0))
+        assert all(abs(f - p) <= 12 for f, p in zip(fixed, pitches)) and fixed[5] >= 68
+
+    def test_a_low_voice_in_a_duet_is_not_pulled_two_octaves_up(self):
+        # Amada Mia, Amore Mio: FCPE heard the male voice an octave low (~40, Tune Studio's chart: ~52) between
+        # high female lines (~72); with up to three octaves he was moved to ~64
+        male, female = [40, 40, 39, 40], [72, 74, 74, 72, 71, 71]
+        fixed = fix_octaves(male + female + male, timings(*[0.4 * i for i in range(14)]))
+        assert all(abs(f - p) <= 12 for f, p in zip(fixed, male + female + male))
+        assert all(f < 60 for f in fixed[:4] + fixed[10:])
 
     def test_an_octave_too_low_is_moved_up(self):
         assert fix_octaves([52, 53, 41, 52], timings(0, 0.4, 0.8, 1.2)) == [52, 53, 53, 52]
@@ -87,7 +100,7 @@ class TestFixOctaves:
         assert fix_octaves(pitches, timings(0, 0.4, 0.8, 5.0, 5.4, 5.8)) == pitches
 
     def test_rap_notes_are_skipped(self):
-        assert fix_octaves([45, None, 80, 44], timings(0, 0.4, 0.8, 1.2)) == [45, None, 44, 44]
+        assert fix_octaves([45, None, 56, 44], timings(0, 0.4, 0.8, 1.2)) == [45, None, 44, 44]
 
     def test_too_few_notes_are_returned_unchanged(self):
         assert fix_octaves([80], timings(0)) == [80]

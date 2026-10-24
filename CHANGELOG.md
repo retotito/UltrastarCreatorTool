@@ -44,6 +44,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 🎼 Octave check keeps low voices
+- Notes are moved at most one octave (was three). In duets the low male voice was pushed up towards the female
+  voice; on "Amada Mia, Amore Mio" 35 of 97 low notes now match Tune Studio's chart, before 3
+
 ### 🌍 Hyphenation in more languages
 - Uses pyphen's dictionary for every language that has one (Russian, Greek, Ukrainian, Catalan, …), one syllable
   per character for Chinese, Japanese and Korean, and a generic vowel rule otherwise. Before, all languages but 17
