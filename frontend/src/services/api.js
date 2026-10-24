@@ -244,10 +244,12 @@ export async function searchLyricsOnline(sessionId, artist, title) {
   return request('GET', `/lyrics-search/${sessionId || 'none'}?${params}`);
 }
 
-export async function hyphenateLyrics(lyrics, language = 'en') {
+/** language2: a song's second language; each line is then split with the rules of the language it is in. */
+export async function hyphenateLyrics(lyrics, language = 'en', language2 = '') {
   const form = new FormData();
   form.append('lyrics', lyrics);
   form.append('language', language);
+  if (language2) form.append('language2', language2);
   return request('POST', '/hyphenate', form, true);
 }
 

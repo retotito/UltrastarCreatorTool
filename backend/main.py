@@ -3666,11 +3666,12 @@ async def lyrics_search(session_id: str, artist: str = "", title: str = ""):
 async def hyphenate_lyrics(
     lyrics: str = Form(...),
     language: str = Form("en"),
+    language2: str = Form(""),
 ):
-    """Auto-hyphenate plain lyrics using pyphen."""
+    """Auto-hyphenate plain lyrics using pyphen; with `language2` each line with the rules of its own language."""
     from services.hyphenation import hyphenate_lyrics as do_hyphenate, PYPHEN_AVAILABLE
     
-    result = do_hyphenate(lyrics, language)
+    result = do_hyphenate(lyrics, language, language2 or None)
     return {
         "status": "ok",
         "pyphen_available": PYPHEN_AVAILABLE,

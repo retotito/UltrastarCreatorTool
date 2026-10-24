@@ -44,6 +44,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 🌐 Two-language songs hyphenated line by line
+- With a second language set, each lyrics line is split into syllables with the rules of its own language (an
+  English/Italian duet: "co-se", "pre-se", "co-sì" on the Italian lines; English rules left them whole)
+
 ### 📺 Lyrics from the YouTube video's subtitles
 - Songs imported from YouTube get a "YouTube" tab in Step 2: "Load subtitles" takes the video's subtitles as lyrics
   (written by the uploader first, else YouTube's automatic captions). Lyrics only shown in the picture can't be read

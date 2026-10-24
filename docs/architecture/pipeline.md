@@ -50,7 +50,11 @@ The transcript is shown to the user as a starting point; "Find lyrics online" fe
 LRCLIB (`services/lyrics_search.py`) into the right field. The user picks which field is used, and corrects words,
 line breaks and hyphenation (`services/hyphenation.py`): a pyphen dictionary where one exists for the language,
 one syllable per character for Chinese, Japanese and Korean, else a generic vowel rule (Latin script) or no
-splitting (scripts without written vowels).
+splitting (scripts without written vowels). English adds sung-syllable rules on top of pyphen (silent "e",
+"-es"/"-ed", "-ing"). With a **second language** each line is split with the rules of the language it is in
+(`line_languages`: langdetect's n-gram profiles compared between the two languages only, so short lines work;
+an empty or unclear line takes the previous line's language). English/Italian duet: "co-se", "pre-se", "co-sì"
+on the Italian lines, which English rules left whole ("cose": silent final "e").
 
 ### 3. BPM detection
 `services/bpm_detection.py`: essentia when installed, otherwise librosa; octave correction; beat phase from the

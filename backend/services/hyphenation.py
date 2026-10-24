@@ -256,7 +256,56 @@ def get_supported_languages():
     return sorted({code.split("_")[0] for code in pyphen.LANGUAGES} | set(LANGUAGE_MAP) | CHARACTER_LANGUAGES)
 
 
-def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
+LINE_LANGUAGE_MARGIN = 3.0   # below this log-likelihood margin a line takes its neighbour's language
+
+
+def _language_scorer():
+    """langdetect's character n-gram profiles, to compare a line between two given languages; None if missing."""
+    try:
+        from langdetect import detector_factory
+        detector_factory.init_factory()
+        return detector_factory._factory
+    except Exception:
+        return None
+
+
+def line_languages(lines: list, language: str, language2: str = None) -> list:
+    """Per lyrics line, which of the song's two languages it is in (a duet in English and Italian): the one whose
+    letter statistics (langdetect's n-gram profiles) fit the line better, only between these two, so short lines
+    work ("Sto pensando a te": Italian; langdetect alone says Portuguese). A line too close to call ("oh oh") takes
+    the language of the line before. One language (or no profiles for one of them): every line in `language`."""
+    import math
+    factory = _language_scorer() if language2 and language2 != language else None
+    if factory is None or language not in factory.langlist or language2 not in factory.langlist:
+        return [language] * len(lines)
+    first, second = factory.langlist.index(language), factory.langlist.index(language2)
+    out, previous = [], language
+    for line in lines:
+        detector = factory.create()
+        detector.append(line)
+        margin = 0.0
+        for gram in detector._extract_ngrams():
+            probs = factory.word_lang_prob_map.get(gram)
+            if probs:
+                margin += math.log(probs[first] + 1e-7) - math.log(probs[second] + 1e-7)
+        chosen = previous if abs(margin) < LINE_LANGUAGE_MARGIN else (language if margin > 0 else language2)
+        out.append(chosen)
+        previous = chosen
+    return out
+
+
+def _rules(language: str) -> dict:
+    by_character = language in CHARACTER_LANGUAGES
+    locale = None if by_character else dictionary_for(language)
+    generic = not by_character and not locale
+    if generic:
+        # No dictionary: a generic vowel rule is closer than another language's rules.
+        log_step("HYPHEN", f"No hyphenation dictionary for '{language}', using the generic vowel rule")
+    return {"language": language, "by_character": by_character, "locale": locale, "generic": generic,
+            "dic": pyphen.Pyphen(lang=locale) if locale else None}
+
+
+def hyphenate_lyrics(lyrics: str, language: str = "en", language2: str = None) -> dict:
     """Auto-hyphenate plain lyrics text.
 
     Args:
@@ -271,19 +320,20 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
             - language: Language used
             - method: 'pyphen' or 'fallback'
     """
-    by_character = language in CHARACTER_LANGUAGES
-    locale = None if by_character else dictionary_for(language)
-    generic = not by_character and not locale
-    if generic:
-        # No dictionary: a generic vowel rule is closer than another language's rules.
-        log_step("HYPHEN", f"No hyphenation dictionary for '{language}', using the generic vowel rule")
-    dic = pyphen.Pyphen(lang=locale) if locale else None
+    # Two languages (language2): each line is hyphenated with the rules of the language it is in.
+    raw_lines = lyrics.strip().split("\n")
+    per_line = line_languages([l.strip() for l in raw_lines], language, language2)
+    rule_sets = {code: _rules(code) for code in dict.fromkeys(per_line or [language])}
+    main = rule_sets.get(language) or _rules(language)
+    by_character, locale, generic = main["by_character"], main["locale"], main["generic"]
 
     result_lines = []
     total_syllables = 0
 
-    for line in lyrics.strip().split("\n"):
+    for line, line_language in zip(raw_lines, per_line):
         line = line.strip()
+        rules = rule_sets[line_language]
+        line_by_character, line_generic, dic = rules["by_character"], rules["generic"], rules["dic"]
         if not line:
             result_lines.append({
                 "original": "",
@@ -309,14 +359,14 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
             prefix, core, suffix = _split_punctuation(word)
             if "-" in word:
                 hyphenated_words.append(word)
-            elif core and by_character:
+            elif core and line_by_character:
                 hyphenated_words.append(f"{prefix}{split_characters(core)}{suffix}")
-            elif core and generic:
+            elif core and line_generic:
                 hyphenated_words.append(f"{prefix}{split_vowel_groups(core)}{suffix}")
             elif core:
                 # Check custom overrides first (case-insensitive); they are English words
                 core_lower = core.lower()
-                if language == "en" and core_lower in CUSTOM_HYPHENATION:
+                if line_language == "en" and core_lower in CUSTOM_HYPHENATION:
                     custom = CUSTOM_HYPHENATION[core_lower]
                     # Preserve original casing of first letter
                     if core[0].isupper() and custom[0].islower():
@@ -324,7 +374,7 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
                     hyphenated = custom
                 else:
                     hyphenated = dic.inserted(core, hyphen="-")
-                    if language == "en":
+                    if line_language == "en":
                         hyphenated = english_sung_syllables(hyphenated)
                 hyphenated_words.append(f"{prefix}{hyphenated}{suffix}")
             else:
@@ -335,6 +385,7 @@ def hyphenate_lyrics(lyrics: str, language: str = "en") -> dict:
         total_syllables += syl_count
 
         result_lines.append({
+            "language": line_language,
             "original": line,
             "hyphenated": hyphenated_line,
             "syllable_count": syl_count,

@@ -92,3 +92,19 @@ def test_english_special_cases_only_apply_to_english():
 def test_english_words_split_into_sung_syllables(word, expected):
     # pyphen hyphenates for typesetting and leaves sung syllables together ("singing", "pieces")
     assert hyphenate_lyrics(word, "en")["hyphenated"] == expected
+
+
+def test_a_two_language_song_is_split_line_by_line_with_each_languages_rules():
+    from services.hyphenation import line_languages
+    lyrics = "They're just human contradictions\nSono cose della vita\nVanno prese un po così\nSto pensando a te\nTake my hand and never let me go"
+    assert line_languages(lyrics.split("\n"), "en", "it") == ["en", "it", "it", "it", "en"]
+    result = hyphenate_lyrics(lyrics, "en", "it")["hyphenated"].split("\n")
+    assert result[1] == "So-no co-se del-la vi-ta"           # English rules would leave "cose" whole
+    assert result[2] == "Van-no pre-se un po co-sì"
+    assert result[4] == "Take my hand and nev-er let me go"
+
+
+def test_one_language_and_unclear_lines():
+    from services.hyphenation import line_languages
+    assert line_languages(["Sono cose della vita"], "en") == ["en"]          # no second language: no detection
+    assert line_languages(["Sono cose della vita", "", "123"], "it", "en") == ["it", "it", "it"]  # nothing to judge: the line before

@@ -390,7 +390,8 @@
     processingStatus.set('Preparing lyrics…');
     try {
       // Hyphenated on the way, invisibly; words the user split stay as they are.
-      const hyphenated = (await hyphenateLyrics(text, language)).hyphenated;
+      // With a second language, each line is split with the rules of the language it is in.
+      const hyphenated = (await hyphenateLyrics(text, language, language2)).hyphenated;
       const result = await submitLyrics($sessionId, hyphenated, artist, title, language);
       lyricsData.set({
         text: hyphenated, artist, title, language,
