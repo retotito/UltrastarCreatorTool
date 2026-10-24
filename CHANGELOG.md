@@ -48,6 +48,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Notes start where the voice sings (not on "s", "sh", "f", "t"…), end where it fades and leave air before the
   next syllable, as in hand fine-tuned charts: note lengths much closer to them (Robert Post: +103 → +36 ms).
   `ULTRASTAR_TRIM_CONSONANTS=0` turns it off
+- The chart BPM is brought near 600 (slow songs doubled: 356 → 712), so the beat grid is fine enough for it
+  (Ben Harper against the fine-tuned chart: start error 49 → 35 ms, starts more than 150 ms off 20 → 7)
 
 ### 🛑 Files without sound are refused
 - Uploading a file with no audio track (e.g. a video-only .mp4) now says so right away, instead of failing later

@@ -322,3 +322,17 @@ def get_audio_duration(audio_path: str) -> float:
     """Get the duration of an audio file in seconds."""
     y, sr = librosa.load(audio_path, sr=22050)
     return librosa.get_duration(y=y, sr=sr)
+
+
+CHART_BPM_TARGET = 600.0
+
+
+def chart_bpm(bpm: float, target: float = CHART_BPM_TARGET) -> float:
+    """The BPM to write: `bpm` (UltraStar, 4 × the musical tempo) doubled or halved to lie nearest `target`
+    (on a log scale, so 424–848 for 600). A finer beat grid lets notes start and end where they are sung
+    (a beat is 15 / BPM s: 25 ms at 600, 42 ms at 356); doubling keeps every musical beat on the grid."""
+    if not bpm or bpm <= 0:
+        return bpm
+    import math
+    k = round(math.log2(target / bpm))
+    return round(bpm * 2 ** k, 3)

@@ -3790,6 +3790,8 @@ def generate_lyrics_only(session_id: str):
         bpm = detect_bpm(vocal_path, original_audio_path=original_path)
         audio_duration = get_audio_duration(vocal_path)
         beat_phase_sec = detect_beat_phase(original_path or vocal_path, bpm)
+        from services.bpm_detection import chart_bpm
+        bpm = chart_bpm(bpm)   # a fine grid (~600)
 
         _orig_path = session.get("original_audio") or ""
         _audio_ext = os.path.splitext(_orig_path)[1] or ".mp3"
@@ -3937,6 +3939,10 @@ def generate_ultrastar_files(session_id: str):
         
         # Refine BPM using syllable timestamps (can recover exact BPM)
         bpm = refine_bpm(syllable_timings, gap_ms, bpm)
+        # A fine grid (~600: doubled for slow songs) so notes can start and end where they are sung.
+        from services.bpm_detection import chart_bpm
+        bpm = chart_bpm(bpm)
+        log_step("GENERATE", f"Chart BPM: {bpm}")
         
         # Add line_index to timings if not present
         from services.alignment_whisper import parse_lyrics as parse_lyrics_fast
@@ -4267,7 +4273,8 @@ async def generate_empty(session_id: str):
 
     if vocal and os.path.exists(vocal):
         try:
-            bpm = detect_bpm(vocal, original_audio_path=original)
+            from services.bpm_detection import chart_bpm
+            bpm = chart_bpm(detect_bpm(vocal, original_audio_path=original))
         except Exception as exc:
             log_step("EMPTY_GEN", f"BPM detection failed, falling back to 120.0: {exc}")
         try:

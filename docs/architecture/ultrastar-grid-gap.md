@@ -1,13 +1,17 @@
 # Ultrastar Grid, Beats & GAP — Domain Knowledge
 
-> **Status:** Current · **Last updated:** 2026-04-07
+> **Status:** Current · **Last updated:** 2026-10-24
 
 ## Ultrastar Beat System
 
-- Ultrastar BPM = 2× musical BPM (e.g., 120 musical BPM → 240 Ultrastar BPM)
-- `BEATS_PER_QUARTER = 8` — 8 Ultrastar beats = 1 musical quarter note
-- 1 Ultrastar beat = 1/8 of a musical quarter note (a 32nd note)
-- A musical measure (4/4 time) = `BEATS_PER_QUARTER * 4 = 32` Ultrastar beats
+- One Ultrastar beat lasts `15 / BPM` seconds (the format's BPM counts quarter beats).
+- Detection gives 4× the musical tempo (`detect_bpm`: 89 musical → 356). The chart BPM is that, doubled or
+  halved to lie nearest **600** (`chart_bpm`, 424–848): 356 → 712, 494 stays. A beat is then about 25 ms, fine
+  enough for notes that start and end where they are sung (consonant trimming); doubling keeps every musical
+  beat on the grid. `refine_bpm` runs before, on the 4× grid.
+- The editor derives beats per musical quarter from the BPM: `BEATS_PER_QUARTER = 2^round(log2(BPM / 30))`
+  (356 → 16, 712 → 32), so metronome and grid lines follow a doubled BPM.
+- A musical measure (4/4 time) = `BEATS_PER_QUARTER * 4` Ultrastar beats
 
 ## Key Formulas
 
