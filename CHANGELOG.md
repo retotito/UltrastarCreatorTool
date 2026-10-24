@@ -44,6 +44,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### ✨ Better vocal separation (optional)
+- Step 1 has a second button, "✨ Better separation (slow, ~10 min)": Mel-Band RoFormer instead of Demucs.
+  Much cleaner where voices overlap (duets, backing vocals); downloads its model (464 MB) the first time
+
 ### ✍️ Numbers and signs in lyrics
 - Numbers are timed as they are sung ("12" → "twelve", in Italian "dodici") and "&" as "and"; the chart keeps
   the text as written

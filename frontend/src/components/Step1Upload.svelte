@@ -19,6 +19,8 @@
   let extractStatus = '';
   let extractPhase = '';   // 'loading'|'separating'|'heartbeat'|'done'|'error'|'cancelled'
   let extractElapsed = 0;
+  let extractEngine = 'demucs';   // 'demucs' | 'roformer'
+  let extractPercent = null;      // RoFormer reports progress (download, separation)
   let stopExtractStream = null;
   let elapsedTicker = null;
 
@@ -191,19 +193,23 @@
   }
 
   // ── Vocal extraction ─────────────────────────────────────
-  function handleExtractVocals() {
+  function handleExtractVocals(engine = 'demucs') {
     errorMessage.set('');
     extractDone = false;
     extractStatus = '';
     extractPhase = 'loading';
     extractElapsed = 0;
+    extractEngine = engine;
+    extractPercent = null;
     extractModalOpen = true;
 
     stopExtractStream = streamExtractVocals($sessionId, (event) => {
       extractPhase = event.phase;
       if (event.message) extractStatus = event.message;
+      if (event.percent !== undefined) extractPercent = event.percent;
 
       if (event.phase === 'separating') {
+        extractPercent = 0;
         startElapsedTicker();
       } else if (event.phase === 'done') {
         stopElapsedTicker();
@@ -417,8 +423,12 @@
         </div>
 
         {#if $uploadData.hasOriginal && $sessionId}
-          <button class="btn btn-extract" on:click={handleExtractVocals} disabled={$isProcessing}>
+          <button class="btn btn-extract" on:click={() => handleExtractVocals('demucs')} disabled={$isProcessing}>
             {$isProcessing ? '⏳ Extracting…' : '⚡ Extract from Mix (Demucs)'}
+          </button>
+          <button class="btn btn-extract btn-extract-slow" on:click={() => handleExtractVocals('roformer')} disabled={$isProcessing}
+                  title="Mel-Band RoFormer: cleaner where voices overlap (duets, backing vocals). About 10 minutes per song; downloads its model (464 MB) the first time.">
+            ✨ Better separation (slow, ~10 min)
           </button>
         {/if}
       {/if}
@@ -477,11 +487,23 @@
 
       <p class="extract-modal-status">{extractStatus}</p>
 
+      {#if extractPhase === 'downloading' && extractPercent !== null}
+        <progress max="100" value={extractPercent}></progress>
+        <div class="extract-elapsed">{extractPercent}%</div>
+      {/if}
       {#if extractPhase === 'separating' || extractPhase === 'heartbeat'}
-        <div class="extract-elapsed">⏱ {extractElapsed}s elapsed</div>
+        {#if extractEngine === 'roformer' && extractPercent !== null}
+          <progress max="100" value={extractPercent}></progress>
+        {/if}
+        <div class="extract-elapsed">⏱ {extractElapsed}s elapsed{extractEngine === 'roformer' && extractPercent !== null ? ` · ${extractPercent}%` : ''}</div>
         <div class="extract-hint">
-          Demucs AI separates vocals from the full mix.<br>
-          Typical songs take <strong>1–5 minutes</strong>.
+          {#if extractEngine === 'roformer'}
+            Mel-Band RoFormer separates vocals from the full mix, cleaner where voices overlap.<br>
+            It takes about <strong>2–3× the song's length</strong> (≈ 10 minutes).
+          {:else}
+            Demucs AI separates vocals from the full mix.<br>
+            Typical songs take <strong>1–5 minutes</strong>.
+          {/if}
         </div>
       {/if}
 
@@ -729,6 +751,10 @@
     font-size: 1.4rem;
     line-height: 1;
   }
+
+  .btn-extract.btn-extract-slow { background: #2a2440; color: #b39ddb; border-color: #5e4b8b; margin-top: 0.4rem; }
+  .btn-extract.btn-extract-slow:hover:not(:disabled) { background: #362d55; }
+  .extract-modal-box progress { width: 100%; height: 6px; }
 
   .e-spinner {
     width: 20px;

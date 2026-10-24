@@ -23,6 +23,14 @@ song.mp3 ──► Demucs ──► vocals.wav ──┬─► WhisperX ASR ─�
 `services/vocal_separation.py`: Demucs v4 `htdemucs` with `--two-stems vocals`. The vocal output is trimmed or
 padded to the exact length of the original. Can be skipped by uploading vocals directly.
 
+**Optional: Mel-Band RoFormer** ("✨ Better separation" in Step 1; `services/roformer_separation.py`, Kimberley
+Jensen's vocals model as ONNX by audiojs, MIT, 464 MB, downloaded on first use and SHA-256 checked). As Tune
+Studio runs it: 8 s chunks every 6 s, crossfaded; the instrumental is the mix minus the vocals. About 2–3× the
+song's length on the CPU (CoreML ran out of memory). Measured 2026-10-24 through the whole chain: on the 6
+reference songs pitch is the same (within a semitone 79.8 → 79.5 %), misplaced syllables 7.3 → 8.9 % (all of it
+Roxanne, 14 → 24 %); on the duet Amada Mia 118–123 → 141 notes on Tune Studio's pitch, octave off 27–32 → 11.
+So it is a choice for hard songs (overlapping voices), not the default.
+
 ### 2. Transcription (lyric suggestion)
 `main.py` `transcribe_stream`: WhisperX (faster-whisper, CPU, int8, batch size 4) with the model from the UI preset:
 `fast` = small, `balanced` = medium, otherwise large-v3. WhisperX defaults apply: pyannote voice activity

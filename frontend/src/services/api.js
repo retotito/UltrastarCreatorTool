@@ -110,8 +110,9 @@ export async function extractVocals(sessionId, signal = null) {
  * phases: 'loading' | 'separating' | 'heartbeat' | 'done' | 'error' | 'cancelled'
  * Returns a cleanup function that closes the stream.
  */
-export function streamExtractVocals(sessionId, onEvent) {
-  const es = new EventSource(`${BASE}/extract-vocals-stream/${sessionId}`);
+/** engine: 'demucs' (default) or 'roformer' (better where voices overlap, slow; downloads its model once). */
+export function streamExtractVocals(sessionId, onEvent, engine = 'demucs') {
+  const es = new EventSource(`${BASE}/extract-vocals-stream/${sessionId}?engine=${encodeURIComponent(engine)}`);
   es.onmessage = (e) => {
     try { onEvent(JSON.parse(e.data)); } catch {}
   };

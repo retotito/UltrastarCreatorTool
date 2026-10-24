@@ -1916,8 +1916,11 @@ async def extract_vocals(session_id: str):
 
 
 @app.get("/api/extract-vocals-stream/{session_id}")
-async def extract_vocals_stream(session_id: str):
-    """SSE stream for vocal extraction — emits phase messages and elapsed-time heartbeats."""
+async def extract_vocals_stream(session_id: str, engine: str = "demucs"):
+    """SSE stream for vocal extraction — emits phase messages and elapsed-time heartbeats.
+
+    engine: "demucs" (default) or "roformer" (Mel-Band RoFormer: better where voices overlap, ~10 min on the
+    CPU; its model is downloaded on first use, services/roformer_separation.py)."""
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -1930,6 +1933,10 @@ async def extract_vocals_stream(session_id: str):
         return f"data: {json.dumps(data)}\n\n"
 
     async def event_generator():
+        if engine == "roformer":
+            async for event in _roformer_extraction(session, session_id, _send):
+                yield event
+            return
         if not DEMUCS_AVAILABLE:
             yield _send("error", "Demucs not installed. Install with: pip install demucs")
             return
@@ -1999,6 +2006,81 @@ async def extract_vocals_stream(session_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _store_extracted(session: dict, session_id: str, vocal_path: str, instrumental_path) -> None:
+    session["vocal_audio"] = vocal_path
+    if instrumental_path:
+        session["instrumental_audio"] = instrumental_path
+    if not session.get("vocals_header"):
+        session["vocals_header"] = os.path.basename(vocal_path)
+    if instrumental_path and not session.get("instrumental_header"):
+        session["instrumental_header"] = os.path.basename(instrumental_path)
+    session["status"] = "vocals_extracted"
+    _update_txt_asset_headers(session)
+    save_session(session_id)
+
+
+async def _roformer_extraction(session: dict, session_id: str, send):
+    """The RoFormer path of extract_vocals_stream: download the model if needed, then separate, with progress."""
+    import asyncio
+    from services import roformer_separation as rs
+    if not session.get("original_audio"):
+        yield send("error", "No audio file uploaded")
+        return
+    session["extract_cancelled"] = False
+    cancelled = lambda: bool(session.get("extract_cancelled"))
+    loop = asyncio.get_event_loop()
+    state = {"percent": 0}
+
+    async def wait(future, phase, message):
+        start = loop.time()
+        while not future.done():
+            if cancelled():
+                return
+            yield send("heartbeat" if phase == "separating" else phase, message,
+                       elapsed=int(loop.time() - start), percent=state["percent"])
+            try:
+                await asyncio.wait_for(asyncio.shield(future), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
+            except Exception:
+                break
+
+    if not rs.is_downloaded(MODELS_DIR):
+        yield send("downloading", "Downloading the separation model (464 MB, first time only)…", percent=0)
+        future = loop.run_in_executor(None, lambda: rs.download(
+            MODELS_DIR, lambda d, t: state.update(percent=int(d * 100 / t)), cancelled))
+        async for event in wait(future, "downloading", "Downloading the separation model (464 MB, first time only)…"):
+            yield event
+        if cancelled():
+            yield send("cancelled", "Extraction cancelled")
+            return
+        if future.exception():
+            yield send("error", f"Model download failed: {future.exception()}")
+            return
+
+    state["percent"] = 0
+    session["status"] = "extracting_vocals"
+    output_dir = os.path.join(UPLOAD_DIR, session_id)
+    yield send("separating", "Separating vocals with Mel-Band RoFormer — about 2–3× the song's length…")
+    future = loop.run_in_executor(None, lambda: rs.separate_vocals(
+        session["original_audio"], output_dir, MODELS_DIR, lambda p: state.update(percent=p), cancelled))
+    async for event in wait(future, "separating", ""):
+        yield event
+    if cancelled():
+        yield send("cancelled", "Extraction cancelled")
+        return
+    error = future.exception()
+    if error:
+        session["status"] = "extraction_failed"
+        save_session(session_id)
+        yield send("error", f"Separation failed: {error}")
+        return
+    vocal_path, instrumental_path = future.result()
+    _store_extracted(session, session_id, vocal_path, instrumental_path)
+    log_step("SEPARATE", f"Session {session_id}: vocals extracted with Mel-Band RoFormer")
+    yield send("done", "Vocals extracted successfully!", vocal_url=f"/api/preview-audio/{session_id}/vocals")
 
 
 @app.post("/api/upload-vocals/{session_id}")
