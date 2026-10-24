@@ -44,6 +44,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 🎶 Held notes keep their length
+- The last long note before a pause is no longer cut short (Ben Harper's final "sun": 0.2 s → 5.5 s, then split
+  into "~" notes); it lasts as long as the voice keeps singing. `ULTRASTAR_HOLD_NOTES=0` turns it off
+
 ### 🔁 "AI generate notes" on a loop = the same notes as Generate
 - A loop in the editor now gets the same note steps as the whole song: GAME's notes, octave check, repeated lines,
   consonant trimming (it had FCPE's pitch only), and its timings match its notes one to one

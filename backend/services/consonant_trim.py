@@ -21,6 +21,7 @@ import numpy as np
 MAX_START_TRIM_SEC = 0.25   # a start moves at most this much later (further: the voicing belongs elsewhere)
 MAX_END_TRIM_SEC = 0.40     # an end moves at most this much earlier by voicing
 END_DROP_DB = 6.0
+HELD_END_DROP_DB = 10.0     # a held note (services/note_holds) fades slowly: cut later (6 dB shortened "me" again)
 GAP_SEC = 0.14
 MIN_NOTE_SEC = 0.06
 SUNG_LETTERS = set("aeiouylmnrw")
@@ -55,14 +56,14 @@ def _groups(timings: List[dict]) -> List[List[int]]:
     return groups
 
 
-def _loudness_end(loudness_db: np.ndarray, start: float, end: float) -> float:
-    """Where the loudness between `start` and `end` last is within END_DROP_DB of its peak."""
+def _loudness_end(loudness_db: np.ndarray, start: float, end: float, drop: float = END_DROP_DB) -> float:
+    """Where the loudness between `start` and `end` last is within `drop` dB of its peak."""
     a = int(start / LOUDNESS_FRAME_SEC)
     b = max(a + 1, int(end / LOUDNESS_FRAME_SEC))
     segment = loudness_db[a:b]
     if len(segment) <= 2:
         return end
-    loud = np.nonzero(segment >= segment.max() - END_DROP_DB)[0]
+    loud = np.nonzero(segment >= segment.max() - drop)[0]
     return min(end, (a + loud[-1] + 1) * LOUDNESS_FRAME_SEC)
 
 
@@ -84,7 +85,7 @@ def trim(syllable_timings: List[dict], pitch_data: dict, loudness_db: Optional[n
             start = max(start, start + LETTER_WEIGHT * (sung - start))
         end = min(last["end"], max(float(inside[-1]) + FRAME_SEC, last["end"] - MAX_END_TRIM_SEC))
         if loudness_db is not None:
-            end = _loudness_end(loudness_db, start, end)
+            end = _loudness_end(loudness_db, start, end, HELD_END_DROP_DB if "held_from" in last else END_DROP_DB)
         if len(g) > 1:   # the parts stay inside their own spans
             start = min(start, out[g[1]]["start"] - MIN_NOTE_SEC)
             end = max(end, last["start"] + MIN_NOTE_SEC)

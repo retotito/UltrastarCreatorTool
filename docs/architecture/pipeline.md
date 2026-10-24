@@ -144,7 +144,15 @@ Measured on 6 reference songs: frame pitch (right pitch class over time) 42.3 �
 53.3 → 56.1 %, syllable pitch 57.4 → 59.0 %; 218 `~` notes against 212 in the charts.
 
 ### 7a. One note pipeline for the song and for a range
-Melisma (7), GAME's notes, the final pitches and consonant trimming (7b) run in `services/note_pipeline.py`
+First **held notes** (`services/note_holds.py`): the aligner places letters, and a long-held vowel adds none, so
+it ends the last word before a pause far too early (Ben Harper's final "sun": held 5.3 s, aligned 0.2 s; Robert
+Post's "me": 5.6 s, 0.6 s). A syllable followed by at least 0.4 s of room grows while the pitch tracker hears a
+pitch that moves smoothly (≤ 4 semitones between frames, ≤ 0.2 s unvoiced) and the voice is within 20 dB of the
+syllable's peak; consonant trimming then cuts such a note only 10 dB down (6 dB shortened "me" again). On the
+two fine-tuned charts long notes cut short 2/20 and 3/19 → 1/20 and 1/19, other note ends unchanged (46 → 47 ms,
+73 → 73 ms). `ULTRASTAR_HOLD_NOTES=0` turns it off.
+
+Then melisma (7), GAME's notes, the final pitches and consonant trimming (7b) run in `services/note_pipeline.py`
 `build_notes`, for the whole song (Generate) and for a range (the editor's "AI generate notes" on a loop,
 `/api/segment-generate`). The range path used to have FCPE's median only (no GAME, octave check or trimming)
 and returned one timing per syllable while its notes included melisma parts; it now returns one per note.
