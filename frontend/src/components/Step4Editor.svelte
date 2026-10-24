@@ -7,8 +7,8 @@
   import FixSpacesModal from './FixSpacesModal.svelte';
   import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep, uploadData, recordingActive, storageManagerOpen, editorHelpOpen } from '../stores/appStore.js';
   import { waveformPeaksCache } from '../stores/appStore.js';
-  import { getEditorData, getAudioUrl, saveEditorState, generateCleanedAudio, suggestVibrato, getLiveWordsWindow } from '../services/api.js';
-  import { SUPPORTED_LANGUAGES } from '../lib/languages';
+  import { getEditorData, getAudioUrl, saveEditorState, generateCleanedAudio, suggestVibrato, getLiveWordsWindow, updateMetadata } from '../services/api.js';
+  import { SUPPORTED_LANGUAGES, languageHeader, parseLanguageHeader } from '../lib/languages';
   import { parseUltrastar, notesToUltrastar } from '../lib/ultrastar.js';
   import { medianPitch, groupPitchFrames, mergePlaceholderNotes, trimPlaceholdersAgainstNotes, buildPitchSplitGroups, splitPlaceholderNotesByPitchRuns } from '../lib/pitchUtils.js';
   import { createAutoBackup, getStoredIntervalMin, getStoredAutoEnabled } from '../lib/autoBackup.js';
@@ -6050,6 +6050,8 @@
     // Standard headers
     lines.push(`#TITLE:${$lyricsData?.title || 'Unknown'}`);
     lines.push(`#ARTIST:${$lyricsData?.artist || 'Unknown'}`);
+    // Artist, title and language come from the song (one source of truth: the backend session)
+    lines.push(`#LANGUAGE:${languageHeader($lyricsData?.language || 'en', $lyricsData?.language2 || '')}`);
     lines.push(`#BPM:${bpm}`);
     lines.push(`#GAP:${gapMs}`);
     // END marker
@@ -6067,7 +6069,7 @@
       lines.push(`#METRONOMESPEED:${metronomeSpeedFactor}`);
     }
     // Extra headers (YOUTUBE, COVER, LANGUAGE, etc.)
-    const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
+    const standardKeys = new Set(['TITLE', 'ARTIST', 'LANGUAGE', 'BPM', 'GAP', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
     for (const h of extraHeaders) {
       if (!standardKeys.has(h.key.toUpperCase())) {
         const value = h.key.toUpperCase() === 'MP3'
@@ -6082,7 +6084,7 @@
     return lines.join('\n');
   }
 
-  function applyTextEditorContent() {
+  async function applyTextEditorContent() {
     const newNotes = parseUltrastar(textEditorContent);
     if (newNotes.length === 0) {
       showAlert('No valid notes found in the text. Check the format.');
@@ -6090,6 +6092,7 @@
     }
     // Extract all headers from edited text
     const parsedHeaders = [];
+    const song = { artist: $lyricsData?.artist || '', title: $lyricsData?.title || '', languageValue: null };
     for (const line of textEditorContent.split('\n')) {
       const m = line.match(/^#([\w]+):(.*)/);
       if (m) {
@@ -6098,11 +6101,13 @@
         if (key.toUpperCase() === 'BPM') bpm = parseFloat(value.replace(',', '.')) || bpm;
         else if (key.toUpperCase() === 'GAP') gapMs = parseInt(value) || gapMs;
         else if (key.toUpperCase() === 'END') { const v = parseInt(value, 10); endMs = Number.isFinite(v) && v > 0 ? v : null; }
-        else if (key.toUpperCase() === 'TITLE') { /* handled by lyricsData */ }
-        else if (key.toUpperCase() === 'ARTIST') { /* handled by lyricsData */ }
+        else if (key.toUpperCase() === 'TITLE') song.title = value.trim();
+        else if (key.toUpperCase() === 'ARTIST') song.artist = value.trim();
+        else if (key.toUpperCase() === 'LANGUAGE') song.languageValue = value;
         else parsedHeaders.push({ key, value });
       }
     }
+    if (!(await applySongHeaders(song))) return;
     extraHeaders = parsedHeaders;
     pushUndo();
     notes = newNotes;
@@ -6113,6 +6118,34 @@
     console.log(`[TextEditor] Applied: ${notes.length} notes, BPM=${bpm}, GAP=${gapMs}, ${extraHeaders.length} extra headers`);
     // Auto-save to backend
     handleSave();
+  }
+
+  /** Artist, title and language changed in the text go through the song's metadata save, like in every step
+   *  (renames the audio files, updates the session). False if they can't be applied. */
+  async function applySongHeaders(song) {
+    const [language, language2] = song.languageValue === null
+      ? [$lyricsData?.language || '', $lyricsData?.language2 || '']
+      : parseLanguageHeader(song.languageValue);
+    if (!song.artist || !song.title) {
+      showAlert('#ARTIST and #TITLE must not be empty.');
+      return false;
+    }
+    if (!language) {
+      showAlert(`Unknown language in #LANGUAGE: "${song.languageValue}". Use English names, e.g. "English" or "English, Italian".`);
+      return false;
+    }
+    const same = song.artist === $lyricsData?.artist && song.title === $lyricsData?.title
+      && language === $lyricsData?.language && language2 === ($lyricsData?.language2 || '');
+    if (same) return true;
+    try {
+      const saved = await updateMetadata($sessionId, song.artist, song.title, language, language2);
+      lyricsData.update(d => ({ ...d, artist: song.artist, title: song.title, language, language2 }));
+      if (saved?.filename && $uploadData.hasOriginal) uploadData.update(d => ({ ...d, filename: saved.filename }));
+      return true;
+    } catch (err) {
+      showAlert(`Could not save artist/title/language: ${err.message}`);
+      return false;
+    }
   }
 
   // Track syllable undo only once when the context menu opens (not per keystroke)
@@ -9232,7 +9265,7 @@
       console.log('[Step4] Parsed', notes.length, 'notes/breaks');
 
       // Parse extra headers from ultrastar content
-      const standardKeys = new Set(['TITLE', 'ARTIST', 'BPM', 'GAP', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
+      const standardKeys = new Set(['TITLE', 'ARTIST', 'LANGUAGE', 'BPM', 'GAP', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
       extraHeaders = [];
       endMs = null;
       let foundDownbeatOffset = false;

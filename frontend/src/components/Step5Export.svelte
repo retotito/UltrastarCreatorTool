@@ -3,6 +3,7 @@
   import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
            uploadCover, getCoverUrl, deleteCover, uploadBgImage, getBgImageUrl, deleteBgImage, saveAssetsMeta, getAssetsMeta } from '../services/api.js';
   import { resetSession } from '../stores/appStore.js';
+  import { SUPPORTED_LANGUAGES, languageHeader } from '../lib/languages';
 
   let exported = false;
   let showEditPopup = false;
@@ -46,7 +47,8 @@
   }
   let editArtist = '';
   let editTitle = '';
-  let editLanguage = '';
+  let editLanguage = '';    // codes, as everywhere ("en")
+  let editLanguage2 = '';
   let editGenre = '';
   let editYear = '';
   let editEdition = '';
@@ -390,13 +392,11 @@
     return baseFilename;
   }
 
-  const LANG_NAMES = {en:'English',de:'German',fr:'French',es:'Spanish',it:'Italian',pt:'Portuguese',nl:'Dutch',pl:'Polish',ru:'Russian',ja:'Japanese',ko:'Korean',zh:'Chinese',sv:'Swedish',no:'Norwegian',da:'Danish',fi:'Finnish',tr:'Turkish',ar:'Arabic',cs:'Czech',sk:'Slovak',hu:'Hungarian',ro:'Romanian',hr:'Croatian',uk:'Ukrainian',he:'Hebrew'};
-
   function openEditPopup() {
     editArtist = $lyricsData?.artist || '';
     editTitle = $lyricsData?.title || '';
-    const lang = $lyricsData?.language || '';
-    editLanguage = LANG_NAMES[lang] || lang;
+    editLanguage = $lyricsData?.language || '';
+    editLanguage2 = $lyricsData?.language2 || '';
     editGenre = editGenre; // already loaded
     editYear = editYear;
     editEdition = editEdition;
@@ -407,8 +407,12 @@
   async function saveMetadata() {
     saving = true;
     try {
-      await updateMetadata($sessionId, editArtist.trim(), editTitle.trim(), editLanguage.trim());
-      lyricsData.update(d => ({ ...d, artist: editArtist.trim(), title: editTitle.trim(), language: editLanguage.trim() }));
+      const second = editLanguage2 && editLanguage2 !== editLanguage ? editLanguage2 : '';
+      const saved = await updateMetadata($sessionId, editArtist.trim(), editTitle.trim(), editLanguage || undefined, second);
+      lyricsData.update(d => ({ ...d, artist: editArtist.trim(), title: editTitle.trim(),
+                                 language: editLanguage || d.language, language2: second }));
+      // The audio file is renamed to "Artist - Title".
+      if (saved?.filename && $uploadData.hasOriginal) uploadData.update(d => ({ ...d, filename: saved.filename }));
       await saveAssetsMeta(
         $sessionId,
         videoFilename.trim(),
@@ -593,7 +597,7 @@
         {#if $lyricsData?.language}
           <div class="summary-item">
             <span class="label">Language</span>
-            <span class="value">{LANG_NAMES[$lyricsData.language] || $lyricsData.language}</span>
+            <span class="value">{languageHeader($lyricsData.language, $lyricsData.language2)}</span>
           </div>
         {/if}
         {#if editGenre}
@@ -954,7 +958,21 @@
         </div>
         <div class="modal-field">
           <label for="edit-language">Language</label>
-          <input id="edit-language" type="text" bind:value={editLanguage} placeholder="e.g. en, de, fr" />
+          <select id="edit-language" bind:value={editLanguage}>
+            <option value="" disabled>Select language…</option>
+            {#each SUPPORTED_LANGUAGES as lang}
+              <option value={lang.code}>{lang.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="modal-field">
+          <label for="edit-language2">Language 2 (optional)</label>
+          <select id="edit-language2" bind:value={editLanguage2}>
+            <option value="">None</option>
+            {#each SUPPORTED_LANGUAGES.filter(l => l.code !== editLanguage) as lang}
+              <option value={lang.code}>{lang.label}</option>
+            {/each}
+          </select>
         </div>
         <div class="modal-field">
           <label for="edit-genre">Genre</label>
@@ -1220,7 +1238,7 @@
     margin-bottom: 0.25rem;
   }
 
-  .modal-field input {
+  .modal-field input, .modal-field select {
     width: 100%;
     padding: 0.5rem 0.75rem;
     border: 1px solid #555;
@@ -1230,7 +1248,7 @@
     font-size: 0.95rem;
     box-sizing: border-box;
   }
-  .modal-field input:focus {
+  .modal-field input:focus, .modal-field select:focus {
     outline: none;
     border-color: #4fc3f7;
   }

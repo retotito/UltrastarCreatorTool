@@ -29,6 +29,9 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - The window also asks for the song's language and, for songs sung in two languages, an optional second one.
   Both are written as English names (`#LANGUAGE:English, German`), as the UltraStar format wants; Step 2 has the
   same two fields, and imported charts with two languages keep both
+- Step 4's "Edit song info" has dropdowns for language and an optional second language (it used to save the
+  typed name instead of the code). In the editor's text view, changing `#ARTIST`, `#TITLE` or `#LANGUAGE` and
+  pressing "Apply Changes" now saves them like everywhere else (before, they were ignored)
 - With two languages, Whisper (Vocals tab) transcribes every passage in its own language instead of translating
   the second language into the first; this takes about twice as long
 

@@ -99,3 +99,24 @@ export const SUPPORTED_LANGUAGES = [
   { code: "yi", label: "Yiddish" },
   { code: "yo", label: "Yoruba" },
 ];
+
+/** "it" → "Italian" (a name or an unknown code is kept as it is). */
+export function languageName(code: string): string {
+  return SUPPORTED_LANGUAGES.find(l => l.code === code)?.label || code || '';
+}
+
+/** The #LANGUAGE value: one or two English names, "English, Italian" (as the backend writes it). */
+export function languageHeader(code: string, code2 = ''): string {
+  return [code, code2].filter((c, i, all) => c && all.indexOf(c) === i).map(languageName).join(', ');
+}
+
+/** [code, second code] from a #LANGUAGE value like "English, Italian" or "en"; unknown names are left out. */
+export function parseLanguageHeader(value: string): [string, string] {
+  const codes: string[] = [];
+  for (const part of (value || '').split(',')) {
+    const word = part.trim().toLowerCase();
+    const found = SUPPORTED_LANGUAGES.find(l => l.label.toLowerCase() === word || l.code === word);
+    if (found && !codes.includes(found.code)) codes.push(found.code);
+  }
+  return [codes[0] || '', codes[1] || ''];
+}
