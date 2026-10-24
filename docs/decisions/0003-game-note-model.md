@@ -31,6 +31,11 @@ and every file's SHA-256 checked), not bundled. A commercial hosted version woul
 - **Better octave logic on FCPE alone** (one-octave limit, repeated lines, harmonic evidence, spike filter): the
   first two were kept; they can't recover notes FCPE never measured.
 - **Harmonic evidence for the octave check** (Tune Studio's odd/even harmonics): measured, no gain.
+- **Tune Studio's steps after GAME** (measured 2026-10-24): snapping notes to the song's key (reference songs:
+  pitch class 63.3 → 64.3 %, within a semitone 79.7 → 78.8 %) and its learned pitch corrector `notefix.onnx`
+  (MIT; with the key: 63.5 %, 78.0 %, octave errors 3.1 → 2.6 %; Amada Mia against Tune Studio's chart 131–133 →
+  126–127 notes on the same pitch). Within GAME's run-to-run noise or worse; the corrector was trained on Tune
+  Studio's own pipeline (its timing, melisma notes and vocal separation), so it isn't used.
 
 ## Consequences
 
