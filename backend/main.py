@@ -1649,6 +1649,7 @@ async def upload_audio(audio: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         content = await audio.read()
         f.write(content)
+    _require_audio(file_path, remove=session_dir)
 
     sessions[session_id] = {
         "id": session_id,
@@ -1696,6 +1697,18 @@ def _ffprobe_path() -> Optional[str]:
         if os.path.isfile(bundled):
             return bundled
     return shutil.which("ffprobe")
+
+
+def _require_audio(path: str, remove: Optional[str] = None) -> None:
+    """Refuse an upload without sound (e.g. a video-only .mp4): remove it (or its new session folder) and say so."""
+    from services.song_details import has_audio
+    if has_audio(path, _ffprobe_path()):
+        return
+    target = remove or path
+    shutil.rmtree(target, ignore_errors=True) if os.path.isdir(target) else os.remove(target)
+    raise ServiceError("This file has no sound",
+                       f"\"{os.path.basename(path)}\" contains no audio track (only video). Use a file with sound, "
+                       "e.g. the MP3/M4A, or paste the YouTube link instead.")
 
 
 def _apply_song_details(session: dict, path: str, filename: str, new_song: bool = True) -> dict:
@@ -2099,6 +2112,7 @@ async def upload_corrected_vocals(session_id: str, vocals: UploadFile = File(...
         f.write(content)
 
     # vocals for the session's mix are the same song; vocals alone are a new one
+    _require_audio(vocal_path)
     details = _apply_song_details(session, vocal_path, vocals.filename, new_song=not session.get("original_audio"))
     vocal_path, orig_vocal_filename = _normalize_audio_to_wav(vocal_path, orig_vocal_filename)
 
@@ -2129,6 +2143,7 @@ async def upload_mix_audio(session_id: str, audio: UploadFile = File(...)):
         content = await audio.read()
         f.write(content)
 
+    _require_audio(file_path)
     details = _apply_song_details(session, file_path, orig_filename)  # before WAV conversion drops the tags
     file_path, orig_filename = _normalize_audio_to_wav(file_path, orig_filename)
 

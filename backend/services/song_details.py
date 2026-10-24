@@ -60,3 +60,17 @@ def mark_new_song(session: dict, sources: dict, found: dict) -> None:
     for key in ("artist", "title"):
         if found.get(key):
             session[key] = found[key]
+
+
+def has_audio(path: str, ffprobe: Optional[str]) -> bool:
+    """Whether the file has an audio stream (a video-only .mp4 has none). True when it can't be checked."""
+    if not ffprobe:
+        return True
+    try:
+        result = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                                 "-of", "csv=p=0", "--", path], capture_output=True, text=True, timeout=TAG_TIMEOUT_SEC)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if result.returncode != 0:
+        return False          # not a media file ffprobe can read
+    return bool(result.stdout.strip())

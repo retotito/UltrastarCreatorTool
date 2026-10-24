@@ -58,6 +58,21 @@ class TestSongDetails:
         assert session == {"artist": "Old", "title": "Diamonds", "song_confirmed": False, "language": "en",
                            "song_name_sources": {"youtube_title": "Ben Harper - Diamonds"}}
 
+    def test_a_video_without_sound_is_recognised(self, tmp_path):
+        import shutil
+        import subprocess
+        from services.song_details import has_audio
+        ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+        if not (ffmpeg and ffprobe):
+            pytest.skip("ffmpeg not installed")
+        video, song = tmp_path / "video only.mp4", tmp_path / "song.m4a"
+        subprocess.run([ffmpeg, "-v", "quiet", "-f", "lavfi", "-i", "testsrc=size=64x64:rate=5", "-t", "1", str(video)], check=True)
+        subprocess.run([ffmpeg, "-v", "quiet", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "1", str(song)], check=True)
+        assert has_audio(str(video), ffprobe) is False and has_audio(str(song), ffprobe) is True
+        (tmp_path / "noise.mp3").write_bytes(b"not audio")
+        assert has_audio(str(tmp_path / "noise.mp3"), ffprobe) is False
+        assert has_audio(str(video), None) is True   # can't check without ffprobe: don't block
+
     def test_real_tags_with_ffprobe(self, tmp_path):
         import shutil
         import subprocess

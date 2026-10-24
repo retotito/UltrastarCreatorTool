@@ -44,6 +44,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Hyphenation happens automatically when generating; words you split yourself are kept
 - Asks before replacing an existing UltraStar file; lyrics are saved with the project, not only in the browser
 
+### 🛑 Files without sound are refused
+- Uploading a file with no audio track (e.g. a video-only .mp4) now says so right away, instead of failing later
+  in the vocal separation ("Demucs failed: index 0 is out of bounds")
+
 ### ✨ Better vocal separation (optional)
 - Step 1 has a second button, "✨ Better separation (slow, ~10 min)": Mel-Band RoFormer instead of Demucs.
   Much cleaner where voices overlap (duets, backing vocals); downloads its model (464 MB) the first time
