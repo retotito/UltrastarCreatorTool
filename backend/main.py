@@ -1814,6 +1814,7 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
                 from services.youtube import subtitle_tracks, vtt_to_lyrics
                 tracks = subtitle_tracks({"subtitles": {k: [] for k in details.get("subtitle_languages") or []}},
                                          details.get("language"))
+                outcome["subtitle_tracks"] = tracks
                 if tracks and not cancelled.is_set():
                     updates.put(("subtitles", "Loading the video's subtitles…", None))
                     subs_folder = os.path.join(folder, "subtitles")
@@ -1872,9 +1873,11 @@ async def youtube_import_stream(video_id: str, session_id: str = ""):
         mark_new_song(session, {"youtube_title": details["video_title"]}, details)
         if details["language"] and not session.get("language"):
             session["language"] = details["language"]
+        session["youtube_subtitles"] = {"tracks": outcome.get("subtitle_tracks") or [], "track": None, "text": ""}
         if outcome.get("subtitles"):
             from services.lyrics_sources import merge
             track, text = outcome["subtitles"]
+            session["youtube_subtitles"].update(track=track, text=text)
             lines = len(text.splitlines())
             session["lyrics_sources"] = merge(session.get("lyrics_sources") or {}, {
                 "sides": {"left": {"youtube": {"text": text, "marks": [], "dividers": [], "info": {
@@ -3527,11 +3530,12 @@ async def get_lyrics_sources(session_id: str):
 
 
 @app.get("/api/youtube-subtitles/{session_id}")
-async def youtube_subtitles(session_id: str, lang: str = "", auto: bool = False):
+async def youtube_subtitles(session_id: str, lang: str = "", auto: bool = False, list_only: bool = False):
     """The subtitles of the song's YouTube video as lyrics lines (Step 2's YouTube tab): the tracks there are and
-    the text of the chosen one (`lang`/`auto`), else of the best one (by the uploader, in the song's language)."""
+    the text of the chosen one (`lang`/`auto`), else of the best one in the song's languages. `list_only`: the
+    tracks only. `warning` when the text reads as another language than the song's (a translation)."""
     import asyncio
-    from services.youtube import YouTubeError, subtitle_tracks, video_id, vtt_to_lyrics
+    from services.youtube import YouTubeError, pick_track, subtitle_tracks, video_id, vtt_to_lyrics
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -3545,7 +3549,10 @@ async def youtube_subtitles(session_id: str, lang: str = "", auto: bool = False)
         if not tracks:
             return {"tracks": [], "track": None, "text": "",
                     "message": "This video has no subtitles (lyrics shown only in the picture can't be read)."}
-        track = next((t for t in tracks if t["lang"] == lang and t["auto"] == auto), tracks[0])
+        best = pick_track(tracks, [session.get("language"), session.get("language2")])
+        if list_only:
+            return {"tracks": tracks, "track": best, "text": ""}
+        track = next((t for t in tracks if t["lang"] == lang and t["auto"] == auto), None) or best or tracks[0]
         folder = os.path.join(SESSIONS_DIR, session_id, "temp", "subtitles")
         try:
             vtt = await asyncio.to_thread(yt.subtitles, vid, track, folder)
@@ -3555,7 +3562,58 @@ async def youtube_subtitles(session_id: str, lang: str = "", auto: bool = False)
         raise ServiceError("YouTube", str(e))
     text = vtt_to_lyrics(vtt)
     log_step("YOUTUBE", f"Session {session_id}: subtitles {track['label']}, {len(text.splitlines())} lines")
-    return {"tracks": tracks, "track": track, "text": text}
+    return {"tracks": tracks, "track": track, "text": text, "warning": _subtitle_warning(text, session)}
+
+
+def _subtitle_warning(text: str, session: dict) -> Optional[str]:
+    """A note when the subtitles read as another language than the song's (probably a translation)."""
+    from services.ultrastar import language_name
+    from services.youtube import text_language
+    found = text_language(text)
+    song = [code for code in (session.get("language"), session.get("language2")) if code]
+    if not found or not song or found in song:
+        return None
+    return (f"These subtitles read as {language_name(found)}, the song is set to "
+            f"{' / '.join(language_name(code) for code in song)}: probably a translation.")
+
+
+def _resync_youtube_subtitles(session: dict) -> None:
+    """After the song's languages are confirmed: subtitles loaded with the download in another language are
+    swapped for a track in the song's language, or removed if the video has none (a translation would be
+    wrong lyrics). Only while the user hasn't changed that text."""
+    from services.lyrics_sources import merge, sides_of
+    from services.ultrastar import language_name
+    from services.youtube import subtitles_to_swap, video_id, vtt_to_lyrics
+    loaded = session.get("youtube_subtitles") or {}
+    vid = video_id(session.get("youtube_url") or "")
+    languages = [code for code in (session.get("language"), session.get("language2")) if code]
+    left = sides_of(session.get("lyrics_sources") or {})["left"].get("youtube") or {}
+    track = subtitles_to_swap(loaded, left.get("text") or "", languages) if vid else None
+    if track is None:
+        return
+    names = " / ".join(language_name(code) for code in languages)
+    if track == "remove":
+        session["lyrics_sources"] = merge(session.get("lyrics_sources") or {}, {"sides": {"left": {"youtube": {
+            "text": "", "marks": [], "dividers": [], "info": {"message":
+                f"The video's subtitles are in {loaded['track']['label'].split(' (')[0]}, not {names}: probably a "
+                "translation, so they weren't loaded. Load them here if you want them anyway."}}}}})
+        session["youtube_subtitles"] = {**loaded, "track": None, "text": ""}
+        log_step("YOUTUBE", f"Subtitles {loaded['track']['label']} removed: the song is in {names}")
+        return
+    folder = os.path.join(SESSIONS_DIR, session["id"], "temp", "subtitles")
+    try:
+        text = vtt_to_lyrics(_youtube().subtitles(vid, track, folder))
+    except Exception as e:  # keep what is there
+        log_step("YOUTUBE", f"Subtitles in {names} not loaded: {type(e).__name__}: {e}")
+        return
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    session["lyrics_sources"] = merge(session.get("lyrics_sources") or {}, {"sides": {"left": {"youtube": {
+        "text": text, "marks": [], "dividers": [], "info": {"message":
+            f"✓ {len(text.splitlines())} lines from the video's subtitles: {track['label']}. "
+            "Repeated choruses must be written out."}}}}})
+    session["youtube_subtitles"] = {**loaded, "track": track, "text": text}
+    log_step("YOUTUBE", f"Subtitles swapped for {track['label']} (the song is in {names})")
 
 
 @app.put("/api/lyrics-sources/{session_id}")
@@ -5188,6 +5246,9 @@ async def update_metadata(session_id: str, artist: str = Form(...), title: str =
         session["language"] = language
     if language2 is not None:  # "" clears the second language
         session["language2"] = language2 if language2 and language2 != session.get("language") else None
+    if language is not None or language2 is not None:
+        import asyncio
+        await asyncio.to_thread(_resync_youtube_subtitles, session)
     from services.song_files import rename_audio_to_song
     rename_audio_to_song(session)
     # Clear derived headers so _update_txt_asset_headers recomputes them from new artist/title

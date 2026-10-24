@@ -287,6 +287,7 @@ def test_subtitle_tracks_prefer_the_uploaders_in_the_songs_language():
             "automatic_captions": {"de-orig": [], "en": [], "fr": []}}
     tracks = subtitle_tracks(info, "de")
     assert [(t["lang"], t["auto"]) for t in tracks] == [("de-DE", False), ("en", False), ("de-orig", True)]
+    assert [t["label"] for t in tracks] == ["German (by the uploader)", "English (by the uploader)", "German (automatic captions)"]
     assert subtitle_tracks({}, "en") == []
 
 
@@ -327,3 +328,36 @@ def test_subtitles_ask_yt_dlp_for_the_track_only(tmp_path):
     assert args[-2:] == ["--", "https://www.youtube.com/watch?v=_KztNIg4cvE"]
     with pytest.raises(YouTubeError):
         YouTube(FakeTools(), None, run=run).subtitles("_KztNIg4cvE", {"lang": "--exec=x", "auto": False}, str(tmp_path))
+
+
+
+def test_the_track_in_the_songs_language_or_none():
+    from services.youtube import pick_track
+    tracks = [{"lang": "en", "auto": False, "language": "en"}, {"lang": "es-419", "auto": False, "language": "es"},
+              {"lang": "es-orig", "auto": True, "language": "es"}]
+    assert pick_track(tracks, ["es"])["lang"] == "es-419"          # the uploader's before automatic captions
+    assert pick_track(tracks, ["it", "en"])["lang"] == "en"        # either of a duet's languages
+    assert pick_track(tracks, ["fr"]) is None                      # only translations: none
+
+
+def test_subtitles_are_swapped_after_the_language_is_confirmed():
+    from services.youtube import subtitles_to_swap
+    en = {"lang": "en", "auto": False, "language": "en"}
+    es = {"lang": "es", "auto": False, "language": "es"}
+    loaded = {"tracks": [en, es], "track": en, "text": "I love you"}
+    assert subtitles_to_swap(loaded, "I love you", ["es"]) == es           # the song is Spanish: load the Spanish
+    assert subtitles_to_swap(loaded, "I love you", ["en"]) is None         # already right
+    assert subtitles_to_swap(loaded, "I love you!!", ["es"]) is None       # edited by the user: leave it
+    assert subtitles_to_swap({**loaded, "tracks": [en]}, "I love you", ["es"]) == "remove"   # only a translation
+    assert subtitles_to_swap({"tracks": [], "track": None, "text": ""}, "", ["es"]) is None
+    assert subtitles_to_swap({"tracks": [en, es], "track": None, "text": ""}, "", ["es"]) == es   # removed, then corrected
+
+
+def test_the_text_language_only_when_clear():
+    from services.youtube import text_language
+    french = "\n".join(["Putain j'transpire, pire j'suis en transe les transports bloquent ça klaxonne",
+                        "Ça fait 2 heures qu'j'n'avance qu'à petit feu", "Peu à peu je pète les plombs",
+                        "Le beauf de derrière m'insulte et me traite de con", "C'en est trop je sors de ma caisse",
+                        "Prends mon sac dans l'coffre et m'casse", "Laisse ma caisse sur l'périph'", "Rien à foutre je trace"])
+    assert text_language(french) == "fr"
+    assert text_language("la la la\noh oh oh") is None                     # too short to tell

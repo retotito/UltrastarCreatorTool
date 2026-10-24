@@ -142,14 +142,65 @@ def subtitle_tracks(info: dict, language: Optional[str] = None) -> List[dict]:
     """The video's subtitles that may hold the lyrics, best first: written by the uploader (in the song's
     language first), then YouTube's automatic captions in the language it heard ("en-orig"; speech recognition,
     weak on singing). [{"lang", "auto", "label"}]."""
-    def base(key):
-        return key.split("-")[0].lower()
+    from services.ultrastar import language_name
     manual = [k for k in (info.get("subtitles") or {}) if k != "live_chat" and LANGUAGE_KEY.match(k)]
-    manual.sort(key=lambda k: (base(k) != (language or "").lower(), k))
+    manual.sort(key=lambda k: (track_language(k) != (language or "").lower(), k))
     heard = [k for k in (info.get("automatic_captions") or {}) if k.endswith("-orig") and LANGUAGE_KEY.match(k)]
-    tracks = [{"lang": k, "auto": False, "label": f"{k} (by the uploader)"} for k in manual]
-    tracks += [{"lang": k, "auto": True, "label": f"{k[:-len('-orig')]} (automatic captions)"} for k in heard]
+    tracks = [{"lang": k, "auto": False, "language": track_language(k),
+               "label": f"{language_name(track_language(k))} (by the uploader)"} for k in manual]
+    tracks += [{"lang": k, "auto": True, "language": track_language(k),
+                "label": f"{language_name(track_language(k))} (automatic captions)"} for k in heard]
     return tracks
+
+
+def track_language(key: str) -> str:
+    """ "es-419" / "de-orig" → "es" / "de"."""
+    return key.split("-")[0].lower()
+
+
+def pick_track(tracks: List[dict], languages: List[str]) -> Optional[dict]:
+    """The best track in one of the song's languages (the uploader's before automatic captions), None if the
+    video has none in them (then its subtitles would be a translation)."""
+    wanted = [code for code in languages if code]
+    for auto in (False, True):
+        for code in wanted:
+            found = next((t for t in tracks if t["auto"] == auto and t["language"] == code), None)
+            if found:
+                return found
+    return None
+
+
+def subtitles_to_swap(loaded: dict, current_text: str, languages: List[str]):
+    """After the song's languages are confirmed: what to do with subtitles loaded with the download.
+    None: keep them (right language, nothing loaded, or the user changed the text); "remove": the video has no
+    track in the song's languages (they'd be a translation); else the track to load instead."""
+    wanted = [code for code in languages if code]
+    track = loaded.get("track")
+    if not wanted or (current_text or "") != (loaded.get("text") or ""):
+        return None
+    if not track:   # none loaded (or removed before): load one now if the video has it in these languages
+        return pick_track(loaded.get("tracks") or [], wanted)
+    if track["language"] in wanted:
+        return None
+    return pick_track(loaded.get("tracks") or [], wanted) or "remove"
+
+
+MIN_DETECT_LINES = 8
+MIN_DETECT_PROBABILITY = 0.9
+
+
+def text_language(text: str) -> Optional[str]:
+    """The language the lyrics are written in, if that is clear (8+ lines, ≥ 90 %); None otherwise (short or
+    repetitive lyrics, "la la la", mixed languages)."""
+    if len([line for line in (text or "").splitlines() if line.strip()]) < MIN_DETECT_LINES:
+        return None
+    try:
+        from langdetect import DetectorFactory, detect_langs
+        DetectorFactory.seed = 0          # the same answer every time
+        best = detect_langs(text)[0]
+    except Exception:                     # langdetect missing, or no letters to judge
+        return None
+    return best.lang.split("-")[0] if best.prob >= MIN_DETECT_PROBABILITY else None
 
 
 _TIMING = re.compile(r"-->")

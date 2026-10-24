@@ -30,6 +30,8 @@ numpy>=1.24.0
 uroman==1.3.1.1
 # num2words spells numbers for the aligner ("12" → "twelve"; LGPL, used as a library).
 num2words==0.5.14
+# langdetect tells which language subtitles are written in (a translation warning; MIT).
+langdetect==1.0.9
 
 # MIDI
 mido==1.3.2

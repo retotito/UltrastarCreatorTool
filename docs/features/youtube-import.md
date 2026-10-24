@@ -40,6 +40,14 @@ once). With several tracks the tab offers a choice.
 The **import** already loads the uploader's subtitles (not the automatic captions) right after the audio: they
 fill the left side's YouTube tab, which Step 2 then shows first (`lyrics_sources.tabs.left = "youtube"`).
 
+**Translations.** Videos often carry translated tracks, or only a translation. The import picks by YouTube's idea
+of the language; when the song's languages are confirmed (song window, Step 2, Step 4), `_resync_youtube_subtitles`
+asks `subtitles_to_swap`: loaded subtitles in another language are swapped for a track in the song's language, or
+removed with a note if the video has none (they'd be wrong lyrics) — only while the text is unchanged by the user;
+a later correction brings them back. Step 2's tab lists the tracks by language name (`list_only`) with the song's
+preselected. Loading by hand adds a warning when the text itself reads as another language (`text_language`,
+langdetect, only for 8+ lines at ≥ 90 %: "la la la" or mixed-language duets give no answer, so it never decides).
+
 ## Tools: yt-dlp and QuickJS
 
 `backend/services/download_tools.py` downloads them on first use into the app's data folder (`tools/`; in dev

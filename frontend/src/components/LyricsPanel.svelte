@@ -21,9 +21,15 @@
   export let canGenerate = false;
   export let generateHint = '';
   export let disabled = false;
-  /** YouTube: the video's subtitle tracks, once asked for ([{ lang, auto, label }]) */
+  /** YouTube: the video's subtitle tracks ([{ lang, auto, language, label }]) and the one in the song's language */
   export let subtitleTracks = [];
+  export let bestTrack = null;
   let chosenTrack = '';
+  // Preselect the track in the song's language once the tracks are known.
+  $: if (chosenTrack === '' && bestTrack && subtitleTracks.length) {
+    const k = subtitleTracks.findIndex(t => t.lang === bestTrack.lang && t.auto === bestTrack.auto);
+    if (k >= 0) chosenTrack = String(k);
+  }
 
   const dispatch = createEventDispatcher();
   let textarea;
@@ -180,8 +186,8 @@
           {:else}The YouTube video's subtitles, if it has any (written by the uploader, else automatic captions).{/if}
         </span>
         {#if subtitleTracks.length > 1}
-          <select class="track-select" bind:value={chosenTrack} disabled={disabled || busy.youtube} aria-label="Subtitle track">
-            <option value="">Best track</option>
+          <select class="track-select" bind:value={chosenTrack} disabled={disabled || busy.youtube} aria-label="Subtitle language">
+            {#if !bestTrack}<option value="">Best track</option>{/if}
             {#each subtitleTracks as t, k}<option value={String(k)}>{t.label}</option>{/each}
           </select>
         {/if}

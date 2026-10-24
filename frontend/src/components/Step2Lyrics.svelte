@@ -43,7 +43,8 @@
   let sourcesReady = false;
   const IDLE = () => ({ lrclib: false, youtube: false, vocals: false, cleaned: false });
   let hasYoutube = false;              // imported from a YouTube link: its subtitles are a source
-  let subtitleTracks = [];             // [{ lang, auto, label }] of the video, once asked for
+  let subtitleTracks = [];             // [{ lang, auto, language, label }] of the video
+  let bestTrack = null;                // the one in the song's language (preselected)
   let busy = { left: IDLE(), right: IDLE() };
   let saveTimer = null;
 
@@ -71,6 +72,8 @@
       tabs = { left: stored.tabs?.left || 'lrclib', right: stored.tabs?.right || 'vocals' };
       hasYoutube = !!stored.has_youtube;
       subtitleTracks = [];
+      bestTrack = null;
+      if (hasYoutube) listSubtitleTracks(id);
       if (!artist && stored.artist) artist = stored.artist;
       if (!title && stored.title) title = stored.title;
       if (!language && stored.language) language = stored.language;
@@ -257,6 +260,16 @@
   }
 
   // ── YouTube subtitles ───────────────────────────────────
+  /** The video's subtitle tracks for the tab's choice (nothing downloaded). */
+  async function listSubtitleTracks(id) {
+    try {
+      const found = await getYouTubeSubtitles(id, '', false, true);
+      if (id !== $sessionId) return;
+      subtitleTracks = found.tracks || [];
+      bestTrack = found.track || null;
+    } catch { /* offline: the button still asks for the best track */ }
+  }
+
   /** Load the video's subtitles (`track`, else the best one) into one side's YouTube tab. */
   async function handleSubtitles(side, event) {
     const track = event.detail?.track || null;
@@ -267,15 +280,17 @@
     try {
       const found = await getYouTubeSubtitles($sessionId, track?.lang || '', !!track?.auto);
       subtitleTracks = found.tracks || [];
+      if (!bestTrack) bestTrack = found.track || null;
       if (!found.text) {
         updateSource(side, 'youtube', { info: { message: found.message || 'These subtitles are empty.' } });
         return;
       }
       const lines = found.text.split('\n').length;
       const auto = found.track?.auto ? ' — speech recognition, check it carefully' : '';
+      const warning = found.warning ? ` ⚠️ ${found.warning}` : '';
       updateSource(side, 'youtube', {
         text: found.text, marks: [], dividers: [],
-        info: { message: `✓ ${lines} lines from the video's subtitles: ${found.track.label}${auto}. Repeated choruses must be written out.` },
+        info: { message: `✓ ${lines} lines from the video's subtitles: ${found.track.label}${auto}.${warning} Repeated choruses must be written out.` },
       });
     } catch (err) {
       updateSource(side, 'youtube', { info: { message: err.message.replace(/^API error \d+: /, '') } });
@@ -634,6 +649,7 @@
         on:transcribe={(e) => handleTranscribe(side, e)}
         on:subtitles={(e) => handleSubtitles(side, e)}
         {subtitleTracks}
+        {bestTrack}
         on:generate={handleGenerate}
       />
     {/each}
