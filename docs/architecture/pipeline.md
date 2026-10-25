@@ -107,8 +107,8 @@ against the vocals, so a word Whisper missed still gets its real position.
    years as years), `&` as the sung "and"/"und"/…; the chart keeps the text as written. Words without letters,
    digits or `&` ("—", "…") join their neighbour in `parse_lyrics` and get no note of their own.
 2. **Emissions**: Tune Studio's singing fine-tune of the MMS aligner (`tuneperfect/tunestudio-aligner`, ONNX,
-   pinned; if that repository goes away, an unchanged copy from
-   [`Retotito/ultrastar-models`](https://huggingface.co/Retotito/ultrastar-models) is used, checked by SHA-256 —
+   downloaded from our unchanged copy in
+   [`Retotito/ultrastar-models`](https://huggingface.co/Retotito/ultrastar-models), pinned and checked by SHA-256 —
    `services/model_mirror.py`, same for FCPE) over the whole vocal track in 30 s windows with 2 s context → letter log-probabilities every 20 ms.
    Cached per audio file in the session's `cache/` folder.
 3. **Silence gate**: frames more than 30 dB below the song's loud singing (widened by 60 ms) can't hold letters.

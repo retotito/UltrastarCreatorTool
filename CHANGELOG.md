@@ -4,10 +4,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
-### 🛟 Model backup
-- The lyrics aligner and the FCPE pitch model have an unchanged backup copy on Hugging Face
-  ([Retotito/ultrastar-models](https://huggingface.co/Retotito/ultrastar-models)). The app still downloads the
-  originals; only if one disappears does it use the copy, checked file by file
+### 🛟 Own model copy
+- The lyrics aligner and the FCPE pitch model are now downloaded from an unchanged copy on Hugging Face
+  ([Retotito/ultrastar-models](https://huggingface.co/Retotito/ultrastar-models)), checked file by file, so the app
+  doesn't depend on the original repositories staying online. Already downloaded models are kept
 
 ### ▶ YouTube link in Step 1
 - Paste a YouTube link instead of uploading a file: the app shows the video, downloads its audio as the full mix and

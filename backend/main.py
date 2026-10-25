@@ -754,21 +754,20 @@ async def setup_download():
             yield send("progress", "aligner", "Downloading lyrics aligner (~1.2 GB)…", percent=0)
             await asyncio.sleep(0.05)
             try:
-                from services.forced_alignment import download_model, SUNG_MODEL_ID, SUNG_MODEL_BYTES
+                from services.forced_alignment import download_model, SUNG_MODEL_BYTES
                 ALIGNER_TOTAL_BYTES = SUNG_MODEL_BYTES
                 try:
                     from huggingface_hub.constants import HF_HUB_CACHE as _hf_cache
                 except ImportError:
                     _hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
-                _aligner_dir = os.path.join(_hf_cache, "models--" + SUNG_MODEL_ID.replace("/", "--"))
-                from services.model_mirror import MIRROR_REPO
-                _mirror_dir = os.path.join(_hf_cache, "models--" + MIRROR_REPO.replace("/", "--"))  # if the original is gone
+                from services.model_mirror import MODEL_REPO
+                _aligner_dir = os.path.join(_hf_cache, "models--" + MODEL_REPO.replace("/", "--"))
 
                 loop = asyncio.get_event_loop()
                 fut = loop.run_in_executor(None, download_model)
                 while not fut.done():
                     await asyncio.sleep(2.0)
-                    downloaded = _dir_bytes_accurate(_aligner_dir) + _dir_bytes_accurate(_mirror_dir)
+                    downloaded = _dir_bytes_accurate(_aligner_dir)
                     pct = min(99, int(downloaded * 100 / ALIGNER_TOTAL_BYTES))
                     yield send("progress", "aligner",
                                f"Downloading… {downloaded / 1_000_000:.0f} / {ALIGNER_TOTAL_BYTES / 1_000_000:.0f} MB",

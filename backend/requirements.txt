@@ -25,7 +25,7 @@ numpy>=1.24.0
 # openai-whisper
 
 # Lyrics forced alignment (services/forced_alignment.py) runs on onnxruntime (installed with
-# faster-whisper/whisperx). Model: tuneperfect/tunestudio-aligner (CC-BY-NC-4.0).
+# faster-whisper/whisperx). Model: copy of tuneperfect/tunestudio-aligner in Retotito/ultrastar-models (CC-BY-NC-4.0).
 # uroman romanizes every script for the aligner (without it, only Latin script is aligned).
 uroman==1.3.1.1
 # num2words spells numbers for the aligner ("12" → "twelve"; LGPL, used as a library).

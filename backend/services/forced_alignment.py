@@ -31,9 +31,10 @@ SUNG_MODEL_ID = "tuneperfect/tunestudio-aligner"
 SUNG_MODEL_REVISION = "4c6edce202fae335e6239c09ea17ecddcf29b42e"
 SUNG_MODEL_FILE = "aligner.onnx"
 SUNG_MODEL_BYTES = 1262284621
-# For services/model_mirror: the original, and our unchanged copy if the original goes away.
-SUNG_MODEL = {"repo": SUNG_MODEL_ID, "file": SUNG_MODEL_FILE, "revision": SUNG_MODEL_REVISION,
-              "mirror_file": "aligner/aligner.onnx", "bytes": SUNG_MODEL_BYTES,
+# Downloaded from our copy (services/model_mirror); the original is named for credit and for older caches.
+SUNG_MODEL = {"path": "aligner/aligner.onnx", "bytes": SUNG_MODEL_BYTES,
+              "original_repo": SUNG_MODEL_ID, "original_file": SUNG_MODEL_FILE,
+              "original_revision": SUNG_MODEL_REVISION,
               "sha256": "597a1d775df8f7fe3c94310568751ef9253645b4d8cdf21bb7a3da1ab80225a1"}
 
 # The stock speech model it was fine-tuned from (torch + transformers). Kept for evaluation (`model_name="mms"`).
@@ -510,7 +511,7 @@ def _sung_session():
         import onnxruntime
         from services.model_mirror import fetch
         path = fetch(SUNG_MODEL)
-        log_step("CTC_ALIGN", f"Loading sung aligner {SUNG_MODEL_ID}@{SUNG_MODEL_REVISION[:8]}")
+        log_step("CTC_ALIGN", f"Loading sung aligner (copy of {SUNG_MODEL_ID}) from {path}")
         _model_cache["sung"] = onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
     return _model_cache["sung"]
 

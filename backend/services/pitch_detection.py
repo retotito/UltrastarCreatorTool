@@ -101,9 +101,10 @@ FCPE_HOP = 160
 _fcpe_cache: dict = {}
 
 
-# For services/model_mirror: the original, and our unchanged copy if the original goes away.
-FCPE_MODEL = {"repo": FCPE_MODEL_ID, "file": FCPE_MODEL_FILE, "revision": FCPE_MODEL_REVISION,
-              "mirror_file": "fcpe/fcpe.onnx", "bytes": FCPE_MODEL_BYTES,
+# Downloaded from our copy (services/model_mirror); the original is named for credit and for older caches.
+FCPE_MODEL = {"path": "fcpe/fcpe.onnx", "bytes": FCPE_MODEL_BYTES,
+              "original_repo": FCPE_MODEL_ID, "original_file": FCPE_MODEL_FILE,
+              "original_revision": FCPE_MODEL_REVISION,
               "sha256": "09c5717de92ddd5e4efc5177104f973d205102b2b5596ba91eeb19711cb90d12"}
 
 
