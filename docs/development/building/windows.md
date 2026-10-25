@@ -1,6 +1,6 @@
 # Windows Build & Debug
 
-> **Status:** Current · **Last updated:** 2026-06-06
+> **Status:** Current · **Last updated:** 2026-10-25
 
 ## Prerequisites
 
@@ -36,6 +36,23 @@ npm install
 
 ---
 
+## Update an Existing Checkout
+
+New commits can bring new Python or npm packages; install them before building:
+
+```powershell
+cd C:\Users\retok\Projects\UltrastarCreatorTool
+git fetch
+git checkout feat/forced-alignment   # or the branch you are testing
+git pull
+.venv\Scripts\activate
+pip install -r backend/requirements.txt
+cd frontend
+npm install
+```
+
+---
+
 ## Build
 
 Run from project root:
@@ -53,7 +70,7 @@ Copy-Item -Recurse dist-backend\backend frontend\src-tauri\resources\backend
 # 3. Set Tauri build target to MSI only
 # The NSIS (.exe) installer cannot handle the large sidecar binary.
 # Before building, ensure tauri.conf.json has: "targets": ["msi"]
-# (The default "all" is for Mac; change it back after building on Windows.)
+# (The repo has ["dmg"] for Mac; don't commit the change.)
 
 # 4. Build Tauri app
 cd frontend
@@ -62,7 +79,7 @@ npm run tauri build
 
 > **Important:** `tauri.conf.json` must have `"targets": ["msi"]` when building on Windows.
 > The NSIS `.exe` installer fails with the Python sidecar due to file size limits.
-> On Mac, use `"targets": "all"` (the default in the repo) to produce `.app` + `.dmg`.
+> On Mac the repo has `"targets": ["dmg"]`; `build_local.sh` builds the `.app` and makes the `.dmg` itself.
 
 Output: `frontend\src-tauri\target\release\bundle\msi\UltrastarCreatorTool_x.x.x_x64_en-US.msi`
 
@@ -78,7 +95,7 @@ Stop-Process -Name "backend" -Force -ErrorAction SilentlyContinue
 Stop-Process -Name "ultrastar-creator" -Force -ErrorAction SilentlyContinue
 ```
 
-Then run the `.exe` installer.
+Then run the `.msi` installer.
 
 ---
 
