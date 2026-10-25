@@ -12,9 +12,9 @@
     whisperx: { label: 'WhisperX speech model',       size: '~1.5 GB',  state: 'pending', message: '', elapsed: 0, percent: null },
     demucs:   { label: 'Demucs vocal model',          size: '~80 MB',   state: 'pending', message: '', elapsed: 0, percent: null },
     wav2vec2: { label: 'wav2vec2 alignment model',    size: '~360 MB',  state: 'pending', message: '', elapsed: 0, percent: null },
-    aligner:  { label: 'Lyrics aligner',              size: '~1.2 GB',   state: 'pending', message: '', elapsed: 0, percent: null },
+    aligner:  { label: 'Lyrics aligner',              size: '~1.2 GB',  state: 'pending', message: '', elapsed: 0, percent: null },
     pitch:    { label: 'Pitch model (FCPE)',          size: '~48 MB',   state: 'pending', message: '', elapsed: 0, percent: null },
-    notes:    { label: 'Note model',                  size: '~362 MB',   state: 'pending', message: '', elapsed: 0, percent: null },
+    notes:    { label: 'Note model',                  size: '~362 MB',  state: 'pending', message: '', elapsed: 0, percent: null },
   };
 
   let downloading = false;
