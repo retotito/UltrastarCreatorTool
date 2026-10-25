@@ -9,6 +9,7 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   from (the cleaned vocal if you generated from it). Metronome, speed, playhead, scroll and zoom go back to their
   defaults (mic, waveform height, notes and flags are kept)
 - MIDI notes no longer stay silent when MIDI was already on when the editor opened
+- 🔍 button at the top right of the editor opens the syllable search; Ctrl+F now works on Windows too
 
 ### 🛟 Own model copy
 - The lyrics aligner and the FCPE pitch model are now downloaded from an unchanged copy on Hugging Face

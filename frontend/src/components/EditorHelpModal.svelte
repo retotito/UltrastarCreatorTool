@@ -86,7 +86,7 @@
             <div class="row"><kbd>.</kbd> next position</div>
             <div class="row"><kbd>Shift+,</kbd> prev marker</div>
             <div class="row"><kbd>Shift+.</kbd> next marker</div>
-            <div class="row"><kbd>⌘F</kbd> find syllable</div>
+            <div class="row"><kbd>⌘/Ctrl+F</kbd> find syllable (or 🔍)</div>
           </div>
 
           <div class="shortcut-group">

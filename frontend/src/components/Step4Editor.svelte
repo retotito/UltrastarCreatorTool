@@ -5,7 +5,7 @@
   import SelectionPanel from './SelectionPanel.svelte';
   import EditorHelpModal from './EditorHelpModal.svelte';
   import FixSpacesModal from './FixSpacesModal.svelte';
-  import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep, uploadData, recordingActive, storageManagerOpen, editorHelpOpen } from '../stores/appStore.js';
+  import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep, uploadData, recordingActive, storageManagerOpen, editorHelpOpen, editorFindOpen } from '../stores/appStore.js';
   import { waveformPeaksCache } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, saveEditorState, generateCleanedAudio, suggestVibrato, getLiveWordsWindow, updateMetadata } from '../services/api.js';
   import { SUPPORTED_LANGUAGES, languageHeader, parseLanguageHeader } from '../lib/languages';
@@ -1522,6 +1522,9 @@
 
   // Find widget — UI extracted to FindWidget.svelte
   let showFindWidget = false;
+  // Shared with the 🔍 button in the top bar
+  $: showFindWidget = $editorFindOpen;
+  $: editorFindOpen.set(showFindWidget);
   let findMatches = [];
   let findMatchIndex = 0;
   let canvasFocused = false;
@@ -6574,7 +6577,7 @@
     console.log(`[Key] code=${e.code} key=${e.key} shift=${e.shiftKey} ctrl=${e.ctrlKey} meta=${e.metaKey}`);
 
     // ── Find widget ──
-    if (e.metaKey && e.key === 'f' && canvasFocused) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f' && canvasFocused) {
       e.preventDefault();
       openFindWidget();
       return;
@@ -9583,6 +9586,7 @@
   });
 
   onDestroy(() => {
+    editorFindOpen.set(false);
     console.log(`%c[Step4] onDestroy — hasUnsavedChanges=${hasUnsavedChanges} metronomeAnchor=${metronomeManualDownbeatAnchorBeat} sig=${metronomeSigNumerator}/${metronomeSigDenominator} speed=${metronomeSpeedFactor}`, 'color:#ffd700;font-weight:bold');
     if (hasUnsavedChanges) {
       console.log('[Step4] onDestroy — triggering save');

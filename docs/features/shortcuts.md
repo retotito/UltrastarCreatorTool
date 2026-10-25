@@ -1,6 +1,12 @@
 # Keyboard Shortcuts
 
-> **Status:** Current · **Last updated:** 2026-06-16
+> **Status:** Current · **Last updated:** 2026-10-25
+
+## Find
+
+| Shortcut | Action |
+|----------|--------|
+| **Ctrl/Cmd+F** | Find a syllable (also the 🔍 button at the top right); **Esc** closes it |
 
 ## Selection
 

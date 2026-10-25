@@ -45,6 +45,7 @@ Developer documentation for Ultrastar Creator Tool. For what the app does and ho
 
 **Plans**
 - [Forced alignment of user lyrics](plans/forced-alignment.md)
+- [Backlog](plans/backlog.md): open ideas and tasks not planned yet
 
 ## Conventions
 

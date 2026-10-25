@@ -112,6 +112,8 @@ export const generationUseCleaned = writable(false);
 // Global UI overlays that should suspend editor-wide shortcuts
 export const storageManagerOpen = writable(false);
 export const editorHelpOpen = writable(false);
+// The editor's find widget, opened from the 🔍 button in the top bar or Cmd/Ctrl+F
+export const editorFindOpen = writable(false);
 
 // Steps definition (Step 3 is a modal overlay, not a tab)
 export const steps = [
