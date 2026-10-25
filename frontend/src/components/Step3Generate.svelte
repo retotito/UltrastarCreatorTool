@@ -13,6 +13,22 @@
     handleGenerate();
   });
 
+  // A new chart starts with a fresh editor (Step4Editor's per-session keys): MIDI, metronome, audio source,
+  // speed, playhead, scroll and zoom go back to their defaults. Kept: mic, waveform height, dialog position,
+  // the user's notes and flags.
+  function resetEditorState(id) {
+    if (!id) return;
+    try {
+      const key = `editor_ui_prefs_${id}`;
+      const prefs = JSON.parse(localStorage.getItem(key) || 'null');
+      if (prefs) {
+        const { micDeviceId, waveformHeight, vibratoModalX, vibratoModalY } = prefs;
+        localStorage.setItem(key, JSON.stringify({ micDeviceId, waveformHeight, vibratoModalX, vibratoModalY }));
+      }
+      localStorage.removeItem(`editor_scroll_${id}`);
+    } catch { /* browser storage unavailable: the editor keeps its old view */ }
+  }
+
   async function cancel() {
     cancelled = true;
     if (abortController) abortController.abort();
@@ -42,6 +58,7 @@
       }, abortController.signal, $generationUseCleaned);
 
       generationResult.set(result);
+      resetEditorState($sessionId);
 
       addLog(`✅ Done in ${result.elapsed_seconds}s`);
       addLog(`   BPM: ${result.bpm} | GAP: ${result.gap_ms}ms`);

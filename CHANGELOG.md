@@ -4,6 +4,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 🎹 Editor after regenerating
+- Regenerating a chart opens the editor fresh: MIDI, metronome, audio source, speed, playhead, scroll and zoom go
+  back to their defaults (mic, waveform height, notes and flags are kept)
+- MIDI notes no longer stay silent when MIDI was already on when the editor opened
+
 ### 🛟 Own model copy
 - The lyrics aligner and the FCPE pitch model are now downloaded from an unchanged copy on Hugging Face
   ([Retotito/ultrastar-models](https://huggingface.co/Retotito/ultrastar-models)), checked file by file, so the app

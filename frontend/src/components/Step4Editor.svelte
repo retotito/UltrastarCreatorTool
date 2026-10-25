@@ -7735,6 +7735,9 @@
     if (!midiAudioCtx || midiAudioCtx.state === 'closed') {
       midiAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    // A context first created outside a click (scrubbing, MIDI restored as on) starts suspended in WebKit and stays
+    // silent until resumed.
+    if (midiAudioCtx.state === 'suspended') midiAudioCtx.resume().catch(() => {});
   }
 
   function updateMidiPlayback(currentBeat) {
