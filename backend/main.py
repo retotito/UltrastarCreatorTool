@@ -761,12 +761,14 @@ async def setup_download():
                 except ImportError:
                     _hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
                 _aligner_dir = os.path.join(_hf_cache, "models--" + SUNG_MODEL_ID.replace("/", "--"))
+                from services.model_mirror import MIRROR_REPO
+                _mirror_dir = os.path.join(_hf_cache, "models--" + MIRROR_REPO.replace("/", "--"))  # if the original is gone
 
                 loop = asyncio.get_event_loop()
                 fut = loop.run_in_executor(None, download_model)
                 while not fut.done():
                     await asyncio.sleep(2.0)
-                    downloaded = _dir_bytes_accurate(_aligner_dir)
+                    downloaded = _dir_bytes_accurate(_aligner_dir) + _dir_bytes_accurate(_mirror_dir)
                     pct = min(99, int(downloaded * 100 / ALIGNER_TOTAL_BYTES))
                     yield send("progress", "aligner",
                                f"Downloading… {downloaded / 1_000_000:.0f} / {ALIGNER_TOTAL_BYTES / 1_000_000:.0f} MB",

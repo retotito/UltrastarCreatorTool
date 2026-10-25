@@ -27,7 +27,11 @@ The implementation plan is in [plans/forced-alignment.md](../plans/forced-alignm
 
 The default model is **Tune Studio's singing fine-tune** of the MMS aligner,
 [`tuneperfect/tunestudio-aligner`](https://huggingface.co/tuneperfect/tunestudio-aligner) (ONNX, pinned revision,
-CC-BY-NC-4.0, same terms as the base model), run with onnxruntime. Measured on 6 reference songs (1,799 syllables),
+CC-BY-NC-4.0, same terms as the base model), run with onnxruntime. Because it is a one-person repository, an
+unchanged copy (with FCPE and the syllable-start head `boundary.onnx`) is kept in
+[`Retotito/ultrastar-models`](https://huggingface.co/Retotito/ultrastar-models); the app uses it only when the
+original is gone (not when offline) and checks size and SHA-256. Models we train ourselves go into a separate
+repository. Measured on 6 reference songs (1,799 syllables),
 share of syllables more than 500 ms off the reference chart:
 
 | Engine | Misplaced |

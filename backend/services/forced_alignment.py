@@ -31,6 +31,10 @@ SUNG_MODEL_ID = "tuneperfect/tunestudio-aligner"
 SUNG_MODEL_REVISION = "4c6edce202fae335e6239c09ea17ecddcf29b42e"
 SUNG_MODEL_FILE = "aligner.onnx"
 SUNG_MODEL_BYTES = 1262284621
+# For services/model_mirror: the original, and our unchanged copy if the original goes away.
+SUNG_MODEL = {"repo": SUNG_MODEL_ID, "file": SUNG_MODEL_FILE, "revision": SUNG_MODEL_REVISION,
+              "mirror_file": "aligner/aligner.onnx", "bytes": SUNG_MODEL_BYTES,
+              "sha256": "597a1d775df8f7fe3c94310568751ef9253645b4d8cdf21bb7a3da1ab80225a1"}
 
 # The stock speech model it was fine-tuned from (torch + transformers). Kept for evaluation (`model_name="mms"`).
 MODEL_ID = "MahmoudAshraf/mms-300m-1130-forced-aligner"
@@ -485,19 +489,14 @@ def _load_model(device: str):
 
 def is_model_downloaded() -> bool:
     """Whether the default (sung) aligner is in the Hugging Face cache (no network access)."""
-    try:
-        from huggingface_hub import try_to_load_from_cache
-        path = try_to_load_from_cache(SUNG_MODEL_ID, SUNG_MODEL_FILE, revision=SUNG_MODEL_REVISION)
-        # Size check: on Windows a failed hardlink can leave an empty snapshot file.
-        return isinstance(path, str) and os.path.isfile(path) and os.path.getsize(path) == SUNG_MODEL_BYTES
-    except Exception:
-        return False
+    from services.model_mirror import cached_path
+    return cached_path(SUNG_MODEL) is not None
 
 
 def download_model() -> None:
-    """Download the pinned default aligner into the Hugging Face cache."""
-    from huggingface_hub import hf_hub_download
-    hf_hub_download(SUNG_MODEL_ID, SUNG_MODEL_FILE, revision=SUNG_MODEL_REVISION)
+    """Download the pinned default aligner into the Hugging Face cache (from our mirror if the original is gone)."""
+    from services.model_mirror import fetch
+    fetch(SUNG_MODEL)
 
 
 def _cache_key(audio_path: str, revision: str) -> str:
@@ -509,8 +508,8 @@ def _cache_key(audio_path: str, revision: str) -> str:
 def _sung_session():
     if "sung" not in _model_cache:
         import onnxruntime
-        from huggingface_hub import hf_hub_download
-        path = hf_hub_download(SUNG_MODEL_ID, SUNG_MODEL_FILE, revision=SUNG_MODEL_REVISION)
+        from services.model_mirror import fetch
+        path = fetch(SUNG_MODEL)
         log_step("CTC_ALIGN", f"Loading sung aligner {SUNG_MODEL_ID}@{SUNG_MODEL_REVISION[:8]}")
         _model_cache["sung"] = onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
     return _model_cache["sung"]

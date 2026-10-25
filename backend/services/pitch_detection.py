@@ -101,27 +101,27 @@ FCPE_HOP = 160
 _fcpe_cache: dict = {}
 
 
+# For services/model_mirror: the original, and our unchanged copy if the original goes away.
+FCPE_MODEL = {"repo": FCPE_MODEL_ID, "file": FCPE_MODEL_FILE, "revision": FCPE_MODEL_REVISION,
+              "mirror_file": "fcpe/fcpe.onnx", "bytes": FCPE_MODEL_BYTES,
+              "sha256": "09c5717de92ddd5e4efc5177104f973d205102b2b5596ba91eeb19711cb90d12"}
+
+
 def fcpe_model_downloaded() -> bool:
-    try:
-        import os
-        from huggingface_hub import try_to_load_from_cache
-        path = try_to_load_from_cache(FCPE_MODEL_ID, FCPE_MODEL_FILE, revision=FCPE_MODEL_REVISION)
-        return isinstance(path, str) and os.path.isfile(path) and os.path.getsize(path) == FCPE_MODEL_BYTES
-    except Exception:
-        return False
+    from services.model_mirror import cached_path
+    return cached_path(FCPE_MODEL) is not None
 
 
 def download_fcpe_model() -> None:
-    from huggingface_hub import hf_hub_download
-    hf_hub_download(FCPE_MODEL_ID, FCPE_MODEL_FILE, revision=FCPE_MODEL_REVISION)
+    from services.model_mirror import fetch
+    fetch(FCPE_MODEL)
 
 
 def _fcpe_session():
     if "session" not in _fcpe_cache:
         import onnxruntime
-        from huggingface_hub import hf_hub_download
-        path = hf_hub_download(FCPE_MODEL_ID, FCPE_MODEL_FILE, revision=FCPE_MODEL_REVISION)
-        _fcpe_cache["session"] = onnxruntime.InferenceSession(path, providers=["CPUExecutionProvider"])
+        from services.model_mirror import fetch
+        _fcpe_cache["session"] = onnxruntime.InferenceSession(fetch(FCPE_MODEL), providers=["CPUExecutionProvider"])
     return _fcpe_cache["session"]
 
 
