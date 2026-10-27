@@ -7,13 +7,10 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 
 ## Before publishing
 
-- **Duet option**: two singers in one chart (`#P1`/`#P2`, notes per singer). Who sings which line: by hand in
-  Step 2 or the editor, maybe a suggestion from the voice's pitch range. Test songs: "Cose della vita",
-  "Amada Mia, Amore Mio". Tune Studio's editor (singer chips, "Sung by") is a reference.
+- **Duets**: planned in [duets.md](duets.md).
 - **About / Credits view in the app**: the models, their authors and licences (non-commercial for the aligner and
   GAME), not only in the README.
 - **Windows build test** of the current branch, and an old Intel Mac.
-- **Merge `feat/forced-alignment` into `main`.**
 
 ## Editor
 
