@@ -2896,8 +2896,10 @@
         const x = beatToX(note.startBeat);
         const isBreakSelected = selectedNote === note.id;
         // Duet: a shared break red, a singer's own break in their colour
-        const breakColor = isDuet && note.singer !== duet.BOTH && note.singer != null ? duet.SINGER_COLORS[note.singer] : '#ef5350';
-        ctx.strokeStyle = isBreakSelected ? '#ff3b30' : breakColor;
+        const ownBreak = isDuet && note.singer !== duet.BOTH && note.singer != null;
+        // Selected: thicker and brighter, in the same colour (red stays for shared breaks)
+        const breakColor = ownBreak ? duet.SINGER_COLORS[note.singer] : (isBreakSelected ? '#ff3b30' : '#ef5350');
+        ctx.strokeStyle = breakColor;
         ctx.lineWidth = isBreakSelected ? 4 : 3;
         ctx.setLineDash(isBreakSelected ? [6, 4] : [5, 3]);
         ctx.beginPath();
@@ -2909,7 +2911,7 @@
         // Draw drag handle (diamond shape at center)
         const handleY = (wt + pianoH) / 2;
         const hs = isBreakSelected ? 8 : 6;
-        ctx.fillStyle = isBreakSelected ? '#ff3b30' : breakColor;
+        ctx.fillStyle = breakColor;
         ctx.beginPath();
         ctx.moveTo(x, handleY - hs);
         ctx.lineTo(x + hs, handleY);
@@ -2920,7 +2922,7 @@
 
         // Show beat label when selected
         if (isBreakSelected) {
-          ctx.fillStyle = '#ef5350';
+          ctx.fillStyle = breakColor;
           ctx.font = '9px monospace';
           ctx.textAlign = 'center';
           ctx.fillText(`break @${note.startBeat}`, x, handleY - hs - 4);
