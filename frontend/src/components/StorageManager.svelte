@@ -272,13 +272,13 @@
         {@const totalModelSize = info.models.reduce((acc, m) => acc + (m.size || 0), 0)}
         <div class="sm-section">
           <div class="sm-section-title">🤖 AI Models <span class="sm-orphan-badge sm-orphan-clean">{fmt(totalModelSize)}</span></div>
-          <p class="sm-hint">Downloaded model files used for vocal separation, transcription, and alignment. These live in your system cache and are shared across tools.</p>
+          <p class="sm-hint">Downloaded models and tools: vocal separation, transcription, alignment, notes and YouTube downloads. Most live in your system cache and are shared across tools. A deleted one is downloaded again when needed.</p>
           {#if modelDeleteError}<p class="sm-error">❌ {modelDeleteError}</p>{/if}
           <div class="sm-file-list">
             {#each info.models as m}
-              {@const inUse = m.name.includes('faster-whisper-medium') || m.name.includes('Demucs') || m.name.includes('Alignment')}
+              {@const inUse = m.in_use ?? (m.name.includes('faster-whisper-medium') || m.name.includes('Demucs') || m.name.includes('Alignment'))}
               <div class="sm-file-row">
-                <span class="sm-file-label">{m.name}{#if inUse} <span class="sm-badge" title="Used by this app">in use</span>{/if}</span>
+                <span class="sm-file-label" title={m.use || ''}>{m.name}{#if inUse} <span class="sm-badge" title="Used by this app">in use</span>{/if}{#if m.use}<span class="sm-model-use">{m.use}</span>{/if}</span>
                 <span class="sm-file-name sm-mono" title={m.path}>{m.path.replace(/.*[\\/]/, '…/')}</span>
                 <span class="sm-file-size">{fmt(m.size)}</span>
                 <button
@@ -319,6 +319,13 @@
 </div>
 
 <style>
+  .sm-model-use {
+    display: block;
+    color: #777;
+    font-size: 0.72rem;
+    font-weight: normal;
+  }
+
   .sm-backdrop {
     position: fixed;
     inset: 0;

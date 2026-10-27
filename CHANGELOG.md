@@ -4,6 +4,12 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 🗄 Storage manager
+- Lists the newer models and tools too: lyrics aligner + FCPE, GAME, RoFormer, yt-dlp and QuickJS, other
+  languages' alignment models, and leftovers (original downloads, stock MMS aligner, Tune Studio's note correctors),
+  each with what it is used for and whether the app uses it
+- Model sizes are right: files in the Hugging Face cache were counted twice
+
 ### ⭐ Golden rap notes
 - Golden rap notes (`G`, a rap note with the golden bonus) are kept when a chart is opened or imported; before,
   they disappeared. New type **G Golden Rap** in the right-click menu (orange with a gold border)

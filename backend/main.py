@@ -968,8 +968,12 @@ def _get_model_info() -> list:
         try:
             for root, _, files in os.walk(path):
                 for f in files:
+                    fp = os.path.join(root, f)
+                    # The Hugging Face cache links each snapshot file to its blob: count the blob once
+                    if os.path.islink(fp):
+                        continue
                     try:
-                        total += os.path.getsize(os.path.join(root, f))
+                        total += os.path.getsize(fp)
                     except OSError:
                         pass
         except OSError:
@@ -1021,7 +1025,46 @@ def _get_model_info() -> list:
                 "path": p,
                 "size": os.path.getsize(p),
                 "present": True,
+                "in_use": True,
+                "use": "WhisperX: Generate Lyrics from Vocals, and the fallback when forced alignment fails",
             })
+
+    def add(name, path, use, in_use=True):
+        if os.path.exists(path):
+            entries.append({"name": name, "path": path, "present": True, "in_use": in_use, "use": use,
+                            "size": os.path.getsize(path) if os.path.isfile(path) else _dir_size_fast(path)})
+
+    def hf(repo):
+        return os.path.join(hf_hub, "models--" + repo.replace("/", "--"))
+
+    # WhisperX's other languages' wav2vec2 alignment models (Hugging Face)
+    for d in sorted(_glob.glob(os.path.join(hf_hub, "models--*wav2vec2*"))):
+        repo = os.path.basename(d)[len("models--"):].replace("--", "/")
+        add(f"Alignment model — {repo} (wav2vec2)", d,
+            "WhisperX: Generate Lyrics from Vocals, and the fallback when forced alignment fails")
+
+    # Forced alignment and pitch (services/model_mirror.py): our copy, or the originals from older installs
+    from services.model_mirror import MODEL_REPO
+    ours = os.path.exists(hf(MODEL_REPO))
+    add("Lyrics aligner + pitch model (Tune Studio aligner, FCPE)", hf(MODEL_REPO),
+        "Syllable timing of your lyrics; pitch detection")
+    add("Lyrics aligner (original download)", hf("tuneperfect/tunestudio-aligner"),
+        "Used only while the copy above isn't downloaded", in_use=not ours)
+    add("Pitch model FCPE (original download)", hf("tuneperfect/fcpe-onnx"),
+        "Used only while the copy above isn't downloaded", in_use=not ours)
+    add("Stock MMS aligner", hf("MahmoudAshraf/mms-300m-1130-forced-aligner"),
+        "Only for evaluating the aligner (not used by the app)", in_use=False)
+    add("Tune Studio note correctors", hf("tuneperfect/tunestudio-note-refiners"),
+        "An experiment (not used by the app)", in_use=False)
+
+    # In the app's own data folder
+    for d in sorted(_glob.glob(os.path.join(MODELS_DIR, "game-*"))):
+        add("Note model (GAME)", d, "Note pitches and splitting long syllables")
+    for d in sorted(_glob.glob(os.path.join(MODELS_DIR, "mel-roformer-*"))):
+        add("Vocal separation (Mel-Band RoFormer)", d, "Step 1's optional slower separation, for duets and backing vocals")
+    add("YouTube download tool (yt-dlp)", os.path.join(TOOLS_DIR, "yt-dlp"), "YouTube links in Step 1 and the import")
+    add("JavaScript runtime for yt-dlp (QuickJS)", os.path.join(TOOLS_DIR, "quickjs"), "YouTube links in Step 1 and the import")
+    add("YouTube tool cache", os.path.join(TOOLS_DIR, "yt-dlp-cache"), "yt-dlp's cache; rebuilt when needed", in_use=False)
 
     return entries
 
@@ -1048,6 +1091,8 @@ async def delete_model_cache(request: Request):
     allowed_roots = [
         os.path.abspath(os.path.join(_torch_home, "hub", "checkpoints")),
         os.path.abspath(_hf_hub),
+        os.path.abspath(MODELS_DIR),   # GAME, RoFormer
+        os.path.abspath(TOOLS_DIR),    # yt-dlp, QuickJS
     ]
     if not any(abs_path.startswith(root + os.sep) or abs_path == root for root in allowed_roots):
         raise HTTPException(status_code=403, detail="Path is outside allowed model cache directories")
