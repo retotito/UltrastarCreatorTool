@@ -12167,7 +12167,7 @@
 
   .scrollbar-track {
     position: relative;
-    height: 38px;
+    height: 44px;
     cursor: pointer;
     /* visible rail in the vertical center */
     background: linear-gradient(
@@ -12214,33 +12214,32 @@
     opacity: 0.75;
   }
 
+  /* at the very bottom: one 6px row, a duet two (singer 1 above, singer 2 below) */
   .scrollbar-note-lane {
     position: absolute;
     left: 0;
     right: 0;
-    top: 21px;
+    bottom: 1px;
     height: 6px;
     pointer-events: none;
     z-index: 1;
   }
+  .scrollbar-note-lane.duet { height: 13px; }
   .scrollbar-note-seg {
     position: absolute;
     top: 0;
-    height: 100%;
+    height: 6px;
     background: var(--seg-color);
-    opacity: 0.6;
     border-radius: 1px;
   }
-  /* a duet: singer 1 in the upper half, singer 2 in the lower */
-  .scrollbar-note-lane.duet .scrollbar-note-seg { height: 45%; }
-  .scrollbar-note-lane.duet .scrollbar-note-seg.second { top: 55%; }
+  .scrollbar-note-lane.duet .scrollbar-note-seg.second { top: 7px; }
 
   .scrollbar-cleanup-lane {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 1px;
-    height: 8px;
+    bottom: 15px;   /* above the note lane */
+    height: 6px;
     pointer-events: none;
     z-index: 1;
   }
@@ -12258,7 +12257,7 @@
 
   .scrollbar-handle {
     position: absolute;
-    top: 38%;
+    top: 14px;   /* on the rail (6–13px) */
     width: 14px;
     height: 14px;
     background: #4fc3f7;
