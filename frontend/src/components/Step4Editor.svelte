@@ -10878,9 +10878,11 @@
       {#each flags as flag}
         <div class="scrollbar-flag" style="left: {((flag.beat - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%"></div>
       {/each}
+      <!-- line breaks (a duet: the shared ones red, the edited singer's own in their colour, not the other singer's) -->
       {#each notes as note (note.id)}
-        {#if note.type === 'break'}
-          <div class="scrollbar-break" style="left: {((note.startBeat - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%"></div>
+        {#if note.type === 'break' && isEditable(note)}
+          <div class="scrollbar-break"
+            style="left: {((note.startBeat - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%; --break-color: {isDuet && note.singer !== duet.BOTH && note.singer != null ? duet.SINGER_COLORS[note.singer] : '#ff6b6b'}"></div>
         {/if}
       {/each}
       <!-- draggable handle -->
@@ -12264,11 +12266,11 @@
   .scrollbar-break {
     position: absolute;
     top: 0;
-    bottom: 10px;
+    height: 50%;   /* the top half: leaves the track readable */
     width: 2px;
     background: repeating-linear-gradient(
       to bottom,
-      #ff6b6b 0 2px,
+      var(--break-color, #ff6b6b) 0 2px,
       transparent 2px 5px
     );
     pointer-events: none;
