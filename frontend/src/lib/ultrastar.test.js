@@ -61,6 +61,11 @@ test('an old chart\'s P3 part is sung by both', () => {
   assert.deepEqual(brief(parseUltrastar('P1\n: 0 4 1 a\nP3\n: 8 4 2 b\nE')), ['a 1 1', 'b 2 both']);
 });
 
+test('a note without singer in a duet is kept for both', () => {
+  const notes = [{ startBeat: 0, duration: 4, pitch: 1, syllable: 'a', singer: 1 }, { startBeat: 8, duration: 4, pitch: 2, syllable: 'new' }];
+  assert.equal(notesToUltrastar(notes), ['P1', ': 0 4 1 a', ': 8 4 2 new', 'P2', ': 8 4 2 new'].join('\n'));
+});
+
 test('solo charts are unchanged', () => {
   const solo = parseUltrastar(': 0 4 1 a\n- 6\n* 8 2 3  b\nE');
   assert.ok(solo.every(n => !('singer' in n)));

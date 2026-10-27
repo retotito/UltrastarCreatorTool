@@ -128,10 +128,11 @@ export function mergeShared(elements) {
   return out.sort(byBeat);
 }
 
-/** One singer's notes and breaks, in order, without breaks that would leave an empty line. */
+/** One singer's notes and breaks, in order, without breaks that would leave an empty line. In a duet an element
+ * without a singer (made by a tool that doesn't know about duets) counts as sung by both, so it isn't lost. */
 export function track(elements, singer) {
   const out = [];
-  for (const el of elements.filter(e => e.singer === singer || e.singer === BOTH).sort(byBeat)) {
+  for (const el of elements.filter(e => e.singer === singer || e.singer === BOTH || e.singer == null).sort(byBeat)) {
     if (el.type === 'break') {
       if (out.length && out[out.length - 1].type !== 'break') out.push(el);
     } else {

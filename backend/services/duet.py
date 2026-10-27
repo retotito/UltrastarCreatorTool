@@ -63,8 +63,9 @@ def merge_shared(elements: List[dict]) -> List[dict]:
 
 
 def track(elements: List[dict], singer: int) -> List[dict]:
-    """One singer's notes and line breaks, in order, without breaks that would leave an empty line."""
-    mine = sorted((el for el in elements if el.get("singer") in (singer, BOTH)),
+    """One singer's notes and line breaks, in order, without breaks that would leave an empty line. In a duet an
+    element without a singer (made by a tool that doesn't know about duets) counts as sung by both, so it isn't lost."""
+    mine = sorted((el for el in elements if el.get("singer") in (singer, BOTH, None)),
                   key=lambda el: (el.get("startBeat", 0), 0 if el.get("type") == "break" else 1))
     out = []
     for el in mine:

@@ -88,6 +88,12 @@ def test_a_break_without_notes_of_that_singer_on_both_sides_is_left_out():
     assert duet.body_lines(notes) == ["P1", ": 0 4 1 a", "- 6", ": 16 4 1 c", "P2", ": 8 4 1 b"]
 
 
+def test_a_note_without_singer_in_a_duet_is_kept_for_both():
+    notes = [{"startBeat": 0, "duration": 4, "pitch": 1, "syllable": "a", "singer": 1},
+             {"startBeat": 8, "duration": 4, "pitch": 2, "syllable": "new"}]
+    assert duet.body_lines(notes) == ["P1", ": 0 4 1 a", ": 8 4 2 new", "P2", ": 8 4 2 new"]
+
+
 def test_solo_charts_are_written_as_before():
     notes = [{"startBeat": 0, "duration": 4, "pitch": 1, "syllable": "a", "isGolden": True},
              {"type": "break", "startBeat": 6},
