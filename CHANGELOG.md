@@ -14,6 +14,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   mixed into one. Notes sung together are read as one note. Headers `#P1`/`#P2` and `#DUETSINGERP1`/`P2`
 - Importing a duet shows "Duet · name & name" (names from `#P1`/`#P2`, older headers or USDB's `#VIDEO`); duet
   sessions have a 🎤 Duet badge in the recent sessions list
+- **Duet 🎤** button in the editor: make a song a duet and name the singers, rename or swap them, or go back to a
+  solo chart keeping one singer. The singers' chips choose who you edit: their notes are drawn on top and clicked
+  first, the other singer's are faint and dashed, notes sung by both have a second border
+- Right-click in a duet: **Move to** / **Link with** the other singer, **Unlink**, **Only** one singer, **Select all**
+  of a singer's notes. Refused where the singer already has a note (no overlapping notes within a singer)
 
 ### 🎹 Editor after regenerating
 - After generating, the editor is set up for checking the result: MIDI on, playing the vocals the chart was made

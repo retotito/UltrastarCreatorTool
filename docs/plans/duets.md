@@ -64,7 +64,13 @@ asset headers; every save keeps `session["duet"]` up to date (removed when the c
   `#VIDEO`, else "Singer 1"/"Singer 2".
 - The recent sessions list shows a duet badge once a session is a duet (imported, or set in the editor).
 
-### 3. The editor
+### 3. The editor (in progress)
+
+First part done: Duet button and modal (`DuetModal.svelte`), singer chips for the active singer, drawing (other
+singer semi-transparent and dashed, linked notes with an outer border), clicks reach the active singer first, the
+right-click actions; logic in `frontend/src/lib/duet.js` (tests: `duet.test.js`). New notes go to the active singer.
+Singer 2 is green (orange is taken by rap notes). Still open: two lyric rows, keys, MIDI per singer, the tools.
+
 
 - **Duet button** in the second toolbar opens a modal:
   - *Set as duet*: names for singer 1 and 2. All existing notes and breaks become `'both'`.

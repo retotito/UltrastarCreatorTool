@@ -10,6 +10,8 @@
   import { getEditorData, getAudioUrl, saveEditorState, generateCleanedAudio, suggestVibrato, getLiveWordsWindow, updateMetadata } from '../services/api.js';
   import { SUPPORTED_LANGUAGES, languageHeader, parseLanguageHeader } from '../lib/languages';
   import { parseUltrastar, notesToUltrastar, singerNames, duetHeaderLines, DUET_HEADERS } from '../lib/ultrastar.js';
+  import DuetModal from './DuetModal.svelte';
+  import * as duet from '../lib/duet.js';
   import { medianPitch, groupPitchFrames, mergePlaceholderNotes, trimPlaceholdersAgainstNotes, buildPitchSplitGroups, splitPlaceholderNotesByPitchRuns } from '../lib/pitchUtils.js';
   import { createAutoBackup, getStoredIntervalMin, getStoredAutoEnabled } from '../lib/autoBackup.js';
   import BackupModal from './BackupModal.svelte';
@@ -1549,6 +1551,95 @@
   // Extra Ultrastar headers (e.g. #YOUTUBE, #COVER, etc.) — preserved across edits
   let extraHeaders = [];
 
+  // ──── Duet (docs/plans/duets.md) ────
+  // Notes and breaks carry singer 1, 2 or 'both'; a solo chart has none. The names are the #P1/#P2 headers.
+  let duetModalOpen = false;
+  let activeSinger = 1;     // where new notes go; drawn on top, clicked first
+  $: isDuet = duet.isDuetChart(notes);
+  $: duetNames = duet.namesFromHeaders(extraHeaders);
+  $: duetCounts = {
+    1: notes.filter(n => n.type !== 'break' && n.singer === 1).length,
+    2: notes.filter(n => n.type !== 'break' && n.singer === 2).length,
+    both: notes.filter(n => n.type !== 'break' && n.singer === duet.BOTH).length,
+  };
+
+  function nextNoteId() {
+    return Math.max(0, ...notes.map(n => (typeof n.id === 'number' ? n.id : 0))) + 1;
+  }
+
+  function applyDuetChange(newNotes, newHeaders = extraHeaders) {
+    pushUndo();
+    notes = newNotes;
+    extraHeaders = newHeaders;
+    markUnsaved();
+    draw();
+  }
+
+  function setDuet({ detail: names }) {
+    applyDuetChange(duet.makeDuet(notes), duet.withNames(extraHeaders, names));
+    activeSinger = 1;
+    duetModalOpen = false;
+    showToast(`Duet: ${names.p1} & ${names.p2}. Every note is sung by both; right-click notes to give them to one singer.`, 5000);
+  }
+
+  function renameSingers({ detail: names }) {
+    applyDuetChange(notes, duet.withNames(extraHeaders, names));
+    duetModalOpen = false;
+  }
+
+  function swapDuetSingers() {
+    applyDuetChange(duet.swapSingers(notes), duet.withNames(extraHeaders, { p1: duetNames.p2, p2: duetNames.p1 }));
+  }
+
+  function unsetDuet({ detail: { keep } }) {
+    applyDuetChange(duet.unmakeDuet(notes, keep), duet.withoutNames(extraHeaders));
+    selectedNotes = new Set([...selectedNotes].filter(id => notes.some(n => n.id === id)));
+    if (selectedNote !== null && !notes.some(n => n.id === selectedNote)) selectedNote = null;
+    duetModalOpen = false;
+  }
+
+  const singerName = s => (s === 1 ? duetNames.p1 : duetNames.p2);
+
+  /** The right-click menu's duet actions on the selected notes (or the right-clicked one). */
+  function duetAction(kind, singer = null) {
+    const ids = new Set(selectedNotes.size > 1 && selectedNotes.has(ctxMenuNote?.id) ? selectedNotes : [ctxMenuNote?.id]);
+    let result;
+    if (kind === 'move') result = duet.moveTo(notes, ids, singer);
+    else if (kind === 'link') result = duet.link(notes, ids);
+    else if (kind === 'only') result = duet.only(notes, ids, singer);
+    else if (kind === 'unlink') result = duet.unlink(notes, ids, nextNoteId());
+    if (result.refused) {
+      showToast(kind === 'move'
+        ? `${singerName(singer)} already sings there: a singer can't have overlapping notes.`
+        : 'The other singer already sings there: a singer can\'t have overlapping notes.', 4000);
+      return;
+    }
+    applyDuetChange(result.notes);
+    if (kind === 'move' || kind === 'only') activeSinger = singer;
+    closeContextMenu();
+  }
+
+  function selectSingerNotes(singer) {
+    selectedNotes = duet.notesOf(notes, singer);
+    selectedNote = selectedNotes.size === 1 ? [...selectedNotes][0] : null;
+    activeSinger = singer;
+    closeContextMenu();
+    draw();
+  }
+
+  function setActiveSinger(singer) {
+    activeSinger = singer;
+    draw();
+  }
+
+  // The right-clicked note (the menu's template has it as ctxNote) and the singers of the notes it acts on
+  $: ctxMenuNote = contextMenu.visible ? notes.find(n => n.id === contextMenu.noteId) : null;
+  $: ctxSingers = (() => {
+    if (!isDuet || !ctxMenuNote) return new Set();
+    const ids = selectedNotes.size > 1 && selectedNotes.has(ctxMenuNote.id) ? selectedNotes : new Set([ctxMenuNote.id]);
+    return new Set(notes.filter(n => ids.has(n.id) && n.type !== 'break').map(n => n.singer));
+  })();
+
   // Total beats for scrollbar
   let totalBeats = 0;
 
@@ -1841,6 +1932,11 @@
 
   // Track unsaved changes on note edits
   function markUnsaved() {
+    // In a duet, a note or break made by a tool that doesn't know about singers goes to the active singer (a break
+    // to both)
+    if (duet.isDuetChart(notes)) {
+      for (const n of notes) if (n.singer == null) n.singer = n.type === 'break' ? duet.BOTH : activeSinger;
+    }
     hasUnsavedChanges = true;
     editorState.update(s => ({ ...s, hasChanges: true }));
     autoBackupInstance?.markChanged();
@@ -2756,8 +2852,12 @@
 
     ctx.textAlign = 'left'; // Reset
 
-    // Draw notes
-    for (const note of notes) {
+    // Draw notes (a duet: the other singer's first, so the active singer's are on top)
+    for (const note of duet.byActiveSinger(notes, activeSinger)) {
+      // Duet: the other singer's notes and breaks semi-transparent, their outline dashed
+      const otherSinger = isDuet && !duet.sungBy(note, activeSinger);
+      ctx.save();
+      if (otherSinger) ctx.globalAlpha = 0.4;
       if (note.type === 'break') {
         // Draw break line
         const x = beatToX(note.startBeat);
@@ -2791,6 +2891,7 @@
           ctx.fillText(`break @${note.startBeat}`, x, handleY - hs - 4);
           ctx.textAlign = 'left';
         }
+        ctx.restore();
         continue;
       }
 
@@ -2822,11 +2923,14 @@
         ctx.fillStyle = micHollow ? (isSelected ? '#b39ddb33' : '#b39ddb12') : (isSelected ? '#b39ddb88' : (isCut ? '#b39ddb22' : '#b39ddb44'));
         ctx.strokeStyle = isCut ? '#4fc3f766' : '#ce93d8';
       } else {
-        ctx.fillStyle = micHollow ? (isSelected ? '#4fc3f733' : '#4fc3f712') : (isSelected ? '#4fc3f788' : (isCut ? '#4fc3f722' : '#4fc3f744'));
-        ctx.strokeStyle = isCut ? '#4fc3f766' : '#4fc3f7';
+        // Normal notes in their singer's colour in a duet (a linked note: the active singer's)
+        const c = isDuet ? duet.SINGER_COLORS[note.singer === duet.BOTH ? activeSinger : note.singer] : '#4fc3f7';
+        ctx.fillStyle = micHollow ? (isSelected ? `${c}33` : `${c}12`) : (isSelected ? `${c}88` : (isCut ? `${c}22` : `${c}44`));
+        ctx.strokeStyle = isCut ? `${c}66` : c;
       }
 
       ctx.lineWidth = 1;
+      if (otherSinger) ctx.setLineDash([4, 3]);
       ctx.fillRect(x, y - noteHeight / 2, width, noteHeight);
 
       if (isSelected) {
@@ -2850,6 +2954,15 @@
         ctx.restore();
       } else {
         ctx.strokeRect(x, y - noteHeight / 2, width, noteHeight);
+      }
+      ctx.setLineDash([]);
+
+      // Duet: a linked note (sung by both) gets a second, outer border in the other singer's colour
+      if (isDuet && note.singer === duet.BOTH) {
+        ctx.strokeStyle = duet.SINGER_COLORS[duet.other(activeSinger)];
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x - 3, y - noteHeight / 2 - 3, width + 6, noteHeight + 6);
+        ctx.lineWidth = 1;
       }
 
       // Find widget highlight overlay
@@ -2899,6 +3012,7 @@
         ctx.arc(x + width - dotR - 1, y - noteHeight / 2 + dotR + 1, dotR, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
     }
 
     // ── Pitch line: precomputed full-song pitch drawn as thin continuous dots (behind everything) ──
@@ -3553,9 +3667,9 @@
       }
     }
 
-    // Find clicked note (check regular notes first, then breaks)
+    // Find clicked note (check regular notes first, then breaks; in a duet the active singer's notes first)
     let found = null;
-    for (const note of notes) {
+    for (const note of [...duet.byActiveSinger(notes, activeSinger)].reverse()) {
       if (note.type === 'break') continue;
       
       const nx = beatToX(note.startBeat);
@@ -6602,6 +6716,7 @@
     // Skip all shortcuts when text editor modal is open
     if (showTextEditor) return;
     if (showNotesModal) return;
+    if (duetModalOpen) return;
     if ($storageManagerOpen) return;
     if ($editorHelpOpen) return;
     // Skip shortcuts when typing in a text/number input field (BPM, GAP, context menu, etc.)
@@ -10056,6 +10171,23 @@
            Backup&nbsp;🕐
         </button>
       </div>
+      <div id="duet-controls-wrapper">
+        <button class="tool-btn" class:active={isDuet} class:disabled-audio={uiModalGuardActive} disabled={uiModalGuardActive}
+          on:click={() => { if (!uiModalGuardActive) duetModalOpen = true; }}
+          title={isDuet ? 'Duet: rename or swap the singers, or make it a solo chart again' : 'Make this song a duet (two singers)'}>
+          Duet&nbsp;🎤
+        </button>
+        {#if isDuet}
+          {#each [1, 2] as s}
+            <button class="tool-btn sm singer-chip" class:active={activeSinger === s}
+              style="--singer:{duet.SINGER_COLORS[s]}"
+              on:click={() => setActiveSinger(s)}
+              title="Edit {singerName(s)}'s notes: drawn on top, clicked first, new notes go to {singerName(s)}">
+              <span class="singer-dot"></span>{singerName(s)}
+            </button>
+          {/each}
+        {/if}
+      </div>
     </div>
     <div class="toolbar-toolset-wrapper">
       <div class="playback-controls">
@@ -10445,6 +10577,29 @@
           </button>
           <div class="ctx-divider"></div>
           {/if}
+          {#if isDuet}
+            {#if ctxSingers.size === 1 && !ctxSingers.has(duet.BOTH)}
+              {@const s = [...ctxSingers][0]}
+              <button class="ctx-item" on:click={() => duetAction('move', duet.other(s))}>
+                ➡️ Move to {singerName(duet.other(s))}
+              </button>
+              <button class="ctx-item" on:click={() => duetAction('link')}>
+                🔗 Link with {singerName(duet.other(s))} <span class="ctx-shortcut">sung by both</span>
+              </button>
+            {:else if ctxSingers.size === 1 && ctxSingers.has(duet.BOTH)}
+              <button class="ctx-item" on:click={() => duetAction('unlink')} title="Two independent notes, one per singer (e.g. for different pitches)">
+                ✂️ Unlink <span class="ctx-shortcut">one note per singer</span>
+              </button>
+              <button class="ctx-item" on:click={() => duetAction('only', 1)}>Only {singerName(1)}</button>
+              <button class="ctx-item" on:click={() => duetAction('only', 2)}>Only {singerName(2)}</button>
+            {:else}
+              <span class="ctx-hint">Select one singer's notes (or only linked ones) to move or link them</span>
+            {/if}
+            <button class="ctx-item" on:click={() => selectSingerNotes(activeSinger)}>
+              Select all of {singerName(activeSinger)}'s notes
+            </button>
+            <div class="ctx-divider"></div>
+          {/if}
           <div class="ctx-type-group">
             <span class="ctx-type-label">Type: <span class="ctx-type-name">{noteTypeName(ctxNote)}</span></span>
             {#each NOTE_TYPES as t}
@@ -10777,6 +10932,12 @@
   <FixSpacesModal bind:open={fixSpacesModalOpen} on:fix={autoFixWordSpaces} />
 
   <!-- Text Editor Modal -->
+  {#if duetModalOpen}
+    <DuetModal isDuet={isDuet} names={duetNames} counts={duetCounts}
+      on:set={setDuet} on:rename={renameSingers} on:swap={swapDuetSingers} on:unset={unsetDuet}
+      on:close={() => (duetModalOpen = false)} />
+  {/if}
+
   {#if showNotesModal}
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
     <div class="modal-overlay" on:click={() => { saveSessionNotes(); showNotesModal = false; }} on:keydown={(e) => e.key === 'Escape' && (saveSessionNotes(), showNotesModal = false)} role="dialog" aria-label="Session Notes" tabindex="-1">
@@ -12426,6 +12587,33 @@
     font-size: 0.75rem;
     font-family: monospace;
     margin-left: 1rem;
+  }
+
+  .singer-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .singer-chip .singer-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--singer);
+  }
+  .singer-chip.active {
+    border-color: var(--singer);
+    box-shadow: inset 0 0 0 1px var(--singer);
+  }
+  #duet-controls-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .ctx-hint {
+    display: block;
+    padding: 4px 10px;
+    color: #888;
+    font-size: 0.75rem;
   }
 
   .ctx-type-group {
