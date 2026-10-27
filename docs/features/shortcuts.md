@@ -13,6 +13,7 @@
 | Shortcut | Action |
 |----------|--------|
 | **D** | Switch the singer you edit (only their notes and the linked ones can be clicked and changed) |
+| **Ctrl/Cmd+A** | Asks which notes: the singer you edit, the other singer, the synced notes (Enter applies, Esc cancels) |
 
 ## Selection
 

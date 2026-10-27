@@ -38,6 +38,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   sing-along and vocal trace compare with their notes. **MIDI** has a *Both* / *only [singer]* toggle
 - Imported charts with relative pitches (USDB: C4 = 0) are moved up to the app's MIDI pitches (C4 = 60), so they
   match the pitch line at once instead of sitting 5 octaves too low
+- **Cmd/Ctrl+A** in a duet asks which notes to select: the singer you edit, the other singer, the synced notes
+  (each note once, so moving everything moves synced notes only once)
 - Generating a duet song again warns that the new chart is a solo chart and the singer assignment is lost
 - Bottom bar: a note lane shows where the notes are (a duet: singer 1's row and singer 2's, notes sung by both in
   both); line break marks only in the top half, in a duet coloured like the editor's and only the edited singer's

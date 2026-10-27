@@ -71,7 +71,9 @@ singer semi-transparent and dashed, linked notes with an outer border), clicks r
 right-click actions; logic in `frontend/src/lib/duet.js` (tests: `duet.test.js`). New notes go to the active singer.
 Singer 2 is green (orange is taken by rap notes). Only the active singer's notes (and the linked ones) can be
 clicked, box-selected, selected with Cmd+A or Tab, found and edited; the other singer's are only shown. **D**
-switches the singer; switching drops the other singer's notes from the selection. Moving notes keeps the active
+switches the singer; switching drops the other singer's notes from the selection. **Cmd/Ctrl+A** asks which notes
+(`SelectAllModal.svelte`): the singer you edit (checked at first), the other singer, the synced notes; each note
+once, so a change moves it once (selecting per singer moved synced notes twice). The choice is kept for the session. Moving notes keeps the active
 singer. Still open: two lyric rows, MIDI per singer, the tools (they act on the selection, so already on the
 active singer).
 

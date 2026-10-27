@@ -11,6 +11,7 @@
   import { SUPPORTED_LANGUAGES, languageHeader, parseLanguageHeader } from '../lib/languages';
   import { parseUltrastar, notesToUltrastar, singerNames, duetHeaderLines, DUET_HEADERS } from '../lib/ultrastar.js';
   import DuetModal from './DuetModal.svelte';
+  import SelectAllModal from './SelectAllModal.svelte';
   import * as duet from '../lib/duet.js';
   import { medianPitch, groupPitchFrames, mergePlaceholderNotes, trimPlaceholdersAgainstNotes, buildPitchSplitGroups, splitPlaceholderNotesByPitchRuns } from '../lib/pitchUtils.js';
   import { createAutoBackup, getStoredIntervalMin, getStoredAutoEnabled } from '../lib/autoBackup.js';
@@ -1555,6 +1556,8 @@
   // ──── Duet (docs/plans/duets.md) ────
   // Notes and breaks carry singer 1, 2 or 'both'; a solo chart has none. The names are the #P1/#P2 headers.
   let duetModalOpen = false;
+  let selectAllOpen = false;   // Cmd/Ctrl+A in a duet: which notes
+  let selectAllChoice = { active: true, other: false, synced: false };   // relative to the active singer; kept for the session
   let activeSinger = 1;     // where new notes go; drawn on top, clicked first
   $: isDuet = duet.isDuetChart(notes);
   $: duetNames = duet.namesFromHeaders(extraHeaders);
@@ -1622,6 +1625,19 @@
     }
     applyDuetChange(result.notes);   // the active singer stays: only the chips change it
     closeContextMenu();
+  }
+
+  /** Cmd/Ctrl+A in a duet, after the popup: the chosen singers' notes, each once. The other singer's notes are
+   * selected on purpose here (e.g. to move everything an octave); a click afterwards follows the usual rule. */
+  function applySelectAll({ detail: choice }) {
+    selectAllChoice = choice;
+    selectAllOpen = false;
+    const otherSinger = duet.other(activeSinger);
+    selectedNotes = new Set(notes.filter(n => n.type !== 'break' && (
+      (n.singer === activeSinger && choice.active) || (n.singer === otherSinger && choice.other)
+      || (n.singer === duet.BOTH && choice.synced))).map(n => n.id));
+    selectedNote = selectedNotes.size > 0 ? [...selectedNotes][0] : null;
+    draw();
   }
 
   function setBreakFor(id, singer) {
@@ -6773,6 +6789,7 @@
     if (showTextEditor) return;
     if (showNotesModal) return;
     if (duetModalOpen) return;
+    if (selectAllOpen) return;
     if ($storageManagerOpen) return;
     if ($editorHelpOpen) return;
     // Skip shortcuts when typing in a text/number input field (BPM, GAP, context menu, etc.)
@@ -6870,7 +6887,11 @@
     // ── Select All (Ctrl/Cmd+A) ──
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      selectedNotes = new Set(notes.filter(n => n.type !== 'break' && isEditable(n)).map(n => n.id));
+      if (isDuet) {   // a duet: choose which singers' notes
+        if (!uiModalGuardActive) { closeContextMenu(); selectAllOpen = true; }
+        return;
+      }
+      selectedNotes = new Set(notes.filter(n => n.type !== 'break').map(n => n.id));
       if (selectedNotes.size > 0) selectedNote = [...selectedNotes][0];
       draw();
       return;
@@ -11032,6 +11053,11 @@
   <FixSpacesModal bind:open={fixSpacesModalOpen} on:fix={autoFixWordSpaces} />
 
   <!-- Text Editor Modal -->
+  {#if selectAllOpen}
+    <SelectAllModal active={activeSinger} names={duetNames} counts={duetCounts}
+      choice={{ ...selectAllChoice }} on:apply={applySelectAll} on:close={() => (selectAllOpen = false)} />
+  {/if}
+
   {#if duetModalOpen}
     <DuetModal isDuet={isDuet} names={duetNames} counts={duetCounts}
       on:set={setDuet} on:rename={renameSingers} on:unset={unsetDuet}
