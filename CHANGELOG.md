@@ -36,6 +36,7 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - In a duet the tools act on the singer you edit: AI regenerate (loop, cleanup section, segment recording) and
   Analyze 5s replace only their notes, Join only joins their notes, the vibrato tool keeps linked notes linked, mic
   sing-along and vocal trace compare with their notes. **MIDI** has a *Both* / *only [singer]* toggle
+- Generating a duet song again warns that the new chart is a solo chart and the singer assignment is lost
 - Bottom bar: a note lane shows where the notes are (a duet: singer 1's row and singer 2's, notes sung by both in
   both); line break marks only in the top half, in a duet coloured like the editor's and only the edited singer's
 - A BPM or GAP change keeps golden and freestyle notes (they became normal notes when the chart was rebuilt from

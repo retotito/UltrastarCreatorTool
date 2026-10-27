@@ -11,6 +11,7 @@
   import LyricsVersionsModal from './LyricsVersionsModal.svelte';
   import { sessionId, lyricsData, uploadData, currentStep, isProcessing, processingStatus, errorMessage, generationModalOpen, generationUseCleaned, generationResult } from '../stores/appStore.js';
   import { showConfirm } from '../stores/dialogStore.js';
+  import { isDuet } from '../lib/ultrastar.js';
   import { SUPPORTED_LANGUAGES } from '../lib/languages';
   import { getYouTubeSubtitles, submitLyrics, searchLyricsOnline, getLyricsSources, saveLyricsSources, getTestLyrics, hyphenateLyrics, transcribeAudio, cancelTranscribe, getAudioUrl, updateMetadata, getEditorData, generateEmptyUltrastar } from '../services/api.js';
 
@@ -381,10 +382,17 @@
   async function handleGenerate(event) {
     const text = sides[event.detail.side]?.[event.detail.source]?.text || '';
     if (!text.trim() || !canGenerate) return;
-    if ($generationResult && !(await showConfirm(
-      'This replaces the UltraStar file you already have, including your changes in the editor.',
-      { title: 'Generate again?', confirmLabel: 'Generate', danger: true },
-    ))) return;
+    if ($generationResult) {
+      // A duet's singer assignment is lost too: the new chart is a solo chart
+      const saved = await getEditorData($sessionId).catch(() => null);
+      const duetChart = isDuet(saved?.ultrastar_content || $generationResult.ultrastar_content || '');
+      const message = duetChart
+        ? 'This replaces the UltraStar file you already have, including your changes in the editor.\n\n'
+          + 'This song is a duet: the new file is a solo chart. Which notes belong to which singer is lost, and '
+          + 'you have to set up the duet again in the editor.'
+        : 'This replaces the UltraStar file you already have, including your changes in the editor.';
+      if (!(await showConfirm(message, { title: 'Generate again?', confirmLabel: 'Generate', danger: true }))) return;
+    }
     errorMessage.set('');
     isProcessing.set(true);
     processingStatus.set('Preparing lyrics…');

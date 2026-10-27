@@ -104,8 +104,9 @@ note of that singer). Shared breaks are red, a singer's own in their colour.
 
 ### 4. Generating and exporting
 
-- Generating again replaces the notes, so a duet's assignment would be lost: warn before. (Later maybe: keep the
-  assignment by time.)
+- Generating again replaces the notes, so a duet's assignment is lost: Step 2's "Generate again?" says so for a
+  duet (it checks the saved chart), and the new chart's session is no longer marked as a duet. ✅
+- Lyrics under the notes in two rows: not wanted.
 - Export writes what the editor has (see Decisions).
 
 ### Tools on the active singer ✅

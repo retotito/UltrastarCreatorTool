@@ -3988,6 +3988,7 @@ def generate_lyrics_only(session_id: str):
         if txt_filename not in session["generated_files"]:
             session["generated_files"].append(txt_filename)
 
+        session.pop("duet", None)   # a new chart is a solo chart
         session["result"] = {
             "txt_file": txt_filename,
             "bpm": bpm,
@@ -4223,6 +4224,7 @@ def generate_ultrastar_files(session_id: str):
 
         _preserved_cleanup_segments = _old_result.get("cleanup_segments", [])
         _preserved_cleaned_vocal_path = _old_result.get("cleaned_vocal_path")
+        session.pop("duet", None)   # a new chart is a solo chart
         session["result"] = {
             "txt_file": txt_filename,
             "midi_file": midi_filename,
@@ -4458,6 +4460,7 @@ async def generate_empty(session_id: str):
         "cleanup_segments": [],
         "cleaned_vocal_path": None,
     }
+    session.pop("duet", None)   # a new chart is a solo chart
     session["result"] = result
     session["status"] = "generated"
     save_session(session_id)
