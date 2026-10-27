@@ -87,6 +87,16 @@ export function trackMarker(line) {
   return { 1: 1, 2: 2, 3: BOTH }[m[1]] ?? null;
 }
 
+/** The chart's headers as {KEY: value}, keys upper-case. */
+export function chartHeaders(content) {
+  const headers = {};
+  for (const line of content.split(/\r?\n|\r/)) {
+    const m = line.match(/^#([\w]+):(.*)$/);
+    if (m) headers[m[1].toUpperCase()] = m[2].trim();
+  }
+  return headers;
+}
+
 export function isDuet(content) {
   return content.split(/\r?\n|\r/).some(line => trackMarker(line) !== null);
 }

@@ -53,7 +53,11 @@ once golden-rap `G` notes are left aside (now read too, since the golden rap typ
   tests; the text popup gets its text from it (or a JS twin with the same tests).
 - The alignment output format doesn't change: the singer belongs to the chart and the editor's notes.
 
-### 2. Import and the session list
+### 2. Import and the session list ✅
+
+Done. On import the names are also written as `#P1`/`#P2` into the chart, since `#VIDEO` is rewritten with the
+asset headers; every save keeps `session["duet"]` up to date (removed when the chart isn't a duet).
+
 
 - Importing a .txt with `P1`/`P2` marks the session as a duet (`duet: {p1, p2}` in the session). The import screen
   shows "Duet · name & name"; names from `#P1`/`#P2`, else `#DUETSINGERP1`/`P2`, else USDB's `p1=`/`p2=` in

@@ -845,6 +845,7 @@ async def list_all_sessions():
             "status": "generated" if has_result else s.get("status", "unknown"),
             "created_at": s.get("created_at", 0),
             "has_result": has_result,
+            "duet": s.get("duet"),   # the singers' names, or None
         })
     # Sort newest first
     result.sort(key=lambda x: x["created_at"], reverse=True)
@@ -1534,9 +1535,13 @@ async def import_ultrastar(
     except Exception:
         audio_duration = 0.0
 
-    # Build syllable_timings from parsed notes (convert beats to seconds)
+    # Build syllable_timings from parsed notes (convert beats to seconds). A duet's notes sung by both are in both
+    # tracks: once here.
     syllable_timings = []
+    first_track = {(n["start_beat"], n["duration"], n["pitch"], n["syllable"]) for n in parsed["notes"] if n.get("singer") == 1}
     for note in parsed["notes"]:
+        if note.get("singer") == 2 and (note["start_beat"], note["duration"], note["pitch"], note["syllable"]) in first_track:
+            continue
         start_sec = gap_ms / 1000.0 + note["start_beat"] * 15.0 / bpm
         end_sec = gap_ms / 1000.0 + (note["start_beat"] + note["duration"]) * 15.0 / bpm
         syllable_timings.append({
@@ -1548,6 +1553,12 @@ async def import_ultrastar(
             "method": "imported",
             "is_rap": note.get("is_rap", False),
         })
+
+    # A duet's singer names as #P1/#P2 in the chart (they may only be in old headers or USDB's #VIDEO, which the
+    # asset headers rewrite): the editor and every save read them from there
+    if parsed["duet"]:
+        txt_content = _set_header(txt_content, "P1", parsed["duet"]["p1"])
+        txt_content = _set_header(txt_content, "P2", parsed["duet"]["p2"])
 
     # Save the .txt to downloads
     timestamp = int(time.time())
@@ -1572,6 +1583,7 @@ async def import_ultrastar(
         "status": "generated",
         "created_at": time.time(),
         "imported": True,
+        **({"duet": parsed["duet"]} if parsed["duet"] else {}),   # the singers' names, {"p1", "p2"}
         "result": {
             "txt_file": txt_filename,
             "midi_file": None,
@@ -1620,6 +1632,7 @@ async def import_ultrastar(
         "has_result": True,
         "has_vocals": has_vocals,
         "has_original": has_original,
+        "duet": parsed["duet"],
         "result": session["result"],
     }
 
@@ -4599,7 +4612,11 @@ async def save_editor_state(session_id: str, request: Request):
     if duet:
         # Singer names as #P1/#P2 and #DUETSINGERP1/P2; no medley (off for duets in UltraStar Deluxe)
         standard_keys |= DUET_HEADERS | {'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT'}
-        lines += header_lines(singer_names({h.get('key', '').upper(): h.get('value', '') for h in extra_headers}))
+        names = singer_names({h.get('key', '').upper(): h.get('value', '') for h in extra_headers})
+        lines += header_lines(names)
+        session["duet"] = names
+    else:
+        session.pop("duet", None)
     for header in extra_headers:
         key = header.get('key', '')
         value = header.get('value', '')

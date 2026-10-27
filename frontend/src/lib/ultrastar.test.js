@@ -1,7 +1,7 @@
 // Duet charts in the editor's reader and writer; the same cases as backend/tests/unit/test_duet.py.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseUltrastar, notesToUltrastar, singerNames, trackMarker, isDuet, duetHeaderLines } from './ultrastar.js';
+import { parseUltrastar, notesToUltrastar, singerNames, trackMarker, isDuet, duetHeaderLines, chartHeaders } from './ultrastar.js';
 
 const CHART = `#TITLE:Song
 #BPM:300
@@ -81,6 +81,7 @@ test('solo charts are unchanged', () => {
 });
 
 test('singer names and headers', () => {
+  assert.deepEqual(singerNames(chartHeaders(CHART)), { p1: 'Anna', p2: 'Ben' });
   assert.deepEqual(singerNames({ DUETSINGERP1: 'A', DUETSINGERP2: 'B' }), { p1: 'A', p2: 'B' });
   assert.deepEqual(singerNames({ VIDEO: 'v=x,p1=Whitney Houston,p2=Mariah Carey' }), { p1: 'Whitney Houston', p2: 'Mariah Carey' });
   assert.deepEqual(singerNames({ P1: 'Anna' }), { p1: 'Anna', p2: 'Singer 2' });

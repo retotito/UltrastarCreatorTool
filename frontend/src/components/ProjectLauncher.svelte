@@ -4,6 +4,7 @@
   import { checkHealth, listSessions, deleteSession, importUltrastar, resumeSession, getAudioUrl } from '../services/api.js';
   import { showConfirm } from '../stores/dialogStore.js';
   import StorageManager from './StorageManager.svelte';
+  import { isDuet, singerNames, chartHeaders } from '../lib/ultrastar.js';
 
   let showStorage = false;
   let sessions = [];
@@ -16,6 +17,7 @@
 
   // 3 file slots for import
   let importTxtFile = null;
+  let importDuet = null;   // the singers' names when the picked .txt is a duet
   let importMixFile = null;
   let importVocalFile = null;
   let txtError = '';
@@ -124,6 +126,7 @@
     showImportPanel = !showImportPanel;
     if (!showImportPanel) {
       importTxtFile = null;
+      importDuet = null;
       importMixFile = null;
       importVocalFile = null;
       importError = '';
@@ -138,15 +141,25 @@
     input.onchange = (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      if (slot === 'txt') { importTxtFile = file; txtError = ''; }
+      if (slot === 'txt') { importTxtFile = file; txtError = ''; detectDuet(file); }
       else if (slot === 'mix') importMixFile = file;
       else if (slot === 'vocal') importVocalFile = file;
     };
     input.click();
   }
 
+  async function detectDuet(file) {
+    importDuet = null;
+    try {
+      const text = await file.text();
+      if (importTxtFile === file && isDuet(text)) importDuet = singerNames(chartHeaders(text));
+    } catch { /* unreadable here: the import says what's wrong */ }
+  }
+
+  const duetLabel = names => `Duet · ${names.p1} & ${names.p2}`;
+
   function clearSlot(slot) {
-    if (slot === 'txt') { importTxtFile = null; txtError = ''; }
+    if (slot === 'txt') { importTxtFile = null; importDuet = null; txtError = ''; }
     else if (slot === 'mix') importMixFile = null;
     else if (slot === 'vocal') importVocalFile = null;
   }
@@ -273,6 +286,9 @@
               <span class="slot-filename">{importTxtFile.name}</span>
               <button class="slot-clear" on:click={() => clearSlot('txt')}>✕</button>
             </div>
+            {#if importDuet}
+              <span class="duet-badge" title="Two singers (P1/P2)">🎤 {duetLabel(importDuet)}</span>
+            {/if}
           {:else}
             <button class="slot-pick" on:click={() => pickFile('txt')}>Select .txt file</button>
           {/if}
@@ -342,7 +358,9 @@
         {#each sessions as session}
           <button class="session-row" on:click={() => openSession(session)}>
             <div class="session-info">
-              <span class="session-title">{session.artist || 'Unknown'} — {session.title || 'Untitled'}</span>
+              <span class="session-title">{session.artist || 'Unknown'} — {session.title || 'Untitled'}
+                {#if session.duet}<span class="duet-badge" title={duetLabel(session.duet)}>🎤 Duet</span>{/if}
+              </span>
               <span class="session-meta">
                 <span class="session-status" style="color: {getStatusColor(session.status)}">{getStatusLabel(session.status)}</span>
                 <span class="session-time">{formatTime(session.created_at)}</span>
@@ -728,6 +746,23 @@
 
   .session-status {
     font-weight: 600;
+  }
+
+  .duet-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border: 1px solid #7e57c2;
+    border-radius: 8px;
+    color: #b39ddb;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .slot-file + .duet-badge {
+    margin: 4px 0 0;
   }
 
   .session-time {
