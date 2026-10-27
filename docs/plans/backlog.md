@@ -14,6 +14,8 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 
 ## Editor
 
+- Check that **mic sing-along** and **vocal trace** (pitch hits against the notes) are still accurate; they are
+  months old.
 - **Set VIDEOGAP button**, like the Set END button: pick the position in the editor and write `#VIDEOGAP`. No video
   in the editor.
 - **`#START`** (where the game starts playing, to skip an intro): a Set START mode like Set END. Not decided yet
@@ -36,11 +38,6 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 - Try Tune Studio's syllable-start head (`boundary.onnx`, mirrored in Retotito/ultrastar-models) for syllable starts.
 - Later, trained locally on the user's own computer: our own timing head, published in a separate repository
   (not in the mirror).
-
-## Editor
-
-- Check that **mic sing-along** and **vocal trace** (pitch hits against the notes) are still accurate; they are
-  months old.
 
 ## Later
 
