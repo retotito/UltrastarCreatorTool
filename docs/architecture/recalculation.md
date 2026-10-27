@@ -1,6 +1,6 @@
 # BPM / GAP Change — Recalculation Rules
 
-> **Status:** Current · **Last updated:** 2026-06-19
+> **Status:** Current · **Last updated:** 2026-10-27
 
 ---
 
@@ -118,6 +118,11 @@ Called after every BPM or GAP change.
 
 Steps 2 and 3 only run when `rawTimings` is absent (txt-loaded songs).
 When `rawTimings` is present, `requantizeFromMs` handles notes/breaks instead.
+
+`requantizeFromMs` rebuilds the notes from `rawTimings` only when there is one note per timing; otherwise it scales
+the notes and breaks it has (all their fields kept). A **duet always scales**: a rebuild would lose each note's
+`singer` and its overlap guard would push apart notes the two singers sing at the same time. A rebuild keeps each
+note's syllable, pitch and type (rap, golden, freestyle).
 
 ---
 

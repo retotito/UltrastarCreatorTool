@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   makeDuet, unmakeDuet, moveTo, link, unlink, only, notesOf, byActiveSinger, withNames, namesFromHeaders,
+  newBreakSinger, setBreakSinger,
 } from './duet.js';
 
 const note = (id, startBeat, singer, duration = 4) => ({ id, startBeat, duration, pitch: 1, syllable: `n${id}`, singer });
@@ -49,4 +50,18 @@ test('names in the headers', () => {
   const headers = withNames([{ key: 'COVER', value: 'c.jpg' }, { key: 'DUETSINGERP1', value: 'old' }], { p1: 'Anna', p2: 'Ben' });
   assert.deepEqual(headers.map(h => h.key), ['COVER', 'P1', 'P2']);
   assert.deepEqual(namesFromHeaders(headers), { p1: 'Anna', p2: 'Ben' });
+});
+
+test('a new break is shared, unless it falls inside the other singer\'s note', () => {
+  const notes = [note(1, 0, 1, 10), note(2, 4, 2, 4)];
+  assert.equal(newBreakSinger(notes, 12, 1), 'both');
+  assert.equal(newBreakSinger(notes, 6, 1), 1);   // inside singer 2's note 4..8
+  assert.equal(newBreakSinger(notes, 6, 2), 2);   // inside singer 1's note 0..10
+});
+
+test('a break for one singer or both, refused inside a note of that singer', () => {
+  const notes = [note(1, 0, 1, 10), note(2, 12, 2, 4), { id: 3, type: 'break', startBeat: 14, singer: 'both' }];
+  assert.deepEqual(singers(setBreakSinger(notes, 3, 1).notes), ['1:1', '2:2', '3:1']);
+  assert.equal(setBreakSinger(notes, 3, 2).refused, 'inside');
+  assert.equal(setBreakSinger(notes, 3, 'both').refused, 'inside');
 });

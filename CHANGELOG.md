@@ -24,6 +24,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   of a singer's notes. Refused where the singer already has a note (no overlapping notes within a singer)
 - Only the singer you edit ("Editing:" chips, **D** switches) can be clicked, selected and changed; the other
   singer's notes are only shown. Notes sung by both change for both
+- Line breaks in a duet are shared, unless a singer needs their own: a new break inside the other singer's note is
+  only for the singer you edit; right-click a break for **For both singers** / **Only for …**. Shared breaks red,
+  a singer's own in their colour
+- A BPM or GAP change keeps golden and freestyle notes (they became normal notes when the chart was rebuilt from
+  its timings), and in a duet keeps each note's singer
 
 ### 🎹 Editor after regenerating
 - After generating, the editor is set up for checking the result: MIDI on, playing the vocals the chart was made

@@ -1618,6 +1618,16 @@
     closeContextMenu();
   }
 
+  function setBreakFor(id, singer) {
+    const result = duet.setBreakSinger(notes, id, singer);
+    if (result.refused) {
+      showToast('Not there: the break would cut through a note of that singer.', 4000);
+      return;
+    }
+    applyDuetChange(result.notes);
+    closeContextMenu();
+  }
+
   function selectSingerNotes(singer) {
     selectedNotes = duet.notesOf(notes, singer);
     selectedNote = selectedNotes.size === 1 ? [...selectedNotes][0] : null;
@@ -1777,7 +1787,8 @@
     // from rawTimings (it would discard user-added notes and misalign syllables).
     // Instead, directly scale all beat positions proportionally.
     // This applies to both BPM changes AND GAP-only changes when note counts differ.
-    if (currentNotes.length !== rawTimings.length) {
+    // A duet always scales: rebuilding would lose the singers and push overlapping singers' notes apart.
+    if (currentNotes.length !== rawTimings.length || duet.isDuetChart(notes)) {
       const prevBpm = Math.max(1, Number(previousTimingRef?.bpm) || bpm);
       if (bpmActuallyChanged) {
         // BPM change: scale beats proportionally
@@ -1814,11 +1825,12 @@
 
     // Preserve user edits (syllable, pitch) by capturing current note values indexed by rawTimings position.
     // Notes and rawTimings are in the same order (one note per timing entry), so we match by index.
-    const userEdits = {}; // index in rawTimings → { syllable, pitch, isRap }
+    const userEdits = {}; // index in rawTimings → { syllable, pitch, isRap, isGolden, isFreestyle }
     let noteIdx = 0;
     for (let i = 0; i < rawTimings.length; i++) {
       if (noteIdx < currentNotes.length) {
-        userEdits[i] = { syllable: currentNotes[noteIdx].syllable, pitch: currentNotes[noteIdx].pitch, isRap: currentNotes[noteIdx].isRap };
+        const cn = currentNotes[noteIdx];
+        userEdits[i] = { syllable: cn.syllable, pitch: cn.pitch, isRap: cn.isRap, isGolden: cn.isGolden, isFreestyle: cn.isFreestyle };
         noteIdx++;
       }
     }
@@ -1900,6 +1912,8 @@
         pitch: editedPitch,
         syllable: editedSyllable,
         isRap: editedIsRap,
+        isGolden: userEdits[i]?.isGolden || false,
+        isFreestyle: userEdits[i]?.isFreestyle || false,
         confidence: timing.confidence ?? 1.0,
         original: { startBeat, duration, pitch: editedPitch },
       });
@@ -1939,10 +1953,22 @@
 
   // Track unsaved changes on note edits
   function markUnsaved() {
-    // In a duet, a note or break made by a tool that doesn't know about singers goes to the active singer (a break
-    // to both)
+    // In a duet, a note made by a tool that doesn't know about singers goes to the active singer; a new break is
+    // shared, unless it falls inside the other singer's note (then it is the active singer's own)
     if (duet.isDuetChart(notes)) {
-      for (const n of notes) if (n.singer == null) n.singer = n.type === 'break' ? duet.BOTH : activeSinger;
+      let ownBreak = false;
+      for (const n of notes) {
+        if (n.singer != null) continue;
+        if (n.type === 'break') {
+          n.singer = duet.newBreakSinger(notes, n.startBeat, activeSinger);
+          ownBreak ||= n.singer !== duet.BOTH;
+        } else {
+          n.singer = activeSinger;
+        }
+      }
+      if (ownBreak) {
+        showToast(`Line break only for ${singerName(activeSinger)}: ${singerName(duet.other(activeSinger))} is singing a note there.`, 4000);
+      }
     }
     hasUnsavedChanges = true;
     editorState.update(s => ({ ...s, hasChanges: true }));
@@ -2869,7 +2895,9 @@
         // Draw break line
         const x = beatToX(note.startBeat);
         const isBreakSelected = selectedNote === note.id;
-        ctx.strokeStyle = isBreakSelected ? '#ff3b30' : '#ef5350';
+        // Duet: a shared break red, a singer's own break in their colour
+        const breakColor = isDuet && note.singer !== duet.BOTH && note.singer != null ? duet.SINGER_COLORS[note.singer] : '#ef5350';
+        ctx.strokeStyle = isBreakSelected ? '#ff3b30' : breakColor;
         ctx.lineWidth = isBreakSelected ? 4 : 3;
         ctx.setLineDash(isBreakSelected ? [6, 4] : [5, 3]);
         ctx.beginPath();
@@ -2881,7 +2909,7 @@
         // Draw drag handle (diamond shape at center)
         const handleY = (wt + pianoH) / 2;
         const hs = isBreakSelected ? 8 : 6;
-        ctx.fillStyle = isBreakSelected ? '#ff3b30' : '#ef5350';
+        ctx.fillStyle = isBreakSelected ? '#ff3b30' : breakColor;
         ctx.beginPath();
         ctx.moveTo(x, handleY - hs);
         ctx.lineTo(x + hs, handleY);
@@ -10530,8 +10558,22 @@
           <!-- Break context menu -->
           <div class="ctx-header">
             <span class="ctx-break-label">🔴 Break @ beat {ctxNote.startBeat}</span>
+            {#if isDuet}
+              <span class="ctx-break-label">{ctxNote.singer === duet.BOTH ? 'Shared by both singers' : `Only ${singerName(ctxNote.singer)}`}</span>
+            {/if}
           </div>
           <div class="ctx-divider"></div>
+          {#if isDuet}
+            {#if ctxNote.singer !== duet.BOTH}
+              <button class="ctx-item" on:click={() => setBreakFor(ctxNote.id, duet.BOTH)}>For both singers</button>
+            {/if}
+            {#each [1, 2] as s}
+              {#if ctxNote.singer !== s}
+                <button class="ctx-item" on:click={() => setBreakFor(ctxNote.id, s)}>Only for {singerName(s)}</button>
+              {/if}
+            {/each}
+            <div class="ctx-divider"></div>
+          {/if}
           <button class="ctx-item" on:click={() => nudgeBreak(ctxNote.id, -1)}>
             ← Nudge Left <span class="ctx-shortcut">-1</span>
           </button>

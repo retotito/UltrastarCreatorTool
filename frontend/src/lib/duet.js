@@ -89,6 +89,30 @@ export function only(notes, ids, singer) {
   return { notes: apply(notes, ids, n => (n.singer === BOTH ? { ...n, singer } : n)) };
 }
 
+// ── Line breaks: shared ('both') unless a singer needs their own ──
+// Each singer's lyrics line switches at their breaks; a shared break is written only into the tracks where it lies
+// between that singer's notes. A break inside one of a singer's notes would cut their line mid-word.
+
+/** Whether a break at `beat` lies inside a note that `singer` sings. */
+export function insideNoteOf(notes, beat, singer) {
+  return notes.some(n => n.type !== 'break' && sungBy(n, singer) && n.startBeat < beat && beat < n.startBeat + n.duration);
+}
+
+/** The singer for a new break at `beat`: shared, unless it falls inside the other singer's note, then the active
+ * singer's own. */
+export function newBreakSinger(notes, beat, active) {
+  return insideNoteOf(notes, beat, other(active)) ? active : BOTH;
+}
+
+/** A break for `singer` (1, 2 or 'both'). Refused when it would fall inside a note of a singer it would be for. */
+export function setBreakSinger(notes, id, singer) {
+  const brk = notes.find(n => n.id === id && n.type === 'break');
+  if (!brk) return { notes };
+  const forWhom = singer === BOTH ? [1, 2] : [singer];
+  if (forWhom.some(s => insideNoteOf(notes, brk.startBeat, s))) return { notes, refused: 'inside' };
+  return { notes: notes.map(n => (n === brk ? { ...n, singer } : n)) };
+}
+
 /** Ids of the notes `singer` sings. */
 export function notesOf(notes, singer) {
   return new Set(notes.filter(n => n.type !== 'break' && sungBy(n, singer)).map(n => n.id));

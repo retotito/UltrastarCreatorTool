@@ -75,6 +75,12 @@ switches the singer; switching drops the other singer's notes from the selection
 singer. Still open: two lyric rows, MIDI per singer, the tools (they act on the selection, so already on the
 active singer).
 
+**Line breaks**: each singer's lyrics line switches at their own breaks (in USDB only 12 of 906 duets have the
+same breaks for both; 16 % of singer 2's own breaks fall inside a note of singer 1). Breaks are shared (`'both'`)
+unless a singer needs their own: a new break inside the other singer's note becomes the active singer's (with a
+message); the break's right-click menu has *For both singers* / *Only for [singer]* (refused where it would cut a
+note of that singer). Shared breaks are red, a singer's own in their colour.
+
 
 - **Duet button** in the second toolbar opens a modal:
   - *Set as duet*: names for singer 1 and 2. All existing notes and breaks become `'both'`.
