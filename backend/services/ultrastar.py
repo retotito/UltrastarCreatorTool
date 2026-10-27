@@ -122,6 +122,26 @@ def language_name(language: str) -> str:
     return _ISO_TO_LANGUAGE_NAME.get(language.strip().lower(), language.strip())
 
 
+# UltraStar's note pitch is relative (0 = C4) in most charts (USDB); this app's charts and its editor use MIDI numbers
+# (60 = C4), so the editor's pitch line, MIDI tones and pitch tools match them. The games mostly score the pitch
+# class, so both play the same.
+_NOTE_LINE = re.compile(r"^(\s*(?:[:*FRG]|F:|R:)\s+-?\d+\s+\d+\s+)(-?\d+)(.*)$")
+MIDI_C4 = 60
+
+
+def to_midi_pitches(content: str) -> tuple:
+    """A chart with relative pitches (median below 30, a C4 of 0) moved up to MIDI numbers (+60), other lines and
+    the text untouched. Returns (content, shifted)."""
+    pitches = [int(m.group(2)) for m in map(_NOTE_LINE.match, content.splitlines()) if m]
+    if not pitches or sorted(pitches)[len(pitches) // 2] >= 30:
+        return content, False
+    lines = []
+    for line in content.split("\n"):
+        m = _NOTE_LINE.match(line)
+        lines.append(f"{m.group(1)}{int(m.group(2)) + MIDI_C4}{m.group(3)}" if m else line)
+    return "\n".join(lines), True
+
+
 def language_header(language: str, language2: Optional[str] = None) -> str:
     """The #LANGUAGE value: one or two English language names, comma-separated ("English, German"), as the
     UltraStar format allows. English when nothing is set."""

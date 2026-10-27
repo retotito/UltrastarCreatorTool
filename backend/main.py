@@ -1527,8 +1527,12 @@ async def import_ultrastar(
     if not audio_file and not vocal_file and not downloaded_mix:
         raise HTTPException(status_code=400, detail="At least one audio file is required (mix or vocals)")
 
-    # Read .txt content
+    # Read .txt content; relative pitches (USDB: C4 = 0) as MIDI numbers like the app's own charts (C4 = 60)
+    from services.ultrastar import to_midi_pitches
     txt_content = (await txt_file.read()).decode("utf-8", errors="replace")
+    txt_content, pitches_shifted = to_midi_pitches(txt_content)
+    if pitches_shifted:
+        log_step("IMPORT", "Relative pitches (C4 = 0) moved up 5 octaves to MIDI numbers (C4 = 60)")
     parsed = parse_ultrastar_file(txt_content)
 
     if not parsed["notes"]:

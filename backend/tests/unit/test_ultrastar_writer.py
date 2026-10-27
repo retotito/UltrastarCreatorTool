@@ -116,3 +116,18 @@ def test_unvoiced_first_syllables_take_the_next_pitch(make_pitch_data):
     pitch = make_pitch_data([(2.0, 2.5, 67)])
     content = generate_ultrastar([syl("ah ", 1.0, 1.5), syl("la ", 2.0, 2.5)], pitch, 240, 1000)
     assert [ln.split(" ")[3] for ln in note_lines(content)[:2]] == ["67", "67"]
+
+
+def test_relative_pitches_become_midi_numbers_on_import():
+    from services.ultrastar import to_midi_pitches
+    chart = "#TITLE:x\n#BPM:300\nP1\n: 0 4 -3 se\n* 4 4 7  In \nR 8 2 0 rap\n- 12\nP2\nG 14 2 12 gold\nE"
+    shifted, changed = to_midi_pitches(chart)
+    assert changed
+    assert shifted.splitlines() == ["#TITLE:x", "#BPM:300", "P1", ": 0 4 57 se", "* 4 4 67  In ", "R 8 2 60 rap",
+                                    "- 12", "P2", "G 14 2 72 gold", "E"]
+
+
+def test_charts_already_in_midi_numbers_stay():
+    from services.ultrastar import to_midi_pitches
+    chart = ": 0 4 57 a\n: 4 4 64 b\n: 8 4 70 c\nE"
+    assert to_midi_pitches(chart) == (chart, False)

@@ -1,6 +1,6 @@
 # Ultrastar Grid, Beats & GAP — Domain Knowledge
 
-> **Status:** Current · **Last updated:** 2026-10-24
+> **Status:** Current · **Last updated:** 2026-10-27
 
 ## Ultrastar Beat System
 
@@ -12,6 +12,13 @@
 - The editor derives beats per musical quarter from the BPM: `BEATS_PER_QUARTER = 2^round(log2(BPM / 30))`
   (356 → 16, 712 → 32), so metronome and grid lines follow a doubled BPM.
 - A musical measure (4/4 time) = `BEATS_PER_QUARTER * 4` Ultrastar beats
+
+## Note Pitches
+
+The UltraStar format's pitch is relative in most charts: **0 = C4** (USDB). This app writes and edits **MIDI
+numbers: 60 = C4** (its pitch line, MIDI tones and pitch tools work in MIDI). The games mostly score the pitch class,
+so both play the same. On import, a chart whose median pitch is below 30 is moved up 5 octaves (+60,
+`services/ultrastar.py` `to_midi_pitches`), so it matches the vocals at once.
 
 ## Key Formulas
 
