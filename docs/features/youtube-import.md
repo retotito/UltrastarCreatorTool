@@ -15,7 +15,7 @@ the card removes the file to upload or download another one.
 
 The start screen's **Import** panel takes the full mix from YouTube too: the Full Mix card has a link field, filled in
 from the chosen .txt's video (`#VIDEO:v=<id>,…` as USDB charts have it, or a `#YOUTUBE` link), and **⬇ Download**
-gets the audio (same stream, progress and Cancel as above, into a new session); the card then shows the file, ✕
+gets the audio (the same busy window, `TransferModal.svelte`, and stream as above, into a new session); the card then shows the file, ✕
 removes it (and that session). **Import Song** sends that `session_id` to `/api/import` instead of an audio file: the
 chart is imported into the session, keeping `youtube_url` (so `#YOUTUBE`) and the thumbnail. Picking a mix file
 instead, or closing the panel, deletes the downloaded session.

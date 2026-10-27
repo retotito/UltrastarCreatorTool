@@ -4,6 +4,7 @@
   import { checkHealth, listSessions, deleteSession, importUltrastar, resumeSession, getAudioUrl, inspectYouTube, streamYouTubeImport } from '../services/api.js';
   import { showConfirm } from '../stores/dialogStore.js';
   import StorageManager from './StorageManager.svelte';
+  import TransferModal from './TransferModal.svelte';
   import { isDuet, singerNames, chartHeaders } from '../lib/ultrastar.js';
 
   let showStorage = false;
@@ -24,6 +25,7 @@
   let importProgress = '';  // the YouTube download's progress
   let cancelImport = null;
   let importDownloading = false;
+  let importPercent = null;
   let importDownloaded = null; // {sessionId, filename}: the downloaded mix, in a session the import then uses
   let importMixFile = null;
   let importVocalFile = null;
@@ -188,6 +190,7 @@
     } finally {
       importDownloading = false;
       importProgress = '';
+      importPercent = null;
       cancelImport = null;
     }
   }
@@ -210,7 +213,7 @@
       const close = streamYouTubeImport(video.video_id, '', (event) => {
         if (event.phase === 'error') reject(new Error(event.message));
         else if (event.phase === 'done') resolve(event);
-        else importProgress = event.message + (event.percent != null ? ` ${event.percent} %` : '');
+        else { importProgress = event.message; importPercent = event.percent ?? null; }
       });
       stop = () => { close(); reject(new DOMException('Cancelled', 'AbortError')); };
       cancelImport = () => stop();
@@ -424,11 +427,9 @@
         <div class="import-error">{importError}</div>
       {/if}
 
-      {#if importProgress}
-        <div class="import-progress">
-          <span>⏳ {importProgress}</span>
-          {#if cancelImport}<button class="slot-pick" on:click={() => cancelImport?.()}>Cancel</button>{/if}
-        </div>
+      {#if importDownloading}
+        <TransferModal title="Downloading from YouTube" status={importProgress} percent={importPercent}
+          on:cancel={() => cancelImport?.()} />
       {/if}
       <button class="btn-import" on:click={handleImport} disabled={!canImport || importing}>
         {importing ? '⏳ Importing...' : '📥 Import Song'}
@@ -731,15 +732,6 @@
     margin-top: 0.2rem;
     color: #66bb6a;
     font-size: 0.7rem;
-  }
-  .import-progress {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin: 0.5rem 0;
-    color: #8b949e;
-    font-size: 0.85rem;
   }
 
   .slot-pick {

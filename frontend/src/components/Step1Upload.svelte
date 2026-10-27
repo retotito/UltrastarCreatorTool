@@ -1,4 +1,5 @@
 <script>
+  import TransferModal from './TransferModal.svelte';
   import { sessionId, uploadData, currentStep, isProcessing, processingStatus, errorMessage, lyricsData, generationResult, generationLog, generationShowPreview } from '../stores/appStore.js';
   import SongNameModal from './SongNameModal.svelte';
   import { languageHeader } from '../lib/languages';
@@ -316,19 +317,7 @@
   <p class="subtitle">Upload your audio files below. Full mix is optional — vocals are required to proceed.</p>
 
   {#if transfer}
-    <div class="yt-backdrop">
-      <div class="yt-modal" role="alertdialog" aria-modal="true" aria-labelledby="transfer-title" aria-busy="true">
-        <span class="e-spinner yt-spinner" aria-hidden="true"></span>
-        <h2 id="transfer-title">{transfer.title}</h2>
-        <p class="transfer-status">{transfer.status}{transfer.percent !== null ? ` ${transfer.percent}%` : ''}</p>
-        {#if transfer.percent !== null}
-          <progress max="100" value={transfer.percent}></progress>
-        {:else}
-          <progress></progress> <!-- no percentage yet: an indeterminate bar -->
-        {/if}
-        <button class="btn yt-cancel" on:click={transfer.cancel}>Cancel</button>
-      </div>
-    </div>
+    <TransferModal title={transfer.title} status={transfer.status} percent={transfer.percent} on:cancel={transfer.cancel} />
   {/if}
 
   {#if $sessionId && ($uploadData.hasOriginal || $uploadData.hasVocals) && !songModalOpen}
@@ -625,20 +614,6 @@
   .youtube-row input:focus { outline: none; border-color: #1976d2; }
   .youtube-row .btn-browse { margin-top: 0; }
   .youtube-note { color: #555; font-size: 0.72rem; margin: 0; }
-  .transfer-status { color: #4fc3f7; font-size: 0.85rem; margin: 0; text-align: center; min-height: 1.2em; }
-  .yt-backdrop {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); z-index: 1000; overscroll-behavior: contain;
-    display: flex; align-items: center; justify-content: center; padding: 1rem;
-  }
-  .yt-modal {
-    background: #1a1a2a; border: 1px solid #333; border-radius: 10px; width: min(420px, 100%); padding: 1.5rem;
-    display: flex; flex-direction: column; align-items: center; gap: 0.75rem; color: #e0e0e0;
-  }
-  .yt-modal h2 { margin: 0; font-size: 1.1rem; }
-  .yt-modal progress { width: 100%; height: 6px; }
-  .yt-spinner { width: 32px; height: 32px; border-top-color: #4fc3f7; }
-  .yt-cancel { background: #333; color: #e0e0e0; padding: 0.5rem 1.2rem; }
-  .yt-cancel:hover { background: #444; }
 
   /* ── File present state ── */
   .file-info { display: flex; align-items: center; }
