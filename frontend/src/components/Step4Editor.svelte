@@ -5773,6 +5773,25 @@
     }, 0);
   }
 
+  // The five UltraStar note types, as in the right-click menu (symbol buttons, the name as tooltip)
+  const NOTE_TYPES = [
+    { id: 'normal', symbol: ':', name: 'Normal', title: 'Normal' },
+    { id: 'golden', symbol: '★', name: 'Golden', title: 'Golden (bonus points)' },
+    { id: 'rap', symbol: 'R', name: 'Rap', title: 'Rap (rhythm only, no pitch)' },
+    { id: 'goldenrap', symbol: 'G', name: 'Golden rap', title: 'Golden rap (rap with the golden bonus)' },
+    { id: 'freestyle', symbol: 'F', name: 'Freestyle', title: 'Freestyle (not scored)' },
+  ];
+  function noteTypeOf(note) {
+    if (note.isRap && note.isGolden) return 'goldenrap';
+    if (note.isRap) return 'rap';
+    if (note.isGolden) return 'golden';
+    if (note.isFreestyle) return 'freestyle';
+    return 'normal';
+  }
+  function noteTypeName(note) {
+    return NOTE_TYPES.find(t => t.id === noteTypeOf(note)).name;
+  }
+
   function setNoteType(noteId, type) {
     // Apply to all selected notes if multi-select, otherwise just the one
     const ids = (selectedNotes.size > 1 && selectedNotes.has(noteId ?? selectedNote))
@@ -10427,28 +10446,14 @@
           <div class="ctx-divider"></div>
           {/if}
           <div class="ctx-type-group">
-            <span class="ctx-type-label">Type:</span>
-            <button
-              class="ctx-type-btn" class:active={!ctxNote.isGolden && !ctxNote.isRap && !ctxNote.isFreestyle}
-              on:click={() => setNoteType(ctxNote.id, 'normal')}
-            >Normal</button>
-            <button
-              class="ctx-type-btn golden" class:active={ctxNote.isGolden && !ctxNote.isRap}
-              on:click={() => setNoteType(ctxNote.id, 'golden')}
-            >★ Golden</button>
-            <button
-              class="ctx-type-btn rap" class:active={ctxNote.isRap && !ctxNote.isGolden}
-              on:click={() => setNoteType(ctxNote.id, 'rap')}
-            >R Rap</button>
-            <button
-              class="ctx-type-btn goldenrap" class:active={ctxNote.isRap && ctxNote.isGolden}
-              on:click={() => setNoteType(ctxNote.id, 'goldenrap')}
-              title="Rap note with the golden bonus"
-            >G Golden Rap</button>
-            <button
-              class="ctx-type-btn freestyle" class:active={ctxNote.isFreestyle}
-              on:click={() => setNoteType(ctxNote.id, 'freestyle')}
-            >F Freestyle</button>
+            <span class="ctx-type-label">Type: <span class="ctx-type-name">{noteTypeName(ctxNote)}</span></span>
+            {#each NOTE_TYPES as t}
+              <button
+                class="ctx-type-btn {t.id}" class:active={noteTypeOf(ctxNote) === t.id}
+                on:click={() => setNoteType(ctxNote.id, t.id)}
+                title={t.title}
+              >{t.symbol}</button>
+            {/each}
           </div>
           <div class="ctx-divider"></div>
           <button class="ctx-item" on:click={clipboardCut}>
@@ -12425,8 +12430,6 @@
 
   .ctx-type-group {
     display: flex;
-    flex-wrap: wrap;   /* five note types: wrap instead of widening the menu */
-    max-width: 280px;
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
@@ -12462,11 +12465,17 @@
   .ctx-type-label {
     color: #888;
     font-size: 0.75rem;
-    margin-right: 4px;
+    margin-right: auto;
+    padding-right: 6px;
+  }
+
+  .ctx-type-name {
+    color: #ccc;
   }
 
   .ctx-type-btn {
-    padding: 3px 8px;
+    min-width: 24px;
+    padding: 3px 5px;
     border: 1px solid #444;
     border-radius: 4px;
     background: #222;
