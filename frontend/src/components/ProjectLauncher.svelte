@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { currentStep, sessionId, uploadData, lyricsData, generationResult, resetSession } from '../stores/appStore.js';
-  import { checkHealth, listSessions, deleteSession, importUltrastar, resumeSession, getAudioUrl } from '../services/api.js';
+  import { checkHealth, listSessions, deleteSession, importUltrastar, resumeSession, getAudioUrl, inspectYouTube, streamYouTubeImport } from '../services/api.js';
   import { showConfirm } from '../stores/dialogStore.js';
   import StorageManager from './StorageManager.svelte';
   import { isDuet, singerNames, chartHeaders } from '../lib/ultrastar.js';
@@ -18,6 +18,11 @@
   // 3 file slots for import
   let importTxtFile = null;
   let importDuet = null;   // the singers' names when the picked .txt is a duet
+  // The full mix from YouTube instead of a file: the link (filled in from the chart's #VIDEO v=… or #YOUTUBE)
+  let importYouTube = '';
+  let importYouTubeFromChart = false;
+  let importProgress = '';  // the YouTube download's progress while importing
+  let cancelImport = null;
   let importMixFile = null;
   let importVocalFile = null;
   let txtError = '';
@@ -127,6 +132,8 @@
     if (!showImportPanel) {
       importTxtFile = null;
       importDuet = null;
+      importYouTube = '';
+      importYouTubeFromChart = false;
       importMixFile = null;
       importVocalFile = null;
       importError = '';
@@ -152,19 +159,49 @@
     importDuet = null;
     try {
       const text = await file.text();
-      if (importTxtFile === file && isDuet(text)) importDuet = singerNames(chartHeaders(text));
+      if (importTxtFile !== file) return;
+      const headers = chartHeaders(text);
+      if (isDuet(text)) importDuet = singerNames(headers);
+      // The chart's video (USDB: "#VIDEO:v=<id>,co=…"; or a #YOUTUBE link) as the full mix's YouTube link
+      const video = (headers.VIDEO || '').split(',').find(p => p.startsWith('v='))?.slice(2) || headers.YOUTUBE || '';
+      if (video && (!importYouTube || importYouTubeFromChart)) {
+        importYouTube = video.length === 11 ? `https://www.youtube.com/watch?v=${video}` : video;
+        importYouTubeFromChart = true;
+      }
     } catch { /* unreadable here: the import says what's wrong */ }
+  }
+
+  /** The YouTube video's audio into a new session; resolves with the stream's "done" event. */
+  async function downloadImportMix(link) {
+    importProgress = 'Getting the video… (the first time this also downloads the YouTube tools, about a minute)';
+    let stopped = false;
+    let stop = () => { stopped = true; };
+    cancelImport = () => stop();
+    const video = await inspectYouTube(link);
+    if (stopped) throw new DOMException('Cancelled', 'AbortError');
+    return new Promise((resolve, reject) => {
+      const close = streamYouTubeImport(video.video_id, '', (event) => {
+        if (event.phase === 'error') reject(new Error(event.message));
+        else if (event.phase === 'done') resolve(event);
+        else importProgress = event.message + (event.percent != null ? ` ${event.percent} %` : '');
+      });
+      stop = () => { close(); reject(new DOMException('Cancelled', 'AbortError')); };
+      cancelImport = () => stop();
+    });
   }
 
   const duetLabel = names => `Duet · ${names.p1} & ${names.p2}`;
 
   function clearSlot(slot) {
-    if (slot === 'txt') { importTxtFile = null; importDuet = null; txtError = ''; }
+    if (slot === 'txt') {
+      importTxtFile = null; importDuet = null; txtError = '';
+      if (importYouTubeFromChart) { importYouTube = ''; importYouTubeFromChart = false; }
+    }
     else if (slot === 'mix') importMixFile = null;
     else if (slot === 'vocal') importVocalFile = null;
   }
 
-  $: canImport = importTxtFile && (importMixFile || importVocalFile);
+  $: canImport = importTxtFile && (importMixFile || importVocalFile || importYouTube.trim());
 
   async function handleImport() {
     if (!canImport) return;
@@ -172,7 +209,12 @@
     importing = true;
 
     try {
-      const data = await importUltrastar(importTxtFile, importMixFile, importVocalFile);
+      let downloadedSession = '';
+      if (!importMixFile && importYouTube.trim()) {
+        downloadedSession = (await downloadImportMix(importYouTube.trim())).session_id;
+        importProgress = 'Importing…';
+      }
+      const data = await importUltrastar(importTxtFile, importMixFile, importVocalFile, downloadedSession);
       sessionId.set(data.session_id);
       const hasVocals = !!data.has_vocals;
       const hasOriginal = !!data.has_original;
@@ -195,6 +237,7 @@
       generationResult.set(data.result || {});
       currentStep.set(4); // Go straight to editor
     } catch (e) {
+      if (e?.name === 'AbortError') return;   // Cancel: the backend removed what it downloaded
       const msg = e.message || 'Import failed';
       // Show .txt-related errors inline on the txt slot
       if (msg.includes('Ultrastar') || msg.includes('notes') || msg.includes('BPM') || msg.includes('headers') || msg.includes('int()') || msg.includes('500')) {
@@ -206,6 +249,8 @@
       }
     } finally {
       importing = false;
+      importProgress = '';
+      cancelImport = null;
     }
   }
 
@@ -310,6 +355,11 @@
             </div>
           {:else}
             <button class="slot-pick" on:click={() => pickFile('mix')}>Select audio file</button>
+            <span class="slot-or">or from YouTube</span>
+            <input class="slot-link" type="text" bind:value={importYouTube} placeholder="YouTube link"
+              on:input={() => (importYouTubeFromChart = false)}
+              title="The full mix is downloaded from this video when you import" />
+            {#if importYouTubeFromChart}<span class="slot-note">Link from the .txt</span>{/if}
           {/if}
         </div>
 
@@ -330,12 +380,12 @@
         </div>
       </div>
 
-      {#if !importTxtFile || (!importMixFile && !importVocalFile)}
+      {#if !importTxtFile || (!importMixFile && !importVocalFile && !importYouTube.trim())}
         <p class="import-hint">
           {#if !importTxtFile}
             Select an Ultrastar .txt file to start
           {:else}
-            Add at least one audio file (mix or vocals)
+            Add at least one audio file (mix or vocals) or a YouTube link
           {/if}
         </p>
       {/if}
@@ -344,6 +394,12 @@
         <div class="import-error">{importError}</div>
       {/if}
 
+      {#if importProgress}
+        <div class="import-progress">
+          <span>⏳ {importProgress}</span>
+          {#if cancelImport}<button class="slot-pick" on:click={() => cancelImport?.()}>Cancel</button>{/if}
+        </div>
+      {/if}
       <button class="btn-import" on:click={handleImport} disabled={!canImport || importing}>
         {importing ? '⏳ Importing...' : '📥 Import Song'}
       </button>
@@ -611,6 +667,40 @@
   .slot-clear:hover {
     color: #ef5350;
     background: rgba(239, 83, 80, 0.1);
+  }
+
+  .slot-or {
+    display: block;
+    margin: 0.5rem 0 0.25rem;
+    color: #8b949e;
+    font-size: 0.75rem;
+  }
+  .slot-link {
+    width: 100%;
+    box-sizing: border-box;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+    font-family: inherit;
+  }
+  .slot-link:focus { outline: none; border-color: #1976d2; }
+  .slot-note {
+    display: block;
+    margin-top: 0.2rem;
+    color: #66bb6a;
+    font-size: 0.7rem;
+  }
+  .import-progress {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    color: #8b949e;
+    font-size: 0.85rem;
   }
 
   .slot-pick {

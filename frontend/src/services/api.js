@@ -82,11 +82,13 @@ export async function resumeSession(sessionId, { silent = false } = {}) {
   return request('POST', `/resume/${sessionId}`, null, false, silent);
 }
 
-export async function importUltrastar(txtFile, audioFile, vocalFile) {
+/** Imports a chart with its audio. `sessionId`: a session whose full mix was just downloaded from YouTube. */
+export async function importUltrastar(txtFile, audioFile, vocalFile, sessionId = '') {
   const form = new FormData();
   form.append('txt_file', txtFile);
   if (audioFile) form.append('audio_file', audioFile);
   if (vocalFile) form.append('vocal_file', vocalFile);
+  if (sessionId) form.append('session_id', sessionId);
   return request('POST', '/import', form, true);
 }
 // ─── Step 1: Upload ────────────────────────────

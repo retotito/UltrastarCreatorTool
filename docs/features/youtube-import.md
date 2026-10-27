@@ -1,6 +1,6 @@
 # YouTube Import (Step 1)
 
-> **Status:** Current · **Last updated:** 2026-10-23
+> **Status:** Current · **Last updated:** 2026-10-27
 
 Paste a YouTube link in Step 1's **Full Mix** card instead of uploading a file and press **⬇ Download**: the app
 downloads **only the audio** as the full mix. Vocal separation and everything after work as with an uploaded file.
@@ -10,6 +10,14 @@ then "Which song is this?" asks for artist, title and language(s), and the card 
 "Artist - Title.wav". **Cancel** stops it: for YouTube, closing the event stream makes the backend kill yt-dlp
 (`download_audio(..., cancelled)`) and remove the partial download (and the new session's folder). **🗑 Delete** on
 the card removes the file to upload or download another one.
+
+## Importing a chart with its audio from YouTube
+
+The start screen's **Import** panel takes the full mix from YouTube too: the Full Mix card has a link field, filled in
+from the chosen .txt's video (`#VIDEO:v=<id>,…` as USDB charts have it, or a `#YOUTUBE` link). On **Import Song**
+the audio is downloaded first (same stream, progress and Cancel as above, into a new session), then `/api/import`
+gets that `session_id` instead of an audio file: the chart is imported into the session, keeping `youtube_url`
+(so `#YOUTUBE`) and the thumbnail. An uploaded mix file wins over the link.
 
 ## What is saved in the session
 

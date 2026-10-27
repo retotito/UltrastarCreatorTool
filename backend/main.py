@@ -1457,6 +1457,7 @@ async def import_ultrastar(
     txt_file: UploadFile = File(...),
     audio_file: UploadFile = File(None),
     vocal_file: UploadFile = File(None),
+    session_id: str = Form(""),
 ):
     """Import an existing Ultrastar song (.txt + optional audio files) into a new session.
 
@@ -1464,6 +1465,8 @@ async def import_ultrastar(
         txt_file: Required — Ultrastar .txt with notes
         audio_file: Optional — full mix audio
         vocal_file: Optional — isolated vocals audio
+        session_id: Optional — a session whose full mix was just downloaded from YouTube (the import's mix
+            then; the session becomes the imported song)
     At least one audio file must be provided.
 
     Parses the Ultrastar .txt to extract notes, BPM, GAP, and metadata.
@@ -1472,7 +1475,11 @@ async def import_ultrastar(
     from services.reference_comparison import parse_ultrastar_file
     import librosa
 
-    if not audio_file and not vocal_file:
+    downloaded = sessions.get(session_id) if session_id else None
+    if session_id and not downloaded:
+        raise HTTPException(status_code=404, detail="Session not found")
+    downloaded_mix = downloaded.get("original_audio") if downloaded else None
+    if not audio_file and not vocal_file and not downloaded_mix:
         raise HTTPException(status_code=400, detail="At least one audio file is required (mix or vocals)")
 
     # Read .txt content
@@ -1504,13 +1511,13 @@ async def import_ultrastar(
     edition = headers.get("EDITION", "")
 
     # Save audio files
-    session_id = str(uuid.uuid4())[:8]
+    session_id = session_id if downloaded else str(uuid.uuid4())[:8]
     session_dir = os.path.join(UPLOAD_DIR, session_id)
     os.makedirs(session_dir, exist_ok=True)
 
-    original_path = None
+    original_path = downloaded_mix if downloaded_mix and not audio_file else None
     vocal_path = None
-    duration_path = None  # whichever audio we use to measure duration
+    duration_path = original_path  # whichever audio we use to measure duration
 
     if audio_file:
         original_path = os.path.join(session_dir, audio_file.filename)
@@ -1599,6 +1606,10 @@ async def import_ultrastar(
             "ultrastar_content": txt_content,
         },
     }
+    if downloaded:  # the mix came from YouTube: keep the link (#YOUTUBE) and the video's cover
+        for key in ("youtube_url", "youtube_thumbnail", "filename"):
+            if downloaded.get(key):
+                session[key] = downloaded[key]
     sessions[session_id] = session
     # Auto-set vocals_header from uploaded vocal file (archive name computed in _update_txt_asset_headers)
     if vocal_path:
@@ -1609,7 +1620,8 @@ async def import_ultrastar(
     has_vocals = vocal_path is not None
     has_original = original_path is not None
     # Use the first available filename for display
-    display_filename = (audio_file.filename if audio_file else vocal_file.filename)
+    display_filename = (audio_file.filename if audio_file else os.path.basename(original_path) if original_path
+                        else vocal_file.filename)
 
     log_step("IMPORT", f"Imported '{artist} - {title}' as session {session_id} "
              f"({len(syllable_timings)} notes, BPM={bpm}, GAP={gap_ms}ms, "
