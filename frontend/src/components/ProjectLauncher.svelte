@@ -309,6 +309,10 @@
 </script>
 
 <div class="launcher">
+  {#if showImportPanel}
+    <!-- Back to the start screen as it was: closes the import (and drops a download not imported) -->
+    <button class="launcher-home" on:click={toggleImportPanel} disabled={importing || importDownloading} title="Back to Home">🏠</button>
+  {/if}
   <button class="launcher-gear" on:click={() => showStorage = !showStorage} title="Storage Manager">⚙️</button>
   {#if showStorage}<StorageManager on:close={() => showStorage = false} />{/if}
   <div class="hero">
@@ -468,6 +472,27 @@
     padding: 2rem 1rem;
     position: relative;
   }
+
+  .launcher-home {
+    position: absolute;
+    top: 0.75rem;
+    left: 0;
+    background: none;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    color: #94a3b8;
+    line-height: 1;
+    transition: all 0.15s;
+  }
+  .launcher-home:hover:not(:disabled) {
+    background: #1e2d40;
+    border-color: #4fc3f7;
+    color: #e2e8f0;
+  }
+  .launcher-home:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .launcher-gear {
     position: absolute;
