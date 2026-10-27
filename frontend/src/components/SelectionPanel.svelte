@@ -10,6 +10,15 @@
   let x = 18;
   let y = null; // will be set on mount (bottom-anchored default)
   let panelEl;
+  // x/y are where the user put it (saved); it is shown there, pushed inside the window when that is smaller (after
+  // leaving fullscreen), and back at its place when the window is big enough again
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  // measured again when the window or the text ("12 notes") changes
+  $: panelW = (viewW, count, panelEl?.offsetWidth || 0);
+  $: panelH = (viewH, count, panelEl?.offsetHeight || 0);
+  $: shownX = Math.max(0, Math.min(viewW - panelW, x));
+  $: shownY = Math.max(0, Math.min(viewH - panelH, y ?? 0));
 
   // Load saved position
   onMount(() => {
@@ -43,6 +52,9 @@
     e.stopPropagation();
     dragging = true;
     dragMoved = false;
+    // Drag from where it is shown (it may be pushed in from its saved place)
+    x = shownX;
+    y = shownY;
     dragOffX = e.clientX - x;
     dragOffY = e.clientY - y;
     window.addEventListener('mousemove', onMouseMove);
@@ -54,14 +66,9 @@
     const dx = Math.abs(e.clientX - dragOffX - x);
     const dy = Math.abs(e.clientY - dragOffY - y);
     if (dx > 4 || dy > 4) dragMoved = true;
-    x = e.clientX - dragOffX;
-    y = e.clientY - dragOffY;
     // Clamp to viewport
-    if (panelEl) {
-      const rect = panelEl.getBoundingClientRect();
-      x = Math.max(0, Math.min(window.innerWidth - rect.width, x));
-      y = Math.max(0, Math.min(window.innerHeight - rect.height, y));
-    }
+    x = Math.max(0, Math.min(viewW - panelW, e.clientX - dragOffX));
+    y = Math.max(0, Math.min(viewH - panelH, e.clientY - dragOffY));
   }
 
   function onMouseUp() {
@@ -84,11 +91,13 @@
   }
 </script>
 
+<svelte:window bind:innerWidth={viewW} bind:innerHeight={viewH} />
+
 {#if count > 0}
   <div
     class="selection-panel"
     class:dragging
-    style="left:{x}px; top:{y}px;"
+    style="left:{shownX}px; top:{shownY}px;"
     bind:this={panelEl}
     on:mousedown|stopPropagation={onMouseDown}
     on:click|stopPropagation={() => {}}
