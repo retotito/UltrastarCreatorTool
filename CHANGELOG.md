@@ -36,6 +36,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - In a duet the tools act on the singer you edit: AI regenerate (loop, cleanup section, segment recording) and
   Analyze 5s replace only their notes, Join only joins their notes, the vibrato tool keeps linked notes linked, mic
   sing-along and vocal trace compare with their notes. **MIDI** has a *Both* / *only [singer]* toggle
+- The editor's pitch range fits the song (its notes ± half an octave, at least two octaves) instead of always
+  showing at least C2–C6, which left octaves empty
 - Imported charts with relative pitches (USDB: C4 = 0) are moved up to the app's MIDI pitches (C4 = 60), so they
   match the pitch line at once instead of sitting 5 octaves too low
 - **Cmd/Ctrl+A** in a duet asks which notes to select: the singer you edit, the other singer, the synced notes

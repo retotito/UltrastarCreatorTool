@@ -1695,13 +1695,14 @@
     const pitches = pitchNotes.map(n => n.pitch);
     const notesMin = Math.min(...pitches);
     const notesMax = Math.max(...pitches);
-    minPitch = Math.min(notesMin - 6, 36);
-    maxPitch = Math.max(notesMax + 6, 84);
-    // Ensure at least 12 semitones visible (one octave)
-    if (maxPitch - minPitch < 12) {
+    // The song's own range with half an octave around it (it grows while notes are dragged past it); at least two
+    // octaves, so a narrow song isn't stretched. (It was C2–C6 at least, leaving octaves unused.)
+    minPitch = notesMin - 6;
+    maxPitch = notesMax + 6;
+    if (maxPitch - minPitch < 24) {
       const mid = (minPitch + maxPitch) / 2;
-      minPitch = Math.floor(mid - 6);
-      maxPitch = Math.ceil(mid + 6);
+      minPitch = Math.floor(mid - 12);
+      maxPitch = Math.ceil(mid + 12);
     }
   }
 
