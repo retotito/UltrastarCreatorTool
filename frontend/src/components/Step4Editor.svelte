@@ -9,7 +9,7 @@
   import { waveformPeaksCache } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, saveEditorState, generateCleanedAudio, suggestVibrato, getLiveWordsWindow, updateMetadata } from '../services/api.js';
   import { SUPPORTED_LANGUAGES, languageHeader, parseLanguageHeader } from '../lib/languages';
-  import { parseUltrastar, notesToUltrastar } from '../lib/ultrastar.js';
+  import { parseUltrastar, notesToUltrastar, singerNames, duetHeaderLines, DUET_HEADERS } from '../lib/ultrastar.js';
   import { medianPitch, groupPitchFrames, mergePlaceholderNotes, trimPlaceholdersAgainstNotes, buildPitchSplitGroups, splitPlaceholderNotesByPitchRuns } from '../lib/pitchUtils.js';
   import { createAutoBackup, getStoredIntervalMin, getStoredAutoEnabled } from '../lib/autoBackup.js';
   import BackupModal from './BackupModal.svelte';
@@ -1945,9 +1945,11 @@
     if (willRegenerate) isRegeneratingCleaned = true;
     try {
       // Serialize notes for the API
+      // In a duet every note and break has its singer (1, 2, 'both'); a solo chart has none
       const noteData = notes.map(n => {
+        const singer = n.singer != null ? { singer: n.singer } : {};
         if (n.type === 'break') {
-          return { type: 'break', startBeat: n.startBeat, endBeat: n.endBeat || null };
+          return { type: 'break', startBeat: n.startBeat, endBeat: n.endBeat || null, ...singer };
         }
         return {
           startBeat: n.startBeat,
@@ -1957,6 +1959,7 @@
           isRap: n.isRap || false,
           isGolden: n.isGolden || false,
           isFreestyle: n.isFreestyle || false,
+          ...singer,
         };
       });
 
@@ -6073,6 +6076,11 @@
     }
     // Extra headers (YOUTUBE, COVER, LANGUAGE, etc.)
     const standardKeys = new Set(['TITLE', 'ARTIST', 'LANGUAGE', 'BPM', 'GAP', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
+    // Duet: singer names as #P1/#P2 and #DUETSINGERP1/P2, no medley (as the backend's save writes it)
+    if (notes.some(n => n.singer != null)) {
+      for (const k of [...DUET_HEADERS, 'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT']) standardKeys.add(k);
+      lines.push(...duetHeaderLines(singerNames(Object.fromEntries(extraHeaders.map(h => [h.key.toUpperCase(), h.value])))));
+    }
     for (const h of extraHeaders) {
       if (!standardKeys.has(h.key.toUpperCase())) {
         const value = h.key.toUpperCase() === 'MP3'

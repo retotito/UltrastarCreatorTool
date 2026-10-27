@@ -1,6 +1,6 @@
 # Duets
 
-> **Status:** Draft · **Last updated:** 2026-10-27
+> **Status:** Current · **Last updated:** 2026-10-27
 
 Two singers in one chart (UltraStar `P1`/`P2`). Assigned **by hand** in the editor; the pipeline stays as it is
 (one voice, one note list). Branch: `feat/duets`.
@@ -34,7 +34,11 @@ singer 2's notes). USDB keeps the names in `#VIDEO` (`p1=…,p2=…`); USDB Sync
 
 ## What we build
 
-### 1. Reading and writing duet charts
+### 1. Reading and writing duet charts ✅
+
+Done: `services/duet.py` and `frontend/src/lib/ultrastar.js` (tests: `test_duet.py`, `ultrastar.test.js`). Round trip
+of all 906 USDB duets: each track unchanged in 899; the others only list some notes out of beat order (we sort),
+once golden-rap `G` notes are left aside (not read at all yet, solo charts too: see the backlog).
 
 - Today `parseUltrastar` (frontend) and `parse_ultrastar_file` (backend) skip `P1`/`P2` lines: a duet is read as one
   singer with both singers' notes and line breaks mixed. Both learn the tracks.
@@ -82,15 +86,26 @@ singer 2's notes). USDB keeps the names in `#VIDEO` (`p1=…,p2=…`); USDB Sync
 
 - Generating again replaces the notes, so a duet's assignment would be lost: warn before. (Later maybe: keep the
   assignment by time.)
-- Export writes the duet; optionally also a solo version (singer 1 and `'both'`, or all notes).
+- Export writes what the editor has (see Decisions).
+
+### Later: tools on the active singer
+
+AI regenerate in the loop, the vibrato tool, segment recording, pitch fixes and other tools that change notes act
+only on the active singer's notes (and the linked ones).
 
 ## Decisions
 
 - **Manual only**: no automatic singer detection. Tune Studio has none either; separating two voices is a later
   topic.
-- **Open:** `'both'` as one linked note with *Unlink* (proposal: edit once; Tune Studio makes independent copies
-  at once).
-- **Open:** keys `1`/`2`/`3`, the colours, and whether export offers a solo version.
+- **Two singers at most**: UltraStar Deluxe refuses `P3`; all USDB duets use only P1/P2.
+- **Linked notes**: a note sung by both is one `'both'` note; editing it changes it for both. Right-click:
+  *Move to [other singer]*, *Link with [other singer]* (on one singer's notes); *Unlink* (two independent notes),
+  *Only [singer 1] / Only [singer 2]* (on linked notes); *Select all notes of [singer]*. *Swap singers* in the duet
+  modal. Move and Link are refused where the other singer already has a note (no overlaps within a singer).
+- **How linked notes look**: the active singer's colour plus a second outer border in the other singer's colour.
+  Active singer's notes solid, the other singer's semi-transparent and dashed.
+- **Export** what the editor has: a duet as a duet, a solo chart as solo. No extra solo version.
+- **Open:** keys `1`/`2`/`3` and the colours (proposal: singer 1 blue, singer 2 orange).
 
 ## Order
 

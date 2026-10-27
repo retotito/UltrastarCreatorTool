@@ -4,6 +4,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 🎤 Duets (in progress)
+- Duet charts (`P1`/`P2`) keep both singers' parts when opened in the editor and saved; before, both parts were
+  mixed into one. Notes sung together are read as one note. Headers `#P1`/`#P2` and `#DUETSINGERP1`/`P2`
+
 ### 🎹 Editor after regenerating
 - After generating, the editor is set up for checking the result: MIDI on, playing the vocals the chart was made
   from (the cleaned vocal if you generated from it). Metronome, speed, playhead, scroll and zoom go back to their

@@ -4593,27 +4593,20 @@ async def save_editor_state(session_id: str, request: Request):
     lines.append(f"#MP3:{_mp3_header_value}")
 
     # Extra headers from the editor (e.g. YOUTUBE, COVER, etc.)
+    from services.duet import DUET_HEADERS, body_lines, header_lines, singer_names
+    duet = any(n.get("singer") is not None for n in editor_notes)
     standard_keys = {'TITLE', 'ARTIST', 'BPM', 'GAP', 'LANGUAGE', 'MP3'}
+    if duet:
+        # Singer names as #P1/#P2 and #DUETSINGERP1/P2; no medley (off for duets in UltraStar Deluxe)
+        standard_keys |= DUET_HEADERS | {'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT'}
+        lines += header_lines(singer_names({h.get('key', '').upper(): h.get('value', '') for h in extra_headers}))
     for header in extra_headers:
         key = header.get('key', '')
         value = header.get('value', '')
         if key.upper() not in standard_keys:
             lines.append(f"#{key}:{value}")
 
-    for note in editor_notes:
-        note_type = note.get("type", "")
-        if note_type == "break":
-                lines.append(f"- {note['startBeat']}")
-        else:
-            if note.get("isGolden"):
-                prefix = "*"
-            elif note.get("isRap"):
-                prefix = "R"
-            elif note.get("isFreestyle"):
-                prefix = "F"
-            else:
-                prefix = ":"
-            lines.append(f"{prefix} {note['startBeat']} {note['duration']} {note['pitch']} {note['syllable']}")
+    lines += body_lines(editor_notes)
 
     lines.append("E")
     ultrastar_content = "\n".join(lines)

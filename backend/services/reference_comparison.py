@@ -181,15 +181,21 @@ def parse_ultrastar_file(content: str) -> dict:
     """Parse an Ultrastar .txt file into structured data.
 
     Returns:
-        dict with: bpm, gap, headers (dict), notes (list of dicts)
+        dict with: bpm, gap, headers (dict), notes (list of dicts), breaks, duet (names, or None for a solo chart)
     """
+    from services.duet import track_marker, singer_names
     headers = {}
     notes = []
     breaks = []
+    singer = None   # the current track's singer in a duet (1, 2, "both"); None in a solo chart
 
     for line in content.strip().split("\n"):
         line = line.strip()
         if not line:
+            continue
+        marker = track_marker(line)
+        if marker is not None:
+            singer = marker
             continue
 
         # Header line
@@ -221,6 +227,7 @@ def parse_ultrastar_file(content: str) -> dict:
                         "pitch": int(parts[2]),
                         "syllable": parts[3],
                         "is_rap": is_rap,
+                        **({"singer": singer} if singer is not None else {}),
                     })
                 elif len(parts) == 3:
                     notes.append({
@@ -229,6 +236,7 @@ def parse_ultrastar_file(content: str) -> dict:
                         "pitch": int(parts[2]),
                         "syllable": "",
                         "is_rap": is_rap,
+                        **({"singer": singer} if singer is not None else {}),
                     })
             except (ValueError, IndexError):
                 pass  # Skip malformed note lines
@@ -240,6 +248,7 @@ def parse_ultrastar_file(content: str) -> dict:
                 breaks.append({
                     "beat1": int(parts[0]) if parts else 0,
                     "beat2": int(parts[1]) if len(parts) > 1 else None,
+                    **({"singer": singer} if singer is not None else {}),
                 })
             except (ValueError, IndexError):
                 pass  # Not a valid break line (e.g. "---" separators)
@@ -257,6 +266,8 @@ def parse_ultrastar_file(content: str) -> dict:
         "headers": headers,
         "notes": notes,
         "breaks": breaks,
+        # Duet: the singers' names ({"p1", "p2"}); notes and breaks then have "singer"
+        "duet": singer_names(headers) if singer is not None else None,
     }
 
 

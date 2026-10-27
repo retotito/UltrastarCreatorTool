@@ -1,6 +1,6 @@
 # Testing
 
-> **Status:** Current · **Last updated:** 2026-10-19
+> **Status:** Current · **Last updated:** 2026-10-27
 
 Three levels, from fast to slow:
 
@@ -23,6 +23,10 @@ cd backend
 ../.venv/bin/python -m pytest --cov=services        # with coverage
 ../.venv/bin/python -m pytest -m slow               # model tests
 ```
+
+The frontend's chart reader and writer (`frontend/src/lib/ultrastar.js`, duets included) have their own tests with
+Node's built-in runner, no extra packages: `cd frontend && npm test` (`src/lib/*.test.js`). They mirror the
+backend's `tests/unit/test_duet.py`; change both together.
 
 ## Layout
 

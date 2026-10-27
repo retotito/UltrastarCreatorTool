@@ -16,6 +16,7 @@ before changing the pipeline.
 .venv/bin/python backend/main.py                 # backend on :8001
 cd frontend && npm run dev                       # UI on :5173
 cd backend && ../.venv/bin/python -m pytest      # unit tests (no torch needed)
+cd frontend && npm test                          # frontend chart reader/writer tests
 ```
 
 ## Rules
