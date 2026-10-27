@@ -21,6 +21,13 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 
 ## Pipeline
 
+- **Romanized Chinese/Japanese lyrics aren't split into syllables**: for `zh`/`ja` the hyphenation is "one syllable
+  per character", so pinyin or romaji words become one note each ("arigatou", "zhongguo"). Use syllable rules when
+  the text is Latin: pinyin's ~400 fixed syllables (zhong-guo, xie-xie), romaji's (C)V units with "n" and double
+  consonants (a-ri-ga-tou, ki-t-te). Alignment itself is fine with romanized lyrics.
+- Songs in other scripts (Chinese/Japanese characters especially) are aligned through uroman's romanization, which
+  is rough: measure the timing on a few songs.
+
 - "good-bye" is still too short.
 - "favorite" should be split fa-vo-rite.
 - Compare our pitches with Tune Studio's on more songs.
