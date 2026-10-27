@@ -12258,13 +12258,16 @@
   .scrollbar-handle {
     position: absolute;
     top: 14px;   /* on the rail (6–13px) */
-    width: 14px;
-    height: 14px;
-    background: #4fc3f7;
+    width: 16px;
+    height: 16px;
+    /* white with a dark ring: nothing else in the bar is white (notes are blue/green, breaks red) */
+    background: #f5f5f5;
+    border: 2px solid #12121e;
+    box-sizing: border-box;
     border-radius: 50%;
     transform: translate(-50%, -50%);
     cursor: grab;
-    box-shadow: 0 0 4px rgba(79, 195, 247, 0.6);
+    box-shadow: 0 0 0 1px #9e9e9e, 0 1px 4px rgba(0, 0, 0, 0.8);
     pointer-events: none; /* track handles the pointer events */
     z-index: 4;
   }
