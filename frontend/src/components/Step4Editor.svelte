@@ -1565,6 +1565,11 @@
 
   // Only the active singer's notes (and the linked ones) can be clicked, selected and edited; the other singer's are
   // only shown. Every tool then works on the active singer, since it works on the selection.
+  // The bottom bar's note lane: where each singer sings (a solo chart: one row)
+  $: laneRows = isDuet
+    ? [1, 2].map(k => ({ key: k, color: duet.SINGER_COLORS[k], stretches: duet.laneStretches(notes, k) }))
+    : [{ key: 0, color: '#4fc3f7', stretches: duet.laneStretches(notes) }];
+
   $: isEditable = isDuet ? (n => n.singer == null || duet.sungBy(n, activeSinger)) : (() => true);
 
   function nextNoteId() {
@@ -10878,6 +10883,15 @@
       {#each flags as flag}
         <div class="scrollbar-flag" style="left: {((flag.beat - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%"></div>
       {/each}
+      <!-- where the notes are: one row, or one per singer in a duet (notes sung by both in both) -->
+      <div class="scrollbar-note-lane" class:duet={isDuet} aria-hidden="true">
+        {#each laneRows as row (row.key)}
+          {#each row.stretches as [start, end]}
+            <div class="scrollbar-note-seg" class:second={row.key === 2}
+              style="left: {((start - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%; width: {Math.max(0.15, (end - start) / scrollBeatRange * 100).toFixed(3)}%; --seg-color: {row.color}"></div>
+          {/each}
+        {/each}
+      </div>
       <!-- line breaks (a duet: the shared ones red, the edited singer's own in their colour, not the other singer's) -->
       {#each notes as note (note.id)}
         {#if note.type === 'break' && isEditable(note)}
@@ -12199,6 +12213,27 @@
     z-index: 3;
     opacity: 0.75;
   }
+
+  .scrollbar-note-lane {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 21px;
+    height: 6px;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .scrollbar-note-seg {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    background: var(--seg-color);
+    opacity: 0.6;
+    border-radius: 1px;
+  }
+  /* a duet: singer 1 in the upper half, singer 2 in the lower */
+  .scrollbar-note-lane.duet .scrollbar-note-seg { height: 45%; }
+  .scrollbar-note-lane.duet .scrollbar-note-seg.second { top: 55%; }
 
   .scrollbar-cleanup-lane {
     position: absolute;

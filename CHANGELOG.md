@@ -27,6 +27,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Line breaks in a duet are shared, unless a singer needs their own: a new break inside the other singer's note is
   only for the singer you edit; right-click a break for **For both singers** / **Only for …**. Shared breaks red,
   a singer's own in their colour
+- Bottom bar: a note lane shows where the notes are (a duet: singer 1's row and singer 2's, notes sung by both in
+  both); line break marks only in the top half, in a duet coloured like the editor's and only the edited singer's
 - A BPM or GAP change keeps golden and freestyle notes (they became normal notes when the chart was rebuilt from
   its timings), and in a duet keeps each note's singer
 

@@ -118,6 +118,20 @@ export function notesOf(notes, singer) {
   return new Set(notes.filter(n => n.type !== 'break' && sungBy(n, singer)).map(n => n.id));
 }
 
+/** Where `singer` sings (null: every note, a solo chart), as stretches [start, end] in beats for the bottom bar's
+ * note lane. Notes less than `maxGap` beats apart are one stretch. */
+export function laneStretches(notes, singer = null, maxGap = 4) {
+  const mine = notes.filter(n => n.type !== 'break' && (singer === null || sungBy(n, singer)))
+    .map(n => [n.startBeat, n.startBeat + n.duration]).sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const [s, e] of mine) {
+    const last = out[out.length - 1];
+    if (last && s - last[1] <= maxGap) last[1] = Math.max(last[1], e);
+    else out.push([s, e]);
+  }
+  return out;
+}
+
 /** Drawing and clicking order: the other singer's notes first (drawn under, clicked last), then the active
  * singer's and the linked ones. A solo chart keeps its order. */
 export function byActiveSinger(notes, active) {

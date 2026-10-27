@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   makeDuet, unmakeDuet, moveTo, link, unlink, only, notesOf, byActiveSinger, withNames, namesFromHeaders,
-  newBreakSinger, setBreakSinger,
+  newBreakSinger, setBreakSinger, laneStretches,
 } from './duet.js';
 
 const note = (id, startBeat, singer, duration = 4) => ({ id, startBeat, duration, pitch: 1, syllable: `n${id}`, singer });
@@ -64,4 +64,11 @@ test('a break for one singer or both, refused inside a note of that singer', () 
   assert.deepEqual(singers(setBreakSinger(notes, 3, 1).notes), ['1:1', '2:2', '3:1']);
   assert.equal(setBreakSinger(notes, 3, 2).refused, 'inside');
   assert.equal(setBreakSinger(notes, 3, 'both').refused, 'inside');
+});
+
+test('note lane stretches per singer, close notes merged', () => {
+  const notes = [note(1, 0, 1, 4), note(2, 6, 'both', 4), { id: 3, type: 'break', startBeat: 12 }, note(4, 30, 2, 4)];
+  assert.deepEqual(laneStretches(notes, 1), [[0, 10]]);
+  assert.deepEqual(laneStretches(notes, 2), [[6, 10], [30, 34]]);
+  assert.deepEqual(laneStretches(notes), [[0, 10], [30, 34]]);
 });
