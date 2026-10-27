@@ -1563,6 +1563,10 @@
     both: notes.filter(n => n.type !== 'break' && n.singer === duet.BOTH).length,
   };
 
+  // Only the active singer's notes (and the linked ones) can be clicked, selected and edited; the other singer's are
+  // only shown. Every tool then works on the active singer, since it works on the selection.
+  $: isEditable = isDuet ? (n => n.singer == null || duet.sungBy(n, activeSinger)) : (() => true);
+
   function nextNoteId() {
     return Math.max(0, ...notes.map(n => (typeof n.id === 'number' ? n.id : 0))) + 1;
   }
@@ -1623,6 +1627,12 @@
 
   function setActiveSinger(singer) {
     activeSinger = singer;
+    // The other singer's notes can't stay selected
+    const keep = n => n.singer == null || duet.sungBy(n, singer);
+    selectedNotes = new Set([...selectedNotes].filter(id => keep(notes.find(n => n.id === id) || {})));
+    if (selectedNote !== null && !keep(notes.find(n => n.id === selectedNote) || {})) {
+      selectedNote = selectedNotes.size ? [...selectedNotes][0] : null;
+    }
     draw();
   }
 
@@ -3664,7 +3674,7 @@
     // Find clicked note (check regular notes first, then breaks; in a duet the active singer's notes first)
     let found = null;
     for (const note of [...duet.byActiveSinger(notes, activeSinger)].reverse()) {
-      if (note.type === 'break') continue;
+      if (note.type === 'break' || !isEditable(note)) continue;
       
       const nx = beatToX(note.startBeat);
       const ny = pitchToY(note.pitch);
@@ -3687,7 +3697,7 @@
     // If no regular note found, check break lines (10px hit zone)
     if (!found) {
       for (const note of notes) {
-        if (note.type !== 'break') continue;
+        if (note.type !== 'break' || !isEditable(note)) continue;
         const bx = beatToX(note.startBeat);
         if (Math.abs(mx - bx) <= 6) {
           found = note;
@@ -4031,6 +4041,7 @@
 
       if (!cursor) {
         for (const note of notes) {
+          if (!isEditable(note)) continue;
           if (note.type === 'break') {
             const bx = beatToX(note.startBeat);
             if (Math.abs(mx - bx) <= 6) {
@@ -4384,7 +4395,7 @@
       // Find all notes within the box
       let count = 0;
       for (const note of notes) {
-        if (note.type === 'break') continue;
+        if (note.type === 'break' || !isEditable(note)) continue;
         const nx = beatToX(note.startBeat);
         const ny = pitchToY(note.pitch);
         const nw = note.duration * zoom;
@@ -4775,11 +4786,11 @@
       return;
     }
 
-    // Find note under cursor (regular notes first, then breaks)
+    // Find note under cursor (regular notes first, then breaks; in a duet only the active singer's)
     let found = null;
     let isBreak = false;
     for (const note of notes) {
-      if (note.type === 'break') continue;
+      if (note.type === 'break' || !isEditable(note)) continue;
       const nx = beatToX(note.startBeat);
       const ny = pitchToY(note.pitch);
       const nw = note.duration * zoom;
@@ -4792,7 +4803,7 @@
     // Check breaks if no regular note hit
     if (!found) {
       for (const note of notes) {
-        if (note.type !== 'break') continue;
+        if (note.type !== 'break' || !isEditable(note)) continue;
         const bx = beatToX(note.startBeat);
         if (Math.abs(mx - bx) <= 6) {
           found = note;
@@ -6629,7 +6640,7 @@
   // extended: false = major positions only (song start, gap, loop start)
   //           true  = all positions (+ breakpoints, flags, cleanup section starts)
   function selectNoteAtPlayhead() {
-    const realNotes = notes.filter(n => n.type !== 'break');
+    const realNotes = notes.filter(n => n.type !== 'break' && isEditable(n));
     // Prefer a note whose range contains the playhead; otherwise pick nearest by start
     let found = realNotes.find(n => playbackBeat >= n.startBeat && playbackBeat < n.startBeat + n.duration);
     if (!found) {
@@ -6808,7 +6819,7 @@
     // ── Select All (Ctrl/Cmd+A) ──
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      selectedNotes = new Set(notes.filter(n => n.type !== 'break').map(n => n.id));
+      selectedNotes = new Set(notes.filter(n => n.type !== 'break' && isEditable(n)).map(n => n.id));
       if (selectedNotes.size > 0) selectedNote = [...selectedNotes][0];
       draw();
       return;
@@ -6918,7 +6929,7 @@
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.code === 'ArrowLeft' || e.code === 'ArrowRight') &&
           selectedNote !== null && selectedNotes.size <= 1) {
         e.preventDefault();
-        const realNotes = notes.filter(n => n.type !== 'break').sort((a, b) => (a.startBeat - b.startBeat) || (a.id - b.id));
+        const realNotes = notes.filter(n => n.type !== 'break' && isEditable(n)).sort((a, b) => (a.startBeat - b.startBeat) || (a.id - b.id));
         const currentNote = notes.find(n => n.id === selectedNote);
         if (currentNote) {
           if (e.code === 'ArrowRight') {
@@ -7088,7 +7099,7 @@
     if (e.code === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNote !== null && selectedNotes.size <= 1) {
       e.preventDefault();
       const realNotes = notes
-        .filter(n => n.type !== 'break')
+        .filter(n => n.type !== 'break' && isEditable(n))
         .sort((a, b) => (a.startBeat - b.startBeat) || (a.id - b.id));
       const idx = realNotes.findIndex(n => n.id === selectedNote);
       if (idx !== -1) {
@@ -7101,6 +7112,13 @@
           draw();
         }
       }
+      return;
+    }
+
+    // D: in a duet, switch the singer you edit
+    if (e.key.toLowerCase() === 'd' && !e.ctrlKey && !e.metaKey && !e.altKey && isDuet) {
+      e.preventDefault();
+      setActiveSinger(duet.other(activeSinger));
       return;
     }
 
@@ -10172,11 +10190,12 @@
           Duet&nbsp;🎤
         </button>
         {#if isDuet}
+          <span class="duet-editing">Editing:</span>
           {#each [1, 2] as s}
             <button class="tool-btn sm singer-chip" class:active={activeSinger === s}
               style="--singer:{duet.SINGER_COLORS[s]}"
               on:click={() => setActiveSinger(s)}
-              title="Edit {singerName(s)}'s notes: drawn on top, clicked first, new notes go to {singerName(s)}">
+              title="Edit {singerName(s)}'s notes (D switches). Only the singer you edit can be clicked and changed; notes sung by both change for both.">
               <span class="singer-dot"></span>{singerName(s)}
             </button>
           {/each}
@@ -10298,7 +10317,7 @@
       bind:open={showFindWidget}
       bind:matches={findMatches}
       bind:matchIndex={findMatchIndex}
-      {notes}
+      notes={notes.filter(isEditable)}
       on:jump={({ detail }) => { const cw = canvasEl?.width || 800; scrollX = Math.max(0, detail.note.startBeat * zoom - cw / 2); draw(); }}
       on:close={draw}
       on:redraw={draw}
@@ -12597,6 +12616,11 @@
   .singer-chip.active {
     border-color: var(--singer);
     box-shadow: inset 0 0 0 1px var(--singer);
+  }
+  .duet-editing {
+    color: #888;
+    font-size: 0.75rem;
+    margin-left: 4px;
   }
   #duet-controls-wrapper {
     display: flex;

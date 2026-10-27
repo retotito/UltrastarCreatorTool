@@ -69,7 +69,11 @@ asset headers; every save keeps `session["duet"]` up to date (removed when the c
 First part done: Duet button and modal (`DuetModal.svelte`), singer chips for the active singer, drawing (other
 singer semi-transparent and dashed, linked notes with an outer border), clicks reach the active singer first, the
 right-click actions; logic in `frontend/src/lib/duet.js` (tests: `duet.test.js`). New notes go to the active singer.
-Singer 2 is green (orange is taken by rap notes). Still open: two lyric rows, keys, MIDI per singer, the tools.
+Singer 2 is green (orange is taken by rap notes). Only the active singer's notes (and the linked ones) can be
+clicked, box-selected, selected with Cmd+A or Tab, found and edited; the other singer's are only shown. **D**
+switches the singer; switching drops the other singer's notes from the selection. Moving notes keeps the active
+singer. Still open: two lyric rows, MIDI per singer, the tools (they act on the selection, so already on the
+active singer).
 
 
 - **Duet button** in the second toolbar opens a modal:

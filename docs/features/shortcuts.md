@@ -8,6 +8,12 @@
 |----------|--------|
 | **Ctrl/Cmd+F** | Find a syllable (also the 🔍 button at the top right); **Esc** closes it |
 
+## Duet
+
+| Shortcut | Action |
+|----------|--------|
+| **D** | Switch the singer you edit (only their notes and the linked ones can be clicked and changed) |
+
 ## Selection
 
 | Shortcut | Action |

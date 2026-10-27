@@ -22,6 +22,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   first, the other singer's are faint and dashed, notes sung by both have a second border
 - Right-click in a duet: **Move to** / **Link with** the other singer, **Unlink**, **Only** one singer, **Select all**
   of a singer's notes. Refused where the singer already has a note (no overlapping notes within a singer)
+- Only the singer you edit ("Editing:" chips, **D** switches) can be clicked, selected and changed; the other
+  singer's notes are only shown. Notes sung by both change for both
 
 ### 🎹 Editor after regenerating
 - After generating, the editor is set up for checking the result: MIDI on, playing the vocals the chart was made

@@ -91,6 +91,7 @@
             <div class="row"><kbd>Shift+,</kbd> prev marker</div>
             <div class="row"><kbd>Shift+.</kbd> next marker</div>
             <div class="row"><kbd>⌘/Ctrl+F</kbd> find syllable (or 🔍)</div>
+            <div class="row"><kbd>D</kbd> duet: switch the singer you edit</div>
           </div>
 
           <div class="shortcut-group">
