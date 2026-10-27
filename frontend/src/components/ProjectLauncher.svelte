@@ -21,8 +21,10 @@
   // The full mix from YouTube instead of a file: the link (filled in from the chart's #VIDEO v=… or #YOUTUBE)
   let importYouTube = '';
   let importYouTubeFromChart = false;
-  let importProgress = '';  // the YouTube download's progress while importing
+  let importProgress = '';  // the YouTube download's progress
   let cancelImport = null;
+  let importDownloading = false;
+  let importDownloaded = null; // {sessionId, filename}: the downloaded mix, in a session the import then uses
   let importMixFile = null;
   let importVocalFile = null;
   let txtError = '';
@@ -130,6 +132,7 @@
   function toggleImportPanel() {
     showImportPanel = !showImportPanel;
     if (!showImportPanel) {
+      discardDownload();
       importTxtFile = null;
       importDuet = null;
       importYouTube = '';
@@ -149,7 +152,7 @@
       const file = e.target.files?.[0];
       if (!file) return;
       if (slot === 'txt') { importTxtFile = file; txtError = ''; detectDuet(file); }
-      else if (slot === 'mix') importMixFile = file;
+      else if (slot === 'mix') { discardDownload(); importMixFile = file; }
       else if (slot === 'vocal') importVocalFile = file;
     };
     input.click();
@@ -169,6 +172,30 @@
         importYouTubeFromChart = true;
       }
     } catch { /* unreadable here: the import says what's wrong */ }
+  }
+
+  /** ⬇ Download in the Full Mix card: the video's audio into a new session, shown in the card like a picked file. */
+  async function handleImportDownload() {
+    const link = importYouTube.trim();
+    if (!link || importDownloading) return;
+    importError = '';
+    importDownloading = true;
+    try {
+      const done = await downloadImportMix(link);
+      importDownloaded = { sessionId: done.session_id, filename: done.filename };
+    } catch (e) {
+      if (e?.name !== 'AbortError') importError = e.message || 'Download failed';  // Cancel: the backend cleaned up
+    } finally {
+      importDownloading = false;
+      importProgress = '';
+      cancelImport = null;
+    }
+  }
+
+  /** The downloaded mix is dropped (✕, a picked file instead, the panel closed): its session goes too. */
+  function discardDownload() {
+    if (importDownloaded) deleteSession(importDownloaded.sessionId).catch(() => {});
+    importDownloaded = null;
   }
 
   /** The YouTube video's audio into a new session; resolves with the stream's "done" event. */
@@ -197,11 +224,11 @@
       importTxtFile = null; importDuet = null; txtError = '';
       if (importYouTubeFromChart) { importYouTube = ''; importYouTubeFromChart = false; }
     }
-    else if (slot === 'mix') importMixFile = null;
+    else if (slot === 'mix') { importMixFile = null; discardDownload(); }
     else if (slot === 'vocal') importVocalFile = null;
   }
 
-  $: canImport = importTxtFile && (importMixFile || importVocalFile || importYouTube.trim());
+  $: canImport = importTxtFile && (importMixFile || importVocalFile || importDownloaded) && !importDownloading;
 
   async function handleImport() {
     if (!canImport) return;
@@ -209,12 +236,8 @@
     importing = true;
 
     try {
-      let downloadedSession = '';
-      if (!importMixFile && importYouTube.trim()) {
-        downloadedSession = (await downloadImportMix(importYouTube.trim())).session_id;
-        importProgress = 'Importing…';
-      }
-      const data = await importUltrastar(importTxtFile, importMixFile, importVocalFile, downloadedSession);
+      const data = await importUltrastar(importTxtFile, importMixFile, importVocalFile, importDownloaded?.sessionId || '');
+      importDownloaded = null;   // the session is the imported song now
       sessionId.set(data.session_id);
       const hasVocals = !!data.has_vocals;
       const hasOriginal = !!data.has_original;
@@ -237,7 +260,6 @@
       generationResult.set(data.result || {});
       currentStep.set(4); // Go straight to editor
     } catch (e) {
-      if (e?.name === 'AbortError') return;   // Cancel: the backend removed what it downloaded
       const msg = e.message || 'Import failed';
       // Show .txt-related errors inline on the txt slot
       if (msg.includes('Ultrastar') || msg.includes('notes') || msg.includes('BPM') || msg.includes('headers') || msg.includes('int()') || msg.includes('500')) {
@@ -249,8 +271,6 @@
       }
     } finally {
       importing = false;
-      importProgress = '';
-      cancelImport = null;
     }
   }
 
@@ -343,7 +363,7 @@
         </div>
 
         <!-- Mix audio slot (optional) -->
-        <div class="import-slot" class:filled={importMixFile}>
+        <div class="import-slot" class:filled={importMixFile || importDownloaded}>
           <div class="slot-header">
             <span class="slot-label">🎵 Full Mix Audio</span>
             <span class="slot-badge optional">optional</span>
@@ -353,12 +373,22 @@
               <span class="slot-filename">{importMixFile.name}</span>
               <button class="slot-clear" on:click={() => clearSlot('mix')}>✕</button>
             </div>
+          {:else if importDownloaded}
+            <div class="slot-file">
+              <span class="slot-filename" title="Downloaded from YouTube">▶ {importDownloaded.filename}</span>
+              <button class="slot-clear" on:click={() => clearSlot('mix')} title="Remove the download">✕</button>
+            </div>
           {:else}
-            <button class="slot-pick" on:click={() => pickFile('mix')}>Select audio file</button>
+            <button class="slot-pick" on:click={() => pickFile('mix')} disabled={importDownloading}>Select audio file</button>
             <span class="slot-or">or from YouTube</span>
-            <input class="slot-link" type="text" bind:value={importYouTube} placeholder="YouTube link"
-              on:input={() => (importYouTubeFromChart = false)}
-              title="The full mix is downloaded from this video when you import" />
+            <div class="slot-link-row">
+              <input class="slot-link" type="text" bind:value={importYouTube} placeholder="YouTube link"
+                disabled={importDownloading}
+                on:input={() => (importYouTubeFromChart = false)}
+                on:keydown={(e) => e.key === 'Enter' && handleImportDownload()} />
+              <button class="slot-pick" on:click={handleImportDownload} disabled={!importYouTube.trim() || importDownloading}
+                title="Download the video's audio as the full mix">⬇ Download</button>
+            </div>
             {#if importYouTubeFromChart}<span class="slot-note">Link from the .txt</span>{/if}
           {/if}
         </div>
@@ -380,12 +410,12 @@
         </div>
       </div>
 
-      {#if !importTxtFile || (!importMixFile && !importVocalFile && !importYouTube.trim())}
+      {#if !importTxtFile || (!importMixFile && !importVocalFile && !importDownloaded)}
         <p class="import-hint">
           {#if !importTxtFile}
             Select an Ultrastar .txt file to start
           {:else}
-            Add at least one audio file (mix or vocals) or a YouTube link
+            Add at least one audio file (mix or vocals), or download the mix from YouTube
           {/if}
         </p>
       {/if}
@@ -675,7 +705,16 @@
     color: #8b949e;
     font-size: 0.75rem;
   }
+  .slot-link-row {
+    display: flex;
+    gap: 0.35rem;
+  }
+  .slot-link-row .slot-pick {
+    white-space: nowrap;
+  }
   .slot-link {
+    flex: 1;
+    min-width: 0;
     width: 100%;
     box-sizing: border-box;
     background: #0d1117;

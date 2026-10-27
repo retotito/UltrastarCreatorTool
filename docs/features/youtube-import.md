@@ -14,10 +14,11 @@ the card removes the file to upload or download another one.
 ## Importing a chart with its audio from YouTube
 
 The start screen's **Import** panel takes the full mix from YouTube too: the Full Mix card has a link field, filled in
-from the chosen .txt's video (`#VIDEO:v=<id>,…` as USDB charts have it, or a `#YOUTUBE` link). On **Import Song**
-the audio is downloaded first (same stream, progress and Cancel as above, into a new session), then `/api/import`
-gets that `session_id` instead of an audio file: the chart is imported into the session, keeping `youtube_url`
-(so `#YOUTUBE`) and the thumbnail. An uploaded mix file wins over the link.
+from the chosen .txt's video (`#VIDEO:v=<id>,…` as USDB charts have it, or a `#YOUTUBE` link), and **⬇ Download**
+gets the audio (same stream, progress and Cancel as above, into a new session); the card then shows the file, ✕
+removes it (and that session). **Import Song** sends that `session_id` to `/api/import` instead of an audio file: the
+chart is imported into the session, keeping `youtube_url` (so `#YOUTUBE`) and the thumbnail. Picking a mix file
+instead, or closing the panel, deletes the downloaded session.
 
 ## What is saved in the session
 
