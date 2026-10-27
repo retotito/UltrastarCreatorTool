@@ -68,7 +68,7 @@
   let zoom = 20;          // pixels per beat (default zoomed in)
   // viewHeight is driven by the canvas-container's actual clientHeight (set in resizeCanvas)
   let viewHeight = 600;
-  let noteHeight = 11;
+  let noteHeight = 11;   // follows the pitch rows' height (draw())
 
   // Pitch range (MIDI)
   let minPitch = 36;     // C2
@@ -2438,6 +2438,8 @@
   // ──── Drawing ────────────────────────────────
   function draw() {
     if (!ctx || !canvasEl) return;
+    // A note fills its pitch row, leaving a pixel to the lines on each side (9–16px, so the syllable stays readable)
+    noteHeight = Math.max(9, Math.min(16, Math.floor(Math.abs(pitchToY(0) - pitchToY(1))) - 2));
 
     const w = canvasEl.width;
     const h = canvasEl.height;
@@ -2622,11 +2624,13 @@
 
     // Grid lines (pitch)
     const pitchRange = maxPitch - minPitch;
-    for (let p = minPitch; p <= maxPitch; p++) {
-      const y = pitchToY(p);
+    // Each pitch is a row: the lines are the rows' edges (half a semitone off the pitch), so notes sit between them.
+    // The line under each C (between B and C) is the stronger one.
+    for (let p = minPitch; p <= maxPitch + 1; p++) {
+      const y = pitchToY(p - 0.5);
       if (y > pianoH) continue; // don't draw into time axis
       const isC = ((p % 12) + 12) % 12 === 0;
-      
+
       ctx.strokeStyle = isC ? '#333' : '#1a1a2e';
       ctx.lineWidth = isC ? 1 : 0.5;
       ctx.beginPath();
@@ -2634,11 +2638,11 @@
       ctx.lineTo(w, y);
       ctx.stroke();
 
-      // Pitch labels (only C notes)
-      if (isC) {
+      // Pitch labels (only C notes), inside the C row
+      if (isC && p <= maxPitch) {
         ctx.fillStyle = '#555';
         ctx.font = '10px monospace';
-        ctx.fillText(noteName(p), 2, y - 2);
+        ctx.fillText(noteName(p), 2, pitchToY(p) + 3);
       }
     }
 
