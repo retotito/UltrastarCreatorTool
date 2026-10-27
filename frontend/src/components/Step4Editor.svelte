@@ -1626,6 +1626,9 @@
   }
 
   function setActiveSinger(singer) {
+    if (uiModalGuardActive) return;
+    closeContextMenu();   // its entries were for the other singer
+    _menuClosedByAction = false;   // closed by a key, not a click: the next click works as usual
     activeSinger = singer;
     // The other singer's notes can't stay selected
     const keep = n => n.singer == null || duet.sungBy(n, singer);
@@ -7115,10 +7118,10 @@
       return;
     }
 
-    // D: in a duet, switch the singer you edit
+    // D: in a duet, switch the singer you edit (not while a tool's window is open)
     if (e.key.toLowerCase() === 'd' && !e.ctrlKey && !e.metaKey && !e.altKey && isDuet) {
       e.preventDefault();
-      setActiveSinger(duet.other(activeSinger));
+      if (!uiModalGuardActive) setActiveSinger(duet.other(activeSinger));
       return;
     }
 
@@ -10193,6 +10196,7 @@
           <span class="duet-editing">Editing:</span>
           {#each [1, 2] as s}
             <button class="tool-btn sm singer-chip" class:active={activeSinger === s}
+              disabled={uiModalGuardActive} class:disabled-audio={uiModalGuardActive}
               style="--singer:{duet.SINGER_COLORS[s]}"
               on:click={() => setActiveSinger(s)}
               title="Edit {singerName(s)}'s notes (D switches). Only the singer you edit can be clicked and changed; notes sung by both change for both.">
