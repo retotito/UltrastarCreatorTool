@@ -1,8 +1,8 @@
 <script>
   /**
    * The editor's Duet dialog (docs/plans/duets.md). A solo chart: "Set as duet" with the singers' names (every note
-   * starts as sung by both). A duet: rename the singers, swap them, or unset the duet keeping one singer (the other
-   * singer's notes are deleted; the linked ones stay).
+   * starts as sung by both). A duet: rename the singers, or unset the duet keeping one singer (the other singer's
+   * notes are deleted; the linked ones stay).
    */
   import { createEventDispatcher } from 'svelte';
   import { SINGER_COLORS } from '../lib/duet.js';
@@ -45,10 +45,6 @@
         <span><span class="dot" style="background:{SINGER_COLORS[1]}"></span> Singer 1</span>
         <input bind:value={p1} placeholder="Singer 1" />
       </label>
-      {#if isDuet}
-        <button class="swap-btn" on:click={() => dispatch('swap')}
-          title="Singer 1 becomes singer 2 and the other way round: names and notes">⇄</button>
-      {/if}
       <label>
         <span><span class="dot" style="background:{SINGER_COLORS[2]}"></span> Singer 2</span>
         <input bind:value={p2} placeholder="Singer 2" />
@@ -99,11 +95,6 @@
   }
   .duet-fields input:focus { outline: none; border-color: #1976d2; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 3px; }
-  .swap-btn {
-    background: #262636; color: #ccc; border: 1px solid #444; border-radius: 6px; padding: 0.45rem 0.6rem;
-    cursor: pointer; font-size: 1rem; margin-bottom: 1px;
-  }
-  .swap-btn:hover { background: #303045; }
   .duet-unset { background: #221a1a; border: 1px solid #553; border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 0.88rem; }
   .duet-unset p { margin: 0 0 0.4rem; }
   .duet-unset label { display: block; margin: 0.2rem 0; cursor: pointer; }

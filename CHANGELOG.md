@@ -17,7 +17,7 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Import: the full mix can come from YouTube. The mix card takes a link, filled in from the chart's video
   (`#VIDEO:v=…` as in USDB charts, or `#YOUTUBE`); **⬇ Download** gets the audio in the same busy window as Step 1
   (progress, Cancel), then Import Song uses it
-- **Duet 🎤** button in the editor: make a song a duet and name the singers, rename or swap them, or go back to a
+- **Duet 🎤** button in the editor: make a song a duet and name the singers, rename them, or go back to a
   solo chart keeping one singer. The singers' chips choose who you edit: their notes are drawn on top and clicked
   first, the other singer's are faint and dashed, notes sung by both have a second border
 - Right-click in a duet: **Move to** / **Link with** the other singer, **Unlink**, **Only** one singer, **Select all**

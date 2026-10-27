@@ -110,8 +110,8 @@ only on the active singer's notes (and the linked ones).
 - **Two singers at most**: UltraStar Deluxe refuses `P3`; all USDB duets use only P1/P2.
 - **Linked notes**: a note sung by both is one `'both'` note; editing it changes it for both. Right-click:
   *Move to [other singer]*, *Link with [other singer]* (on one singer's notes); *Unlink* (two independent notes),
-  *Only [singer 1] / Only [singer 2]* (on linked notes); *Select all notes of [singer]*. *Swap singers* in the duet
-  modal. Move and Link are refused where the other singer already has a note (no overlaps within a singer).
+  *Only [singer 1] / Only [singer 2]* (on linked notes); *Select all notes of [singer]*. (No "swap singers": renaming does
+  it.) Move and Link are refused where the other singer already has a note (no overlaps within a singer).
 - **How linked notes look**: the active singer's colour plus a second outer border in the other singer's colour.
   Active singer's notes solid, the other singer's semi-transparent and dashed.
 - **Export** what the editor has: a duet as a duet, a solo chart as solo. No extra solo version.

@@ -43,10 +43,6 @@ export function unmakeDuet(notes, keep) {
   return notes.filter(n => n.singer !== other(keep)).map(({ singer, ...n }) => n);
 }
 
-export function swapSingers(notes) {
-  return notes.map(n => (n.singer === 1 || n.singer === 2 ? { ...n, singer: other(n.singer) } : { ...n }));
-}
-
 const overlap = (a, b) => a.startBeat < b.startBeat + b.duration && b.startBeat < a.startBeat + a.duration;
 
 /** The notes (not in `ids`) that `singer` sings and that overlap one of the notes in `ids`. */

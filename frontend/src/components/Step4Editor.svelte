@@ -1587,10 +1587,6 @@
     duetModalOpen = false;
   }
 
-  function swapDuetSingers() {
-    applyDuetChange(duet.swapSingers(notes), duet.withNames(extraHeaders, { p1: duetNames.p2, p2: duetNames.p1 }));
-  }
-
   function unsetDuet({ detail: { keep } }) {
     applyDuetChange(duet.unmakeDuet(notes, keep), duet.withoutNames(extraHeaders));
     selectedNotes = new Set([...selectedNotes].filter(id => notes.some(n => n.id === id)));
@@ -10934,7 +10930,7 @@
   <!-- Text Editor Modal -->
   {#if duetModalOpen}
     <DuetModal isDuet={isDuet} names={duetNames} counts={duetCounts}
-      on:set={setDuet} on:rename={renameSingers} on:swap={swapDuetSingers} on:unset={unsetDuet}
+      on:set={setDuet} on:rename={renameSingers} on:unset={unsetDuet}
       on:close={() => (duetModalOpen = false)} />
   {/if}
 

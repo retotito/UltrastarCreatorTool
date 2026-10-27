@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  makeDuet, unmakeDuet, swapSingers, moveTo, link, unlink, only, notesOf, byActiveSinger, withNames, namesFromHeaders,
+  makeDuet, unmakeDuet, moveTo, link, unlink, only, notesOf, byActiveSinger, withNames, namesFromHeaders,
 } from './duet.js';
 
 const note = (id, startBeat, singer, duration = 4) => ({ id, startBeat, duration, pitch: 1, syllable: `n${id}`, singer });
@@ -14,10 +14,6 @@ test('set and unset a duet', () => {
   assert.deepEqual(unmakeDuet(duet, 1).map(n => [n.id, 'singer' in n]), [[1, false], [3, false]]);
   assert.deepEqual(unmakeDuet(duet, 2).map(n => n.id), [2, 3]);
   assert.equal(duet[0].singer, 1); // unchanged input
-});
-
-test('swap singers', () => {
-  assert.deepEqual(singers(swapSingers([note(1, 0, 1), note(2, 8, 2), note(3, 16, 'both')])), ['1:2', '2:1', '3:both']);
 });
 
 test('move to the other singer, refused where that singer already sings', () => {
