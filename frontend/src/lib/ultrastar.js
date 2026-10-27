@@ -21,13 +21,16 @@ export function parseUltrastar(content) {
       singer = marker;
       continue;
     }
-    if (trimmed.startsWith('*') || trimmed.startsWith(':') || trimmed.startsWith('R ') || trimmed.startsWith('R:') || trimmed.startsWith('F:') || trimmed.startsWith('F ') || trimmed === 'F') {
-      const isGolden = trimmed.startsWith('*');
+    if (trimmed.startsWith('*') || trimmed.startsWith(':') || trimmed.startsWith('R ') || trimmed.startsWith('R:') || trimmed.startsWith('G ') || trimmed.startsWith('F:') || trimmed.startsWith('F ') || trimmed === 'F') {
+      // G is golden rap: a rap note with the golden bonus (isRap and isGolden)
+      const isGoldenRap = trimmed.startsWith('G ');
+      const isGolden = trimmed.startsWith('*') || isGoldenRap;
       // R is the standard rap prefix; F: is accepted as legacy
-      const isRap = trimmed.startsWith('R ') || trimmed.startsWith('R:') || trimmed.startsWith('F:');
+      const isRap = isGoldenRap || trimmed.startsWith('R ') || trimmed.startsWith('R:') || trimmed.startsWith('F:');
       const isFreestyle = !isRap && trimmed.startsWith('F');
       let prefix;
-      if (isRap && (trimmed.startsWith('R ') || trimmed.startsWith('R:'))) prefix = trimmed.startsWith('R:') ? 'R:' : 'R';
+      if (isGoldenRap) prefix = 'G';
+      else if (isRap && (trimmed.startsWith('R ') || trimmed.startsWith('R:'))) prefix = trimmed.startsWith('R:') ? 'R:' : 'R';
       else if (isRap) prefix = 'F:'; // legacy
       else if (isFreestyle) prefix = 'F';
       else if (isGolden) prefix = '*';
@@ -172,7 +175,7 @@ export function notesToUltrastar(notes) {
       const isGolden = note.isGolden || note.type === 'golden';
       const isRap = note.isRap || note.type === 'rap';
       const isFreestyle = note.isFreestyle || note.type === 'freestyle';
-      const prefix = isRap ? 'R' : isFreestyle ? 'F' : isGolden ? '*' : ':';
+      const prefix = isRap && isGolden ? 'G' : isRap ? 'R' : isFreestyle ? 'F' : isGolden ? '*' : ':';
       lines.push(`${prefix} ${note.startBeat} ${note.duration} ${note.pitch} ${note.syllable}`);
     }
   }

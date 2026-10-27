@@ -19,11 +19,6 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 - **`#START`** (where the game starts playing, to skip an intro): a Set START mode like Set END. Not decided yet
   whether it is worth it.
 
-## Format
-
-- **Golden rap notes (`G`)** aren't read: the editor and the import drop them (solo charts too). Found in 31 of the
-  906 USDB duets. Needs a note type "golden rap" in the editor.
-
 ## Pipeline
 
 - "good-bye" is still too short.

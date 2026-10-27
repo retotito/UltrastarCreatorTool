@@ -66,6 +66,14 @@ test('a note without singer in a duet is kept for both', () => {
   assert.equal(notesToUltrastar(notes), ['P1', ': 0 4 1 a', ': 8 4 2 new', 'P2', ': 8 4 2 new'].join('\n'));
 });
 
+test('all five note types are read and written back', () => {
+  const chart = ': 0 4 1 nor\n* 4 4 1 gold\nF 8 4 1 free\nR 12 4 1 rap\nG 16 4 1 goldrap';
+  const notes = parseUltrastar(chart + '\nE');
+  assert.deepEqual(notes.map(n => [n.isGolden, n.isRap, n.isFreestyle]),
+    [[false, false, false], [true, false, false], [false, false, true], [false, true, false], [true, true, false]]);
+  assert.equal(notesToUltrastar(notes), chart);
+});
+
 test('solo charts are unchanged', () => {
   const solo = parseUltrastar(': 0 4 1 a\n- 6\n* 8 2 3  b\nE');
   assert.ok(solo.every(n => !('singer' in n)));

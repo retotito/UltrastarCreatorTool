@@ -44,10 +44,15 @@ def test_breaks_are_collected(parsed):
     assert parsed["breaks"] == [{"beat1": 18, "beat2": None}]
 
 
-@pytest.mark.xfail(reason="Known gap: standard R/G (rap) and F (freestyle) note prefixes are not parsed", strict=True)
-@pytest.mark.parametrize("line", ["R 0 4 0 rap", "G 0 4 0 goldrap", "F 0 4 0 free"])
-def test_standard_rap_and_freestyle_notes_are_parsed(line):
-    assert len(parse_ultrastar_file(f"#BPM:240\n#GAP:0\n{line}\nE")["notes"]) == 1
+@pytest.mark.parametrize("line,rap,golden,freestyle", [
+    (": 0 4 0 normal", False, False, False), ("* 0 4 0 gold", False, True, False),
+    ("R 0 4 0 rap", True, False, False), ("G 0 4 0 goldrap", True, True, False),
+    ("F 0 4 0 free", False, False, True), ("F: 0 4 0 oldrap", True, False, False),
+])
+def test_all_note_types_are_parsed(line, rap, golden, freestyle):
+    notes = parse_ultrastar_file(f"#BPM:240\n#GAP:0\n{line}\nE")["notes"]
+    assert len(notes) == 1
+    assert (notes[0]["is_rap"], notes[0]["is_golden"], notes[0]["is_freestyle"]) == (rap, golden, freestyle)
 
 
 def test_identical_timings_compare_with_zero_error():

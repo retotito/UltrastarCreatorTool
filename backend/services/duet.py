@@ -83,7 +83,9 @@ def track(elements: List[dict], singer: int) -> List[dict]:
 def note_line(note: dict) -> str:
     if note.get("type") == "break":
         return f"- {note['startBeat']}"
-    if note.get("isGolden") or note.get("type") == "golden":
+    if note.get("isGolden") and note.get("isRap"):
+        prefix = "G"   # golden rap
+    elif note.get("isGolden") or note.get("type") == "golden":
         prefix = "*"
     elif note.get("isRap") or note.get("type") == "rap":
         prefix = "R"

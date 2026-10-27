@@ -2808,7 +2808,11 @@
       // When mic or vocal trace is enabled, notes become hollow (faint fill + clear border) — USDX style
       const micHollow = (micEnabled && micShowTrail) || vocalTraceEnabled;
 
-      if (note.isGolden) {
+      if (note.isGolden && note.isRap) {
+        // Golden rap: rap fill with a gold border
+        ctx.fillStyle = micHollow ? (isSelected ? '#ff980033' : '#ff980012') : (isSelected ? '#ff980088' : (isCut ? '#ff980022' : '#ff980044'));
+        ctx.strokeStyle = isCut ? '#ffd70066' : '#ffd700';
+      } else if (note.isGolden) {
         ctx.fillStyle = micHollow ? (isSelected ? '#ffd70033' : '#ffd70012') : (isSelected ? '#ffd70088' : (isCut ? '#ffd70022' : '#ffd70044'));
         ctx.strokeStyle = isCut ? '#4fc3f766' : '#4fc3f7';
       } else if (note.isRap) {
@@ -2860,7 +2864,11 @@
       }
 
       // Golden star / rap / freestyle indicator — drawn above the note, outside the note rect
-      if (note.isGolden && width > 14) {
+      if (note.isGolden && note.isRap && width > 14) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 15px sans-serif';
+        ctx.fillText('G', x + width - 13, y - noteHeight / 2 - 5);
+      } else if (note.isGolden && width > 14) {
         ctx.fillStyle = '#ffd700';
         ctx.font = 'bold 15px sans-serif';
         ctx.fillText('★', x + width - 16, y - noteHeight / 2 - 5);
@@ -5778,6 +5786,8 @@
       if (!note || note.type === 'break') continue;
       if (type === 'golden') {
         note.isRap = false; note.isGolden = true; note.isFreestyle = false;
+      } else if (type === 'goldenrap') {
+        note.isRap = true; note.isGolden = true; note.isFreestyle = false;
       } else if (type === 'rap') {
         note.isRap = true; note.isGolden = false; note.isFreestyle = false;
       } else if (type === 'freestyle') {
@@ -10419,17 +10429,22 @@
           <div class="ctx-type-group">
             <span class="ctx-type-label">Type:</span>
             <button
-              class="ctx-type-btn" class:active={!ctxNote.isGolden && !ctxNote.isRap}
+              class="ctx-type-btn" class:active={!ctxNote.isGolden && !ctxNote.isRap && !ctxNote.isFreestyle}
               on:click={() => setNoteType(ctxNote.id, 'normal')}
             >Normal</button>
             <button
-              class="ctx-type-btn golden" class:active={ctxNote.isGolden}
+              class="ctx-type-btn golden" class:active={ctxNote.isGolden && !ctxNote.isRap}
               on:click={() => setNoteType(ctxNote.id, 'golden')}
             >★ Golden</button>
             <button
-              class="ctx-type-btn rap" class:active={ctxNote.isRap}
+              class="ctx-type-btn rap" class:active={ctxNote.isRap && !ctxNote.isGolden}
               on:click={() => setNoteType(ctxNote.id, 'rap')}
             >R Rap</button>
+            <button
+              class="ctx-type-btn goldenrap" class:active={ctxNote.isRap && ctxNote.isGolden}
+              on:click={() => setNoteType(ctxNote.id, 'goldenrap')}
+              title="Rap note with the golden bonus"
+            >G Golden Rap</button>
             <button
               class="ctx-type-btn freestyle" class:active={ctxNote.isFreestyle}
               on:click={() => setNoteType(ctxNote.id, 'freestyle')}
@@ -12410,6 +12425,8 @@
 
   .ctx-type-group {
     display: flex;
+    flex-wrap: wrap;   /* five note types: wrap instead of widening the menu */
+    max-width: 280px;
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
@@ -12477,6 +12494,11 @@
   .ctx-type-btn.rap.active {
     background: #ff9800;
     border-color: #ff9800;
+  }
+
+  .ctx-type-btn.goldenrap.active {
+    background: #ff9800;
+    border-color: #ffd700;
   }
 
   .ctx-type-btn.freestyle.active {

@@ -35,6 +35,10 @@
             Rap / Freestyle note
           </div>
           <div class="legend-item">
+            <span class="swatch" style="background:#ff980044;border:1px solid #ffd700"></span>
+            Golden rap note (G)
+          </div>
+          <div class="legend-item">
             <span class="swatch" style="background:#ef535044;border:1px solid #ef5350"></span>
             Break line (pause)
           </div>

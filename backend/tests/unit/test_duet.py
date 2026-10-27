@@ -97,8 +97,9 @@ def test_a_note_without_singer_in_a_duet_is_kept_for_both():
 def test_solo_charts_are_written_as_before():
     notes = [{"startBeat": 0, "duration": 4, "pitch": 1, "syllable": "a", "isGolden": True},
              {"type": "break", "startBeat": 6},
-             {"startBeat": 8, "duration": 2, "pitch": 3, "syllable": " b", "isRap": True}]
-    assert duet.body_lines(notes) == ["* 0 4 1 a", "- 6", "R 8 2 3  b"]
+             {"startBeat": 8, "duration": 2, "pitch": 3, "syllable": " b", "isRap": True},
+             {"startBeat": 12, "duration": 2, "pitch": 3, "syllable": "c", "isRap": True, "isGolden": True}]
+    assert duet.body_lines(notes) == ["* 0 4 1 a", "- 6", "R 8 2 3  b", "G 12 2 3 c"]
 
 
 def test_header_lines_for_new_and_old_games():

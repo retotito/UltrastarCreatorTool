@@ -38,7 +38,7 @@ singer 2's notes). USDB keeps the names in `#VIDEO` (`p1=…,p2=…`); USDB Sync
 
 Done: `services/duet.py` and `frontend/src/lib/ultrastar.js` (tests: `test_duet.py`, `ultrastar.test.js`). Round trip
 of all 906 USDB duets: each track unchanged in 899; the others only list some notes out of beat order (we sort),
-once golden-rap `G` notes are left aside (not read at all yet, solo charts too: see the backlog).
+once golden-rap `G` notes are left aside (now read too, since the golden rap type was added).
 
 - Today `parseUltrastar` (frontend) and `parse_ultrastar_file` (backend) skip `P1`/`P2` lines: a duet is read as one
   singer with both singers' notes and line breaks mixed. Both learn the tracks.

@@ -207,16 +207,14 @@ def parse_ultrastar_file(content: str) -> dict:
                 headers[key] = value
             continue
 
-        # Note line: ': start duration pitch syllable' or 'F: ...' or '* ...' (golden)
-        if line.startswith(':') or line.startswith('F:') or line.startswith('*'):
-            is_rap = line.startswith('F:')
-            is_golden = line.startswith('*')
-            if is_rap:
-                prefix = 'F:'
-            elif is_golden:
-                prefix = '*'
-            else:
-                prefix = ':'
+        # Note line: ': start duration pitch syllable'; '*' golden, 'R' rap, 'G' golden rap, 'F' freestyle
+        # ('F:' and 'R:' are the legacy rap prefixes)
+        note_prefix = re.match(r"(F:|R:|[:*RGF])(?=\s)", line)
+        if note_prefix:
+            prefix = note_prefix.group(1)
+            is_rap = prefix in ('R', 'G', 'F:', 'R:')
+            is_golden = prefix in ('*', 'G')
+            is_freestyle = prefix == 'F'
             parts = line[len(prefix):].strip().split(None, 3)
 
             try:
@@ -227,6 +225,8 @@ def parse_ultrastar_file(content: str) -> dict:
                         "pitch": int(parts[2]),
                         "syllable": parts[3],
                         "is_rap": is_rap,
+                        "is_golden": is_golden,
+                        "is_freestyle": is_freestyle,
                         **({"singer": singer} if singer is not None else {}),
                     })
                 elif len(parts) == 3:
@@ -236,6 +236,8 @@ def parse_ultrastar_file(content: str) -> dict:
                         "pitch": int(parts[2]),
                         "syllable": "",
                         "is_rap": is_rap,
+                        "is_golden": is_golden,
+                        "is_freestyle": is_freestyle,
                         **({"singer": singer} if singer is not None else {}),
                     })
             except (ValueError, IndexError):

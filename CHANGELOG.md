@@ -4,6 +4,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### ⭐ Golden rap notes
+- Golden rap notes (`G`, a rap note with the golden bonus) are kept when a chart is opened or imported; before,
+  they disappeared. New type **G Golden Rap** in the right-click menu (orange with a gold border)
+- Imports also keep standard rap (`R`) and freestyle (`F`) notes in the session's timings
+
 ### 🎤 Duets (in progress)
 - Duet charts (`P1`/`P2`) keep both singers' parts when opened in the editor and saved; before, both parts were
   mixed into one. Notes sung together are read as one note. Headers `#P1`/`#P2` and `#DUETSINGERP1`/`P2`
