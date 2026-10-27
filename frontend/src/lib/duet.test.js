@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   makeDuet, unmakeDuet, moveTo, link, unlink, only, notesOf, byActiveSinger, withNames, namesFromHeaders,
-  newBreakSinger, setBreakSinger, laneStretches,
+  newBreakSinger, setBreakSinger, laneStretches, keptOnReplace,
 } from './duet.js';
 
 const note = (id, startBeat, singer, duration = 4) => ({ id, startBeat, duration, pitch: 1, syllable: `n${id}`, singer });
@@ -71,4 +71,12 @@ test('note lane stretches per singer, close notes merged', () => {
   assert.deepEqual(laneStretches(notes, 1), [[0, 10]]);
   assert.deepEqual(laneStretches(notes, 2), [[6, 10], [30, 34]]);
   assert.deepEqual(laneStretches(notes), [[0, 10], [30, 34]]);
+});
+
+test('replacing a range keeps the other singer and gives them the linked notes', () => {
+  const notes = [note(1, 0, 1), note(2, 10, 1), note(3, 10, 2), note(4, 14, 'both'), { id: 5, type: 'break', startBeat: 12, singer: 'both' }, note(6, 30, 1)];
+  const inRange = n => n.startBeat >= 8 && n.startBeat < 20;
+  assert.deepEqual(singers(keptOnReplace(notes, inRange, 1)), ['1:1', '3:2', '4:2', '5:2', '6:1']);
+  const solo = notes.map(({ singer, ...n }) => n);
+  assert.deepEqual(keptOnReplace(solo, inRange, 1).map(n => n.id), [1, 6]);
 });

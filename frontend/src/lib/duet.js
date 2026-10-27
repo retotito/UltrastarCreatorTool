@@ -118,6 +118,20 @@ export function notesOf(notes, singer) {
   return new Set(notes.filter(n => n.type !== 'break' && sungBy(n, singer)).map(n => n.id));
 }
 
+/** What stays when a tool (AI regenerate, Analyze 5s) replaces the notes and breaks for which `inRange(n)` holds.
+ * A solo chart: nothing in the range. A duet: only `active`'s are replaced. The other singer's notes and breaks
+ * stay, and linked ones in the range become the other singer's (the active singer gets the new ones). */
+export function keptOnReplace(notes, inRange, active) {
+  if (!isDuetChart(notes)) return notes.filter(n => !inRange(n));
+  const otherSinger = other(active);
+  const out = [];
+  for (const n of notes) {
+    if (!inRange(n) || n.singer === otherSinger) out.push(n);
+    else if (n.singer === BOTH) out.push({ ...n, singer: otherSinger });
+  }
+  return out;
+}
+
 /** Where `singer` sings (null: every note, a solo chart), as stretches [start, end] in beats for the bottom bar's
  * note lane. Notes less than `maxGap` beats apart are one stretch. */
 export function laneStretches(notes, singer = null, maxGap = 4) {

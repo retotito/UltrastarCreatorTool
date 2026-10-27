@@ -108,10 +108,16 @@ note of that singer). Shared breaks are red, a singer's own in their colour.
   assignment by time.)
 - Export writes what the editor has (see Decisions).
 
-### Later: tools on the active singer
+### Tools on the active singer ✅
 
-AI regenerate in the loop, the vibrato tool, segment recording, pitch fixes and other tools that change notes act
-only on the active singer's notes (and the linked ones).
+- **AI regenerate** (loop, cleanup section, after segment recording) and **Analyze 5s** replace only the active
+  singer's notes in the range (`keptOnReplace`): the other singer's stay, linked ones there become the other
+  singer's, the new notes are the active singer's. The audio is the shared vocal track (both voices): what comes out
+  goes to the active singer and is corrected by hand, as when splitting a new song into singers. No hints.
+- **Join** (J / Shift+J) only with a note of the same singer. **Vibrato** keeps the note's singer.
+- **MIDI**: a toggle next to the MIDI button, *Both* or only the singer you edit.
+- **Mic sing-along** and **vocal trace** compare with the singer you edit.
+- Everything else works on the selection, so on the active singer already.
 
 ## Decisions
 

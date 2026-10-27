@@ -1124,6 +1124,7 @@
 
   // MIDI pitch playback during track play
   let midiPlayback = false;
+  let midiActiveOnly = false;   // a duet: tones only for the singer you edit (else both)
   let muteVocal = false;
   let audioVolume = 0.8; // 0..1 audio volume
   let midiAudioCtx = null;
@@ -1645,6 +1646,7 @@
     closeContextMenu();   // its entries were for the other singer
     _menuClosedByAction = false;   // closed by a key, not a click: the next click works as usual
     activeSinger = singer;
+    if (midiActiveOnly) stopAllMidiNotes();   // the tones follow the singer you edit
     // The other singer's notes can't stay selected
     const keep = n => n.singer == null || duet.sungBy(n, singer);
     selectedNotes = new Set([...selectedNotes].filter(id => keep(notes.find(n => n.id === id) || {})));
@@ -3110,7 +3112,8 @@
         let drawY = missY;
         let hitColor = 'rgba(255, 80, 180, 0.45)';
         for (const n of notes) {
-          if (n.type !== 'break' && frame.beat >= n.startBeat && frame.beat < n.startBeat + n.duration) {
+          // a duet: compared with the singer you edit
+          if (n.type !== 'break' && isEditable(n) && frame.beat >= n.startBeat && frame.beat < n.startBeat + n.duration) {
             const diff = Math.abs(frame.sungPitch - n.pitch);
             if (diff <= HARD_TOL) {
               isHit = true;
@@ -5438,6 +5441,7 @@
         syllable: i === 0 ? note.syllable : ' ~',
         isRap: false,
         isGolden: !!note.isGolden,
+        ...(note.singer != null ? { singer: note.singer } : {}),   // a duet: same singer (a linked note stays linked)
         isFreestyle: !!note.isFreestyle,
         confidence: note.confidence ?? 1.0,
         original: { startBeat: segStart, duration: dur, pitch: Math.round(useSegments[i].pitch) },
@@ -5652,15 +5656,19 @@
       // Snapshot for undo before any mutation
       pushUndo();
 
-      // Remove all existing notes (including breaks) that overlap the beat range
-      const kept = notes.filter(n => {
+      // Remove the existing notes (including breaks) that overlap the beat range; in a duet only the active
+      // singer's (the new notes are theirs)
+      const kept = duet.keptOnReplace(notes, n => {
         const nEnd = n.type === 'break' ? (n.endBeat ?? n.startBeat + 1) : (n.startBeat + (n.duration ?? 1));
-        return nEnd <= rangeStartBeat || n.startBeat >= rangeEndBeat;
-      });
+        return !(nEnd <= rangeStartBeat || n.startBeat >= rangeEndBeat);
+      }, activeSinger);
 
       // Re-assign IDs on incoming notes so they don't collide with kept notes
       const maxId = kept.reduce((m, n) => Math.max(m, n.id ?? 0), -1);
-      const insertedNotes = newNotes.map((n, i) => ({ ...n, id: maxId + 1 + i }));
+      const insertedNotes = newNotes.map((n, i) => ({
+        ...n, id: maxId + 1 + i,
+        ...(isDuet && n.type !== 'break' ? { singer: activeSinger } : {}),
+      }));
       const merged = [
         ...kept,
         ...insertedNotes,
@@ -6059,11 +6067,16 @@
     }, 0);
   }
 
+  // In a duet a note joins only a note of the same singer (both linked, or both the same singer's)
+  function sameSingerAs(n, id) {
+    return !isDuet || n.singer === notes.find(x => x.id === id)?.singer;
+  }
+
   function mergeWithNext(noteId) {
     const id = noteId ?? selectedNote;
     if (id === null) return;
     const ordered = notes
-      .filter(n => n.type !== 'break')
+      .filter(n => n.type !== 'break' && sameSingerAs(n, id))
       .slice()
       .sort((a, b) => (a.startBeat - b.startBeat) || (a.id - b.id));
     const realIdx = ordered.findIndex(n => n.id === id);
@@ -6097,7 +6110,7 @@
     const id = noteId ?? selectedNote;
     if (id === null) return;
     const ordered = notes
-      .filter(n => n.type !== 'break')
+      .filter(n => n.type !== 'break' && sameSingerAs(n, id))
       .slice()
       .sort((a, b) => (a.startBeat - b.startBeat) || (a.id - b.id));
     const realIdx = ordered.findIndex(n => n.id === id);
@@ -6109,7 +6122,7 @@
     const id = noteId ?? selectedNote;
     if (id === null) return false;
     const ordered = notes
-      .filter(n => n.type !== 'break')
+      .filter(n => n.type !== 'break' && sameSingerAs(n, id))
       .slice()
       .sort((a, b) => (a.startBeat - b.startBeat) || (a.id - b.id));
     const idx = ordered.findIndex(n => n.id === id);
@@ -6120,7 +6133,7 @@
     const id = noteId ?? selectedNote;
     if (id === null) return false;
     const ordered = notes
-      .filter(n => n.type !== 'break')
+      .filter(n => n.type !== 'break' && sameSingerAs(n, id))
       .slice()
       .sort((a, b) => (a.startBeat - b.startBeat) || (a.id - b.id));
     const idx = ordered.findIndex(n => n.id === id);
@@ -7897,11 +7910,13 @@
     });
 
     // Replace non-break notes in analyzed window with proposals.
-    const remaining = notes.filter(n => n.type === 'break' || (n.startBeat + n.duration <= startBeat || n.startBeat >= endBeat));
+    // In a duet only the active singer's notes in the window are replaced (breaks stay, as before)
+    const remaining = duet.keptOnReplace(notes, n => n.type !== 'break' && !(n.startBeat + n.duration <= startBeat || n.startBeat >= endBeat), activeSinger);
     let reassignedId = Math.max(0, ...remaining.map(n => typeof n.id === 'number' ? n.id : 0));
     const proposalNotesWithUniqueIds = proposalNotes.map(note => ({
       ...note,
       id: ++reassignedId,
+      ...(isDuet ? { singer: activeSinger } : {}),
     }));
     console.log('[Analyze5s] replacement', {
       existingNotes: notes.length,
@@ -7951,7 +7966,8 @@
     for (const note of notes) {
       if (note.type === 'break') continue;
       const noteEnd = note.startBeat + note.duration;
-      const isInNote = currentBeat >= note.startBeat && currentBeat < noteEnd;
+      // a duet with "MIDI: only the singer you edit": the other singer's notes are silent
+      const isInNote = currentBeat >= note.startBeat && currentBeat < noteEnd && (!midiActiveOnly || isEditable(note));
 
       if (isInNote && !midiActiveNotes.has(note.id)) {
         // Start this note
@@ -8830,11 +8846,11 @@
     let midiPitch = Math.round(12 * Math.log2(frequency / 440) + 69);
     const rawPitch = midiPitch;
 
-    // ── Find which note (if any) the current beat falls in ──
+    // ── Find which note (if any) the current beat falls in (a duet: the singer you edit) ──
     const currentBeat = timeToBeat(timeSec);
     let targetNote = null;
     for (const note of notes) {
-      if (note.type === 'break') continue;
+      if (note.type === 'break' || !isEditable(note)) continue;
       if (currentBeat >= note.startBeat && currentBeat < note.startBeat + note.duration) {
         targetNote = note;
         break;
@@ -9082,7 +9098,7 @@
     // Only record inside a note window — no frames in gaps between notes.
     let noteForBeat = null;
     for (const n of notes) {
-      if (n.type !== 'break' && currentBeat >= n.startBeat && currentBeat < n.startBeat + n.duration) {
+      if (n.type !== 'break' && isEditable(n) && currentBeat >= n.startBeat && currentBeat < n.startBeat + n.duration) {
         noteForBeat = n; break;
       }
     }
@@ -10295,6 +10311,13 @@
         <button class="tool-btn" class:active={midiPlayback} on:click={() => { console.log('[UI] toggleMidi'); toggleMidiPlayback(); }} title="Toggle MIDI pitch tones during playback (9)">
           <span>MIDI</span><span style="padding-left: 4px">{midiPlayback ? ' 🔈' : ' 🔇'}</span>
         </button>
+        {#if isDuet}
+          <button class="tool-btn sm" class:active={midiActiveOnly}
+            on:click={() => { midiActiveOnly = !midiActiveOnly; stopAllMidiNotes(); }}
+            title={midiActiveOnly ? `MIDI tones only for ${singerName(activeSinger)} — click for both singers` : `MIDI tones for both singers — click for only ${singerName(activeSinger)}`}>
+            {midiActiveOnly ? singerName(activeSinger) : 'Both'}
+          </button>
+        {/if}
       </div>
       <div id="metronome-wrapper">
         <button class="tool-btn" class:active={metronomeEnabled} on:click={() => { console.log('[UI] toggleMetronome'); toggleMetronome(); }} title="Toggle Metronome click on each beat (0)">

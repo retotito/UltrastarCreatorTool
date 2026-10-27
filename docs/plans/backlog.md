@@ -37,6 +37,11 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 - Later, trained locally on the user's own computer: our own timing head, published in a separate repository
   (not in the mirror).
 
+## Editor
+
+- Check that **mic sing-along** and **vocal trace** (pitch hits against the notes) are still accurate; they are
+  months old.
+
 ## Later
 
 - GitHub Actions builds (when publishing).
