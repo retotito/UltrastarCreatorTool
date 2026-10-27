@@ -1610,15 +1610,13 @@
         : 'The other singer already sings there: a singer can\'t have overlapping notes.', 4000);
       return;
     }
-    applyDuetChange(result.notes);
-    if (kind === 'move' || kind === 'only') activeSinger = singer;
+    applyDuetChange(result.notes);   // the active singer stays: only the chips change it
     closeContextMenu();
   }
 
   function selectSingerNotes(singer) {
     selectedNotes = duet.notesOf(notes, singer);
     selectedNote = selectedNotes.size === 1 ? [...selectedNotes][0] : null;
-    activeSinger = singer;
     closeContextMenu();
     draw();
   }
