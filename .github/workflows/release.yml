@@ -1,0 +1,136 @@
+name: Release build
+
+# A tag (v5.0.0, v5.0.0-beta.1) builds all platforms and makes a draft GitHub release with their installers.
+# "Run workflow" (manual) builds them as artifacts only, for testing. The app's version is tauri.conf.json's
+# (numeric pre-releases only, e.g. 5.0.0-1: the Windows .msi refuses "beta").
+
+on:
+  push:
+    tags: ['v*']
+    branches: ['ci/**']   # while the build is being set up: every push to a ci/ branch builds (artifacts only)
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    # Intel Macs: newer torch has no Intel Mac builds, so this one may fail without stopping the others
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-14
+            platform: macos
+            torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+            experimental: false
+          - name: macOS Intel
+            os: macos-15-intel
+            platform: macos
+            torch: torch==2.2.2 torchaudio==2.2.2 torchvision==0.17.2 "numpy<2"
+            experimental: true
+          - name: Windows
+            os: windows-latest
+            platform: windows
+            torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
+            experimental: false
+          - name: Linux
+            os: ubuntu-22.04
+            platform: linux
+            torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
+            experimental: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux system libraries (WebKitGTK for Tauri)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsndfile1
+
+      # One virtual env for the backend (build_local.sh uses .venv/bin/pyinstaller on the Macs)
+      - name: Python packages
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [ -x .venv/bin/python ]; then PY=.venv/bin/python; else PY=.venv/Scripts/python.exe; fi
+          $PY -m pip install --upgrade pip
+          $PY -m pip install ${{ matrix.torch }}
+          $PY -m pip install -r backend/requirements.txt -r backend/requirements-ai.txt imageio-ffmpeg
+          # A static ffmpeg (no Homebrew/system libraries) named ffmpeg on PATH: backend.spec bundles it
+          mkdir -p .ffmpeg_build
+          FF=$($PY -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
+          if [ "${{ matrix.platform }}" = windows ]; then cp "$FF" .ffmpeg_build/ffmpeg.exe; else cp "$FF" .ffmpeg_build/ffmpeg; chmod +x .ffmpeg_build/ffmpeg; fi
+          echo "$PWD/.ffmpeg_build" >> "$GITHUB_PATH"
+
+      - name: npm packages
+        working-directory: frontend
+        run: npm ci
+
+      # macOS: the same script as local builds (sidecar, .app, ad-hoc re-signing, .dmg)
+      - name: Build (macOS)
+        if: matrix.platform == 'macos'
+        run: ./build_local.sh
+
+      - name: Build (Windows, Linux)
+        if: matrix.platform != 'macos'
+        shell: bash
+        run: |
+          if [ -x .venv/bin/pyinstaller ]; then PYI=.venv/bin/pyinstaller; else PYI=.venv/Scripts/pyinstaller.exe; fi
+          $PYI backend/backend.spec --distpath dist-backend --noconfirm --clean
+          rm -rf frontend/src-tauri/resources/backend
+          mkdir -p frontend/src-tauri/resources
+          cp -r dist-backend/backend frontend/src-tauri/resources/backend
+          cd frontend
+          # Windows: .msi (the NSIS .exe can't hold the large backend); Linux: AppImage and .deb
+          if [ "${{ matrix.platform }}" = windows ]; then npm run tauri build -- --bundles msi
+          else npm run tauri build -- --bundles appimage,deb; fi
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p out
+          find frontend/src-tauri/target/release/bundle \( -name '*.dmg' -o -name '*.msi' -o -name '*.AppImage' -o -name '*.deb' \) -exec cp {} out/ \;
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.platform }}-${{ runner.arch }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Draft release
+    needs: build
+    if: always() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: out/*

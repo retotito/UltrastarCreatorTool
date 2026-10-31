@@ -33,6 +33,9 @@ num2words==0.5.14
 # langdetect tells which language subtitles are written in (a translation warning; MIT).
 langdetect==1.0.9
 
+# Model downloads from Hugging Face (services/model_mirror.py)
+huggingface_hub==0.36.2
+
 # MIDI
 mido==1.3.2
 
