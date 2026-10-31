@@ -252,6 +252,9 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         'tkinter', 'IPython', 'jupyter',
+        # GPU kernel compiler pulled in with torch on Linux (~700 MB); the app runs torch on the CPU, and torch
+        # works without it (Macs never have it)
+        'triton',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
