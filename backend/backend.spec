@@ -259,6 +259,19 @@ a = Analysis(
     noarchive=False,
 )
 
+# Files only for compiling against torch & co., never loaded by the app: static and import libraries (.a, .lib;
+# torch's dnnl.lib alone is over 2 GB on Windows, more than an .msi can hold) and C/C++ headers.
+def _runtime_only(entries):
+    def needed(dest):
+        d = dest.replace('\\', '/').lower()
+        if '.dist-info/' in d:   # licences stay
+            return True
+        return not (d.endswith(('.a', '.lib', '.h', '.hpp', '.cuh')) or '/include/' in d)
+    return [e for e in entries if needed(e[0])]
+
+a.binaries = _runtime_only(a.binaries)
+a.datas = _runtime_only(a.datas)
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(

@@ -71,8 +71,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          # libfuse2: linuxdeploy (the AppImage tool) is an AppImage itself
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsndfile1 libfuse2
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsndfile1
 
       # One virtual env for the backend (build_local.sh uses .venv/bin/pyinstaller on the Macs)
       - name: Python packages
@@ -101,8 +100,6 @@ jobs:
       - name: Build (Windows, Linux)
         if: matrix.platform != 'macos'
         shell: bash
-        env:
-          NO_STRIP: true   # linuxdeploy's strip fails on newer libraries (torch's)
         run: |
           if [ -x .venv/bin/pyinstaller ]; then PYI=.venv/bin/pyinstaller; else PYI=.venv/Scripts/pyinstaller.exe; fi
           $PYI backend/backend.spec --distpath dist-backend --noconfirm --clean
@@ -110,16 +107,18 @@ jobs:
           mkdir -p frontend/src-tauri/resources
           cp -r dist-backend/backend frontend/src-tauri/resources/backend
           du -sh frontend/src-tauri/resources/backend   # the .msi holds at most ~2 GB
+          find frontend/src-tauri/resources/backend -type f -size +40M -exec du -h {} + | sort -rh | head -15
           cd frontend
-          # Windows: .msi (the NSIS .exe can't hold the large backend); Linux: AppImage and .deb
+          # Windows: .msi (the NSIS .exe can't hold the large backend). Linux: .deb (the AppImage tool, linuxdeploy,
+          # tries to resolve every library in the backend and fails on torch's)
           if [ "${{ matrix.platform }}" = windows ]; then npm run tauri build -- --bundles msi --verbose
-          else npm run tauri build -- --bundles appimage,deb --verbose; fi
+          else npm run tauri build -- --bundles deb --verbose; fi
 
       - name: Collect installers
         shell: bash
         run: |
           mkdir -p out
-          find frontend/src-tauri/target/release/bundle \( -name '*.dmg' -o -name '*.msi' -o -name '*.AppImage' -o -name '*.deb' \) -exec cp {} out/ \;
+          find frontend/src-tauri/target/release/bundle \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' \) -exec cp {} out/ \;
           ls -la out
 
       - uses: actions/upload-artifact@v4
