@@ -65,7 +65,7 @@ from typing import Optional
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Add parent dir to path for imports
@@ -77,6 +77,7 @@ from utils.error_handler import (
     service_exception_handler,
     ServiceError,
 )
+from services.http_range import RangeNotSatisfiable, parse_range
 
 # ────────────────────────────────────────────────────────────
 # App setup
@@ -2366,28 +2367,27 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
         '.m4a': 'audio/mp4', '.aac': 'audio/aac',
     }.get(ext, 'application/octet-stream')
     
-    # Handle range requests for seeking support
-    range_header = request.headers.get('range')
-    if range_header:
-        # Parse "bytes=start-end"
-        range_str = range_header.replace('bytes=', '')
-        parts = range_str.split('-')
-        start = int(parts[0]) if parts[0] else 0
-        end = int(parts[1]) if parts[1] else file_size - 1
-        end = min(end, file_size - 1)
+    # Every request gets the same file's bytes: players mix requests with and without a range (GStreamer, the Linux
+    # web view's audio, starts without one), so a whole-file answer may not be another file (e.g. a converted MP3)
+    try:
+        byte_range = parse_range(request.headers.get('range'), file_size)
+    except RangeNotSatisfiable:
+        return Response(status_code=416, headers={'Content-Range': f'bytes */{file_size}', 'Accept-Ranges': 'bytes'})
+    if byte_range:
+        start, end = byte_range
         length = end - start + 1
-        
+
         def iter_range():
             with open(path, 'rb') as f:
                 f.seek(start)
                 remaining = length
                 while remaining > 0:
-                    chunk = f.read(min(8192, remaining))
+                    chunk = f.read(min(65536, remaining))
                     if not chunk:
                         break
                     remaining -= len(chunk)
                     yield chunk
-        
+
         return StreamingResponse(
             iter_range(),
             status_code=206,
@@ -2399,9 +2399,8 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
                 'Cache-Control': 'no-store',
             }
         )
-    
-    # No range — return full file with accept-ranges header
-    # Build a user-friendly download name from artist/title
+
+    # The whole file, with a name from artist/title for "Save as"
     artist = session.get("artist", "").strip()
     title_name = session.get("title", "").strip()
     if artist and title_name:
@@ -2413,21 +2412,8 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
     else:
         base = "Untitled Song"
     suffix = " [Vocals]" if audio_type == "vocals" else ""
-    # Convert to MP3 on the fly if needed (vocals from Demucs may be WAV)
-    serve_path, is_tmp = _ensure_mp3_for_download(path)
-    dl_ext = ".mp3" if serve_path != path or path.lower().endswith(".mp3") else os.path.splitext(path)[1]
-    download_name = base + suffix + dl_ext
-
-    response = FileResponse(serve_path, filename=download_name, headers={'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store'})
-    if is_tmp:
-        # Schedule temp file cleanup after response is sent
-        import asyncio as _asyncio
-        async def _cleanup():
-            await _asyncio.sleep(30)
-            try: os.unlink(serve_path)
-            except Exception: pass
-        _asyncio.create_task(_cleanup())
-    return response
+    return FileResponse(path, media_type=content_type, filename=base + suffix + ext,
+                        headers={'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store'})
 
 
 @app.post("/api/segment-preview/{session_id}")

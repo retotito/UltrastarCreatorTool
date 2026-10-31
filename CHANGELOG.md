@@ -4,6 +4,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 🐧 Linux
+- Audio plays (Step 1/2 players, the editor): the audio server answers every request with the same file's bytes
+  and handles "last bytes" ranges; before, a request without a range got a converted MP3 while ranges got the WAV,
+  which GStreamer (the Linux web view's audio) can't play. The .deb installs the GStreamer plugins it needs
+
 ### 🗄 Storage manager
 - Lists the newer models and tools too: lyrics aligner + FCPE, GAME, RoFormer, yt-dlp and QuickJS, other
   languages' alignment models, and leftovers (original downloads, stock MMS aligner, Tune Studio's note correctors),
