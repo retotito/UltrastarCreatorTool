@@ -6789,6 +6789,8 @@
     }
   }
 
+  let lastSpaceDown = -Infinity;   // timeStamp of the last Space press (handleKeydown)
+
   function handleKeydown(e) {
     // Skip all shortcuts when text editor modal is open
     if (showTextEditor) return;
@@ -6802,6 +6804,13 @@
     if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') {
       if (e.target.type !== 'range') return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') return;
+    }
+
+    // Space once per press: a held key repeats, and the Linux web view (WebKitGTK) can deliver one press twice,
+    // which started and at once paused playback
+    if (e.code === 'Space') {
+      if (e.repeat || e.timeStamp - lastSpaceDown < 150) { e.preventDefault(); return; }
+      lastSpaceDown = e.timeStamp;
     }
 
     console.log(`[Key] code=${e.code} key=${e.key} shift=${e.shiftKey} ctrl=${e.ctrlKey} meta=${e.metaKey}`);
@@ -9490,8 +9499,7 @@
   async function prewarmWaveformCache() {
     const urls = [];
     if (hasVocalsAudio && vocalUrl) urls.push(vocalUrl);
-    const fullmixUrl = getAudioUrl($sessionId, 'fullmix');
-    if (fullmixUrl) urls.push(fullmixUrl);
+    if (hasOriginalAudio && originalUrl) urls.push(originalUrl);
     if (hasEditedVocal && editedVocalUrl) urls.push(editedVocalUrl);
     for (const url of urls) {
       if (waveformPeaksCache.has(url)) continue;
