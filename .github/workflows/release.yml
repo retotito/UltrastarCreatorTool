@@ -33,10 +33,13 @@ jobs:
           - name: macOS Intel
             os: macos-15-intel
             platform: macos
-            torch: torch==2.2.2 torchaudio==2.2.2 torchvision==0.17.2 "numpy<2"
-            onnx: onnxruntime<1.24   # 1.24 has no Intel Mac build
-            # newer WhisperX needs torch 2.5+; llvmlite 0.46+ (librosa → numba) has no Intel Mac build
-            asr: whisperx==3.3.1 faster-whisper==1.1.0 "numba<0.63" "llvmlite<0.46"
+            # The oldest Intel Macs supported: macOS 12. Newer torch, onnxruntime and llvmlite have no Intel Mac builds
+            # (or only for macOS 13+), WhisperX 3.4+ needs torch 2.5+.
+            torch: torch==2.2.2 torchaudio==2.2.2 torchvision==0.17.2
+            onnx: onnxruntime==1.19.2
+            asr: whisperx==3.3.1 faster-whisper==1.1.0
+            constraints: numpy<2 numba<0.63 llvmlite<0.46
+            macos_version: '12.0'
             experimental: true
           - name: Windows
             os: windows-latest
@@ -77,12 +80,24 @@ jobs:
       # One virtual env for the backend (build_local.sh uses .venv/bin/pyinstaller on the Macs)
       - name: Python packages
         shell: bash
+        env:
+          # Intel Macs: wheels for macOS 12 (.ci/macos-compat), version limits for every install step
+          PIP_MACOS_VERSION: ${{ matrix.macos_version }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_version }}
         run: |
           python -m venv .venv
           if [ -x .venv/bin/python ]; then PY=.venv/bin/python; else PY=.venv/Scripts/python.exe; fi
+          if [ -n "$PIP_MACOS_VERSION" ]; then export PYTHONPATH="$PWD/.ci/macos-compat"; else unset MACOSX_DEPLOYMENT_TARGET; fi
+          echo "${{ matrix.constraints }}" | tr ' ' '\n' > constraints.txt
           $PY -m pip install --upgrade pip
-          $PY -m pip install ${{ matrix.torch }}
-          $PY -m pip install -r backend/requirements.txt -r backend/requirements-ai.txt "${{ matrix.onnx }}" ${{ matrix.asr }} imageio-ffmpeg
+          $PY -m pip install -c constraints.txt ${{ matrix.torch }}
+          $PY -m pip install -c constraints.txt -r backend/requirements.txt -r backend/requirements-ai.txt "${{ matrix.onnx }}" ${{ matrix.asr }} imageio-ffmpeg
+          # Intel Macs: no wheel may need a newer macOS than the target
+          if [ -n "$PIP_MACOS_VERSION" ]; then
+            if find .venv -path '*.dist-info/WHEEL' -exec grep -h '^Tag:' {} + | grep -E 'macosx_(1[3-9]|2[0-9])_'; then
+              echo "::error::wheels above for a newer macOS than $PIP_MACOS_VERSION"; exit 1
+            fi
+          fi
           # A static ffmpeg (no Homebrew/system libraries) named ffmpeg on PATH: backend.spec bundles it
           mkdir -p .ffmpeg_build
           FF=$($PY -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
