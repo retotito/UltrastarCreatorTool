@@ -7470,9 +7470,9 @@
       }
     }
 
-    draw();
-    if (midiPlayback) updateMidiPlayback(playbackBeat);
+    if (midiPlayback) updateMidiPlayback(playbackBeat);   // before drawing: a slow frame doesn't delay the notes
     if (metronomeEnabled) updateMetronome(playbackBeat);
+    draw();
     if (micEnabled && micAnalyser) sampleMicPitch(currentTimeSec);
     if (vocalTraceEnabled && vocalTraceDecodedBuffer) {
       // Fixed-grid: sample at deterministic timeSec positions regardless of rAF timing
@@ -8004,19 +8004,33 @@
         osc.type = 'triangle';
         const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
         osc.frequency.value = freq;
-        gain.gain.value = midiVolume;
-        osc.start();
+        const now = midiAudioCtx.currentTime;
+        gain.gain.setValueAtTime(midiVolume, now);
+        osc.start(now);
+        if (isPlaying) {
+          // The end on the audio clock: a slow frame (old computers) can't make the note longer
+          const endIn = Math.max(0, (beatToTime(noteEnd) - beatToTime(currentBeat)) / (playbackRate || 1));
+          gain.gain.setValueAtTime(midiVolume, now + endIn);
+          gain.gain.linearRampToValueAtTime(0, now + endIn + 0.03);
+          osc.stop(now + endIn + 0.04);
+        }
         midiActiveNotes.set(note.id, { osc, gain });
       } else if (!isInNote && midiActiveNotes.has(note.id)) {
-        // Stop this note
-        const entry = midiActiveNotes.get(note.id);
-        try {
-          entry.gain.gain.linearRampToValueAtTime(0, midiAudioCtx.currentTime + 0.03);
-          entry.osc.stop(midiAudioCtx.currentTime + 0.04);
-        } catch (e) { /* already stopped */ }
+        stopMidiEntry(midiActiveNotes.get(note.id));
         midiActiveNotes.delete(note.id);
       }
     }
+  }
+
+  /** Fade a MIDI note out now (pause, seek, scrub, or the playhead left it), replacing its scheduled end. */
+  function stopMidiEntry(entry) {
+    const now = midiAudioCtx?.currentTime || 0;
+    try {
+      entry.gain.gain.cancelScheduledValues(now);
+      entry.gain.gain.setValueAtTime(entry.gain.gain.value, now);
+      entry.gain.gain.linearRampToValueAtTime(0, now + 0.03);
+      entry.osc.stop(now + 0.04);
+    } catch (e) { /* already stopped */ }
   }
 
   // ──── Metronome ────────────────────────────
@@ -8072,12 +8086,7 @@
   }
 
   function stopAllMidiNotes() {
-    for (const [id, entry] of midiActiveNotes) {
-      try {
-        entry.gain.gain.linearRampToValueAtTime(0, (midiAudioCtx?.currentTime || 0) + 0.03);
-        entry.osc.stop((midiAudioCtx?.currentTime || 0) + 0.04);
-      } catch (e) { /* already stopped */ }
-    }
+    for (const entry of midiActiveNotes.values()) stopMidiEntry(entry);
     midiActiveNotes.clear();
   }
 

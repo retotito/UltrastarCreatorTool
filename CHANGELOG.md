@@ -16,6 +16,8 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - Audio plays (Step 1/2 players, the editor): the audio server answers every request with the same file's bytes
   and handles "last bytes" ranges; before, a request without a range got a converted MP3 while ranges got the WAV,
   which GStreamer (the Linux web view's audio) can't play. The .deb installs the GStreamer plugins it needs
+- MIDI notes end on time on slow computers: a note's end is set on the audio clock when it starts, instead of
+  waiting for the next screen update (which a slow frame delayed, so notes sometimes rang on)
 
 ### 🗄 Storage manager
 - Lists the newer models and tools too: lyrics aligner + FCPE, GAME, RoFormer, yt-dlp and QuickJS, other
