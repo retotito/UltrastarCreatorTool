@@ -102,7 +102,9 @@ jobs:
           mkdir -p .ffmpeg_build
           FF=$($PY -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
           if [ "${{ matrix.platform }}" = windows ]; then cp "$FF" .ffmpeg_build/ffmpeg.exe; else cp "$FF" .ffmpeg_build/ffmpeg; chmod +x .ffmpeg_build/ffmpeg; fi
-          echo "$PWD/.ffmpeg_build" >> "$GITHUB_PATH"
+          # Windows needs C:\... in PATH: a /d/a/... path isn't found and the build had no ffmpeg
+          if [ "${{ matrix.platform }}" = windows ]; then cygpath -w "$PWD/.ffmpeg_build" >> "$GITHUB_PATH"
+          else echo "$PWD/.ffmpeg_build" >> "$GITHUB_PATH"; fi
 
       - name: npm packages
         working-directory: frontend
@@ -119,6 +121,10 @@ jobs:
         run: |
           if [ -x .venv/bin/pyinstaller ]; then PYI=.venv/bin/pyinstaller; else PYI=.venv/Scripts/pyinstaller.exe; fi
           $PYI backend/backend.spec --distpath dist-backend --noconfirm --clean
+          # The app can't work without ffmpeg: stop here if it wasn't bundled
+          if [ -z "$(find dist-backend/backend -maxdepth 2 \( -iname ffmpeg -o -iname ffmpeg.exe \))" ]; then
+            echo "::error::ffmpeg isn't in the backend"; exit 1
+          fi
           rm -rf frontend/src-tauri/resources/backend
           mkdir -p frontend/src-tauri/resources
           cp -r dist-backend/backend frontend/src-tauri/resources/backend

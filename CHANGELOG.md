@@ -4,6 +4,14 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 🪟 Windows
+- The installer includes ffmpeg again (the CI build put it on PATH in a form Windows doesn't read; the build now
+  stops if ffmpeg is missing)
+- Models in the Hugging Face cache open on Windows 11 with Developer Mode: the cache's symlinks, which Windows
+  refuses to follow ("WinError 448 ... untrusted mount point", WhisperX "model.bin is 0 bytes"), are replaced at
+  startup with hard links to the same file, and new downloads are stored without symlinks. Nothing is downloaded
+  again
+
 ### 🐧 Linux
 - Audio plays (Step 1/2 players, the editor): the audio server answers every request with the same file's bytes
   and handles "last bytes" ranges; before, a request without a range got a converted MP3 while ranges got the WAV,

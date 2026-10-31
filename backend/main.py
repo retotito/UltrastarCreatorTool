@@ -78,6 +78,12 @@ from utils.error_handler import (
     ServiceError,
 )
 from services.http_range import RangeNotSatisfiable, parse_range
+from services.hf_cache import fix_windows_cache
+
+try:
+    fix_windows_cache()   # Windows: Hugging Face cache files the app can open (no symlinks)
+except Exception as _e:
+    log_step("HF_CACHE", f"Couldn't check the Hugging Face cache: {_e}")
 
 # ────────────────────────────────────────────────────────────
 # App setup
