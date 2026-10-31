@@ -28,24 +28,28 @@ jobs:
             platform: macos
             torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
             onnx: onnxruntime==1.24.4
+            asr: whisperx==3.8.5 faster-whisper==1.2.1
             experimental: false
           - name: macOS Intel
             os: macos-15-intel
             platform: macos
             torch: torch==2.2.2 torchaudio==2.2.2 torchvision==0.17.2 "numpy<2"
             onnx: onnxruntime<1.24   # 1.24 has no Intel Mac build
+            asr: whisperx==3.3.1 faster-whisper==1.1.0   # newer WhisperX needs torch 2.5+
             experimental: true
           - name: Windows
             os: windows-latest
             platform: windows
             torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
             onnx: onnxruntime==1.24.4
+            asr: whisperx==3.8.5 faster-whisper==1.2.1
             experimental: false
           - name: Linux
             os: ubuntu-22.04
             platform: linux
             torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
             onnx: onnxruntime==1.24.4
+            asr: whisperx==3.8.5 faster-whisper==1.2.1
             experimental: false
 
     steps:
@@ -78,7 +82,7 @@ jobs:
           if [ -x .venv/bin/python ]; then PY=.venv/bin/python; else PY=.venv/Scripts/python.exe; fi
           $PY -m pip install --upgrade pip
           $PY -m pip install ${{ matrix.torch }}
-          $PY -m pip install -r backend/requirements.txt -r backend/requirements-ai.txt "${{ matrix.onnx }}" imageio-ffmpeg
+          $PY -m pip install -r backend/requirements.txt -r backend/requirements-ai.txt "${{ matrix.onnx }}" ${{ matrix.asr }} imageio-ffmpeg
           # A static ffmpeg (no Homebrew/system libraries) named ffmpeg on PATH: backend.spec bundles it
           mkdir -p .ffmpeg_build
           FF=$($PY -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
