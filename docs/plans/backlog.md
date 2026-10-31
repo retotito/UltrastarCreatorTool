@@ -1,6 +1,6 @@
 # Backlog
 
-> **Status:** Current · **Last updated:** 2026-10-25
+> **Status:** Current · **Last updated:** 2026-11-01
 
 Open ideas and tasks that aren't planned in detail yet. When one is started, it gets its own plan in this folder
 (or goes straight into the code if it is small) and is removed here.
@@ -41,5 +41,9 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 
 ## Later
 
+- **Linux without WebKitGTK**: Tauri's Linux web view (WebKitGTK) is the weak spot for audio, keys and drawing
+  (silent players, Space delivered twice). Check Tauri's Chromium runtime (`tauri-runtime-cef`, alpha in
+  2026-11) once it is stable, or open the app in the system browser on Linux. Until then the Linux build is
+  experimental.
 - GitHub Actions builds (when publishing).
 - Text recognition for lyrics burned into a video.
