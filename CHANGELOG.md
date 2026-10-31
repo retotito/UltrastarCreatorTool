@@ -12,12 +12,11 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   startup with hard links to the same file, and new downloads are stored without symlinks. Nothing is downloaded
   again
 
-### 🐧 Linux
-- Audio plays (Step 1/2 players, the editor): the audio server answers every request with the same file's bytes
-  and handles "last bytes" ranges; before, a request without a range got a converted MP3 while ranges got the WAV,
-  which GStreamer (the Linux web view's audio) can't play. The .deb installs the GStreamer plugins it needs
-- Space starts playback on Linux: the web view could deliver one press twice (start, then pause at once); Space
-  now ignores key repeats and a second press within 150 ms
+### 🔊 Audio players
+- The audio server answers every request with the same file's bytes and handles "last bytes" ranges; before, a
+  request without a range got a converted MP3 while ranges got the WAV (found while testing a Linux build, which
+  isn't released for now)
+- Space ignores key repeats and a second press within 150 ms (one press could start and at once pause playback)
 - MIDI notes end on time when the playhead lags: a note's end is set on the audio clock when it starts
 - The editor's waveform for the full mix is loaded in advance again (it asked for an audio type that doesn't exist)
 

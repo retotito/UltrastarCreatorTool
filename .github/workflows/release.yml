@@ -50,13 +50,8 @@ jobs:
             onnx: onnxruntime==1.24.4
             asr: whisperx==3.8.5 faster-whisper==1.2.1
             experimental: false
-          - name: Linux
-            os: ubuntu-22.04
-            platform: linux
-            torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
-            onnx: onnxruntime==1.24.4
-            asr: whisperx==3.8.5 faster-whisper==1.2.1
-            experimental: false
+          # Linux is left out for now: Tauri's Linux web view (WebKitGTK) was unreliable for audio and keys
+          # (docs/plans/backlog.md, "Linux without WebKitGTK"). The steps for it below stay for a later try.
 
     steps:
       - uses: actions/checkout@v4

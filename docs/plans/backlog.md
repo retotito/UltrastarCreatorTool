@@ -43,7 +43,8 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 
 - **Linux without WebKitGTK**: Tauri's Linux web view (WebKitGTK) is the weak spot for audio, keys and drawing
   (silent players, Space delivered twice). Check Tauri's Chromium runtime (`tauri-runtime-cef`, alpha in
-  2026-11) once it is stable, or open the app in the system browser on Linux. Until then the Linux build is
-  experimental.
+  2026-11) once it is stable, or open the app in the system browser on Linux. 5.0 ships without Linux: after the
+  fixes (audio endpoint, Space once) playback still didn't work reliably on an Ubuntu 24.04 laptop. The release
+  workflow keeps its Linux steps (.deb with GStreamer dependencies) for a later try.
 - GitHub Actions builds (when publishing).
 - Text recognition for lyrics burned into a video.
