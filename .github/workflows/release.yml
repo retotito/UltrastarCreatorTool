@@ -35,7 +35,8 @@ jobs:
             platform: macos
             torch: torch==2.2.2 torchaudio==2.2.2 torchvision==0.17.2 "numpy<2"
             onnx: onnxruntime<1.24   # 1.24 has no Intel Mac build
-            asr: whisperx==3.3.1 faster-whisper==1.1.0   # newer WhisperX needs torch 2.5+
+            # newer WhisperX needs torch 2.5+; llvmlite 0.46+ (librosa → numba) has no Intel Mac build
+            asr: whisperx==3.3.1 faster-whisper==1.1.0 "numba<0.63" "llvmlite<0.46"
             experimental: true
           - name: Windows
             os: windows-latest
