@@ -1,9 +1,9 @@
 # AI packages bundled into the app's backend (PyInstaller), on top of requirements.txt. Versions as in the
 # working local builds. torch/torchaudio/torchvision are installed first, per platform (see
 # .github/workflows/release.yml: CPU builds on Windows/Linux, torch 2.2 on Intel Macs, which newer torch dropped).
+# onnxruntime too (1.24.4; Intel Macs: below 1.24). Locally: pip install onnxruntime==1.24.4
 whisperx==3.8.5
 faster-whisper==1.2.1
 openai-whisper==20250625
 demucs==4.0.1
-onnxruntime==1.24.4
 pyinstaller==6.19.0

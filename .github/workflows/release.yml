@@ -27,21 +27,25 @@ jobs:
             os: macos-14
             platform: macos
             torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+            onnx: onnxruntime==1.24.4
             experimental: false
           - name: macOS Intel
             os: macos-15-intel
             platform: macos
             torch: torch==2.2.2 torchaudio==2.2.2 torchvision==0.17.2 "numpy<2"
+            onnx: onnxruntime<1.24   # 1.24 has no Intel Mac build
             experimental: true
           - name: Windows
             os: windows-latest
             platform: windows
             torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
+            onnx: onnxruntime==1.24.4
             experimental: false
           - name: Linux
             os: ubuntu-22.04
             platform: linux
             torch: torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
+            onnx: onnxruntime==1.24.4
             experimental: false
 
     steps:
@@ -63,7 +67,8 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsndfile1
+          # libfuse2: linuxdeploy (the AppImage tool) is an AppImage itself
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsndfile1 libfuse2
 
       # One virtual env for the backend (build_local.sh uses .venv/bin/pyinstaller on the Macs)
       - name: Python packages
@@ -73,7 +78,7 @@ jobs:
           if [ -x .venv/bin/python ]; then PY=.venv/bin/python; else PY=.venv/Scripts/python.exe; fi
           $PY -m pip install --upgrade pip
           $PY -m pip install ${{ matrix.torch }}
-          $PY -m pip install -r backend/requirements.txt -r backend/requirements-ai.txt imageio-ffmpeg
+          $PY -m pip install -r backend/requirements.txt -r backend/requirements-ai.txt "${{ matrix.onnx }}" imageio-ffmpeg
           # A static ffmpeg (no Homebrew/system libraries) named ffmpeg on PATH: backend.spec bundles it
           mkdir -p .ffmpeg_build
           FF=$($PY -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
@@ -92,16 +97,19 @@ jobs:
       - name: Build (Windows, Linux)
         if: matrix.platform != 'macos'
         shell: bash
+        env:
+          NO_STRIP: true   # linuxdeploy's strip fails on newer libraries (torch's)
         run: |
           if [ -x .venv/bin/pyinstaller ]; then PYI=.venv/bin/pyinstaller; else PYI=.venv/Scripts/pyinstaller.exe; fi
           $PYI backend/backend.spec --distpath dist-backend --noconfirm --clean
           rm -rf frontend/src-tauri/resources/backend
           mkdir -p frontend/src-tauri/resources
           cp -r dist-backend/backend frontend/src-tauri/resources/backend
+          du -sh frontend/src-tauri/resources/backend   # the .msi holds at most ~2 GB
           cd frontend
           # Windows: .msi (the NSIS .exe can't hold the large backend); Linux: AppImage and .deb
-          if [ "${{ matrix.platform }}" = windows ]; then npm run tauri build -- --bundles msi
-          else npm run tauri build -- --bundles appimage,deb; fi
+          if [ "${{ matrix.platform }}" = windows ]; then npm run tauri build -- --bundles msi --verbose
+          else npm run tauri build -- --bundles appimage,deb --verbose; fi
 
       - name: Collect installers
         shell: bash
