@@ -33,43 +33,48 @@ which languages the maintainer knows.
 
 ## Recommended stack
 
+A native app: no browser engine and no system web view. The UI is drawn by the app itself, so the web view problems
+above can't come back, and the app needs less memory and disk.
+
 ```
-UI          web technology (Svelte or similar) in a bundled Chromium (same engine on every OS)
-            → draws and sends commands only; no audio in the UI
-Core        Rust: audio engine, AI inference, file formats, UltraStar logic
-  audio     cpal (output/input), symphonia (decoding), rubato (resampling), time-stretching (e.g. Rubber Band)
-            MIDI tones mixed into the output stream, sample-accurate
-  models    ONNX Runtime (`ort`; CoreML on macOS, DirectML on Windows, CUDA), whisper.cpp (`whisper-rs`),
-            llama.cpp / GGUF for large audio and language models, candle for models in Rust
+UI          Qt 6 / QML (declarative, GPU-accelerated), custom-drawn piano roll and waveform
+Core        C++: audio engine, AI inference, file formats, UltraStar logic
+  audio     native output/input (Qt Multimedia or a dedicated library such as miniaudio or RtAudio),
+            time-stretching (e.g. Rubber Band), MIDI tones mixed into the output stream, sample-accurate
+  models    ONNX Runtime (CoreML on macOS, DirectML on Windows, CUDA), whisper.cpp,
+            llama.cpp / GGUF for large audio and language models
 AI engine   Python, optional and downloaded separately: new PyTorch models before they exist as ONNX, local fine-tuning
 Training    Python + PyTorch → ONNX (preprocessing inside the model) → model registry
 ```
 
 Why:
 
-- **The on-device AI ecosystem is C/C++ at its core** (ONNX Runtime, whisper.cpp, llama.cpp, ggml). Rust uses it
-  directly through mature crates, and Hugging Face builds its own tools in Rust (candle, tokenizers, safetensors).
-- **Audio leaves the UI**: one native engine owns the clock, so the playhead, MIDI and the microphone agree on every
-  system and on slow computers.
-- **One Chromium everywhere** keeps the strength of web UI (canvas, WebGL/WebGPU, the richest UI ecosystem, what
-  agents write best) without per-OS web view bugs. Costs about 150 MB, little next to the models.
-- **One native program**: no Python in the default install, fast start, simple CI.
-- Tune Studio, a comparable app, already runs its ONNX and GGML models from Rust without Python.
+- **Native on all three systems.** OBS Studio (audio and video), MuseScore 4 (a complex editor with playback),
+  DaVinci Resolve and KDE are built this way and run on Windows, macOS and Linux.
+- **The on-device AI ecosystem is C/C++** (ONNX Runtime, whisper.cpp, llama.cpp, ggml): used directly, no bindings.
+- **Audio owns the clock**: one native engine, so the playhead, MIDI and the microphone agree on every system and on
+  slow computers.
+- **Mature and well documented** (30 years), which helps an AI agent as much as a person. Qt is LGPL.
+- One native program: no Python in the default install, fast start.
 
-### Runner-up: C++ with Qt 6 / QML
+Costs: C++ has no memory safety of its own (tests, sanitizers and code review matter more), and CMake builds take
+more care than `cargo` or `dotnet`.
 
-A fully native UI without a browser, the way MuseScore 4 (a complex editor with audio) runs on all three systems.
-Direct access to the C++ AI libraries, decades of maturity, LGPL. More conservative than Rust: manual memory
-safety, CMake builds. Choose it if a browser in the app is unwanted.
+### Runner-up: Rust with Slint
+
+Safer and more modern: Rust's memory safety and tooling, Slint as a native declarative UI (made by former Qt
+developers), the AI libraries through mature crates (`ort`, `whisper-rs`, llama.cpp bindings, candle). The UI
+ecosystem is younger than Qt's, which is the risk for an editor of this size. egui is the other Rust UI: very good
+for tool UIs and custom drawing, plainer looking.
 
 ### Considered and ranked lower
 
 | Stack | Why not first |
 |---|---|
+| Rust core + web UI in a bundled Chromium (Electron, CEF) | Same engine everywhere and what agents build best, but a browser layer the app doesn't need (~150 MB, more memory) |
 | C# + Avalonia | Good, but reaches the AI libraries through bindings and has fewer audio libraries |
-| Rust + native UI (Slint, egui) | The UI ecosystem is still young for an editor of this size; revisit in a few years |
 | C++ + JUCE | The best audio (DAWs, plugins), laborious for everything else; for a plugin version |
-| Python + PySide6 | Newest models in-process, but the packaging problems stay |
+| Python + PySide6 | Qt with the newest models in-process, but the packaging problems stay |
 | System web views (Tauri today, WebKitGTK) | The 5.0 lessons above |
 | Flutter | Weak at audio and AI integration |
 
@@ -117,12 +122,11 @@ if it is better. The same suite checks a port against the Python pipeline.
 2. In the current app: store corrections (block 1) and automate the evaluation (block 4). Useful whatever comes
    next.
 3. Move the remaining models to ONNX in Python, checked by the evaluation: smaller installers already in 5.x.
-4. Start the new app: Rust core with the audio engine and the editor UI first, then the pipeline stage by stage,
-   each compared with the Python version on the reference songs.
+4. Start the new app: the audio engine and the editor UI first, then the pipeline stage by stage, each compared
+   with the Python version on the reference songs.
 5. Release it as a new major version once it matches 5.x on the evaluation.
 
 ## Open questions
 
-- Rust + bundled Chromium, or C++ + Qt: decide with a prototype of the piano roll with playback and MIDI in both.
+- C++ + Qt, or Rust + Slint: decide with a prototype of the piano roll with playback and MIDI in both.
 - Training data: opt-in sharing of timings, local fine-tuning, or both. Needs a licence and privacy check.
-- Which Chromium shell: Tauri's CEF runtime (alpha in 2026-11), CEF directly, or Electron with a Rust addon.
