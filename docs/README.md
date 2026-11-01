@@ -46,6 +46,7 @@ Developer documentation for Ultrastar Creator Tool. For what the app does and ho
 **Plans**
 - [Forced alignment of user lyrics](plans/forced-alignment.md)
 - [Duets](plans/duets.md): two singers, assigned by hand in the editor
+- [Future stack](plans/future-stack.md): a desktop app that improves its own models (vision, draft)
 - [Backlog](plans/backlog.md): open ideas and tasks not planned yet
 
 ## Conventions
