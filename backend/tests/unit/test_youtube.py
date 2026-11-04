@@ -364,3 +364,37 @@ def test_the_text_language_only_when_clear():
                         "Prends mon sac dans l'coffre et m'casse", "Laisse ma caisse sur l'périph'", "Rien à foutre je trace"])
     assert text_language(french) == "fr"
     assert text_language("la la la\noh oh oh") is None                     # too short to tell
+
+
+def test_the_video_is_asked_for_as_mp4_and_returned(tmp_path):
+    seen = {}
+
+    class Process:
+        def __init__(self, args, **kwargs):
+            seen["args"] = args
+            out = [a for a in args if a.endswith("%(ext)s")][0].replace("%(ext)s", "mp4")
+            open(out, "wb").write(b"video")
+            self.stdout = io.StringIO("@progress 100 100 NA\n")
+            self.stderr = io.StringIO("")
+
+        def wait(self, timeout=None):
+            return 0
+    path = YouTube(FakeTools(), None, popen=Process).download_video("_KztNIg4cvE", str(tmp_path))
+    assert path.endswith("youtube_video.mp4")
+    assert seen["args"][seen["args"].index("--merge-output-format") + 1] == "mp4"
+    assert "avc1" in seen["args"][seen["args"].index("-f") + 1]
+    assert seen["args"][-2] == "--"
+
+
+def test_a_video_id_is_checked_before_yt_dlp_runs(tmp_path):
+    with pytest.raises(YouTubeError):
+        YouTube(FakeTools(), None).download_video("--exec=x", str(tmp_path))
+
+
+def test_picture_and_sound_count_as_one_percentage():
+    percent = youtube.two_streams_percent()
+    assert percent(50, 100) == 45              # the picture: up to 90
+    assert percent(100, 100) == 90
+    assert percent(5, 10) == 95                # fewer bytes: the sound has started
+    assert percent(10, 10) == 99               # never 100 before the file is ready
+    assert percent(11, None) is None

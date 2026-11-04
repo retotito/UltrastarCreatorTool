@@ -93,3 +93,15 @@ def test_freestyle_and_rap_notes_get_hyphens_too():
 def test_golden_rap_notes_get_hyphens():
     content = format_for_download("G 0 4 0 gold\nE")
     assert lines(content)[0] == "G 0 4 0 gold-"
+
+
+def test_start_and_video_gap_are_kept():
+    chart = "#ARTIST:A\n#TITLE:T\n#BPM:240\n#GAP:0\n#START:12.5\n#END:90000\n#VIDEOGAP:2.5\n#XYZ:1\n: 0 1 60 a\nE\n"
+    out = format_for_download(chart)
+    assert "#START:12.5" in out and "#END:90000" in out and "#VIDEOGAP:2.5" in out and "#XYZ" not in out
+
+
+def test_the_video_header_can_be_left_out():
+    chart = "#ARTIST:A\n#TITLE:T\n#BPM:240\n#GAP:0\n#VIDEO:A - T.mp4\n: 0 1 60 a\nE\n"
+    assert "#VIDEO:A - T.mp4" in format_for_download(chart)
+    assert "#VIDEO" not in format_for_download(chart, include_video=False)

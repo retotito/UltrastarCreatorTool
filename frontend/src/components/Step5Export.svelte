@@ -1,7 +1,9 @@
 <script>
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
   import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
-           uploadCover, getCoverUrl, deleteCover, uploadBgImage, getBgImageUrl, deleteBgImage, saveAssetsMeta, getAssetsMeta } from '../services/api.js';
+           uploadCover, getCoverUrl, deleteCover, uploadBgImage, getBgImageUrl, deleteBgImage, saveAssetsMeta, getAssetsMeta,
+           streamYouTubeVideo, deleteYouTubeVideo, getDownloadVideoUrl } from '../services/api.js';
+  import TransferModal from './TransferModal.svelte';
   import { resetSession } from '../stores/appStore.js';
   import { SUPPORTED_LANGUAGES, languageHeader } from '../lib/languages';
 
@@ -65,6 +67,7 @@
   let zipIncludeInstrumental = false;
   let zipIncludeSummary = false;
   let zipIncludeMidi = false;
+  let zipIncludeVideo = false;   // off by default: videos are large
 
   // Clear editVocals when vocal audio is deleted
   $: if (!$uploadData?.hasVocals) editVocals = '';
@@ -103,6 +106,13 @@
   let youtubeUrl = '';
   let videoSaved = false;
   let videoSaving = false;
+  let videoSize = null;          // bytes of the video downloaded from the YouTube link, null = none
+  let videoTransfer = null;      // the busy window: { status, percent }
+  let cancelVideoTransfer = null;
+
+  $: hasVideoFile = videoSize !== null;
+  $: canGetVideo = hasVideoFile || !!youtubeUrl.trim();
+  $: videoSizeLabel = hasVideoFile ? `${Math.round(videoSize / 1e6)} MB` : '';
 
   // Try to load existing assets when session is known
   $: if ($sessionId) loadExistingAssets();
@@ -127,6 +137,7 @@
     try {
       const meta = await getAssetsMeta($sessionId);
       if (meta?.video_filename) videoFilename = meta.video_filename;
+      videoSize = meta?.video_size ?? null;
       if (meta?.video_gap != null) videoGap = meta.video_gap;
       if (meta?.youtube_url) youtubeUrl = meta.youtube_url;
       if (meta?.genre) editGenre = meta.genre;
@@ -368,11 +379,64 @@
     videoSaved = false;
     try {
       await saveAssetsMeta($sessionId, videoFilename.trim(), videoGap, youtubeUrl.trim(), editGenre.trim(), editYear.trim(), editEdition.trim(), editCreator.trim(), editVocals.trim(), editInstrumental.trim());
+      await refreshVideoMeta();
       videoSaved = true;
       setTimeout(() => { videoSaved = false; }, 2000);
     } finally {
       videoSaving = false;
     }
+  }
+
+  /** The backend names a downloaded video after the song and drops it when the link changes. */
+  async function refreshVideoMeta() {
+    const meta = await getAssetsMeta($sessionId);
+    videoFilename = meta?.video_filename || '';
+    videoSize = meta?.video_size ?? null;
+  }
+
+  /** The video of the YouTube link on the backend, downloaded if needed. False if cancelled or failed. */
+  async function ensureVideo() {
+    errorMessage.set('');
+    await saveVideoMeta();   // the link as typed
+    if (hasVideoFile) return true;
+    videoTransfer = { status: 'Getting the video…', percent: null };
+    return new Promise((resolve) => {
+      const finish = (ok) => { videoTransfer = null; cancelVideoTransfer = null; resolve(ok); };
+      const close = streamYouTubeVideo($sessionId, async (event) => {
+        if (event.phase === 'error') {
+          errorMessage.set(event.message);
+          finish(false);
+        } else if (event.phase === 'done') {
+          await refreshVideoMeta();
+          finish(true);
+        } else {
+          videoTransfer = { status: event.message, percent: event.percent ?? null };
+        }
+      });
+      cancelVideoTransfer = () => { close(); finish(false); };
+    });
+  }
+
+  async function saveVideoFile() {
+    const blob = await fetch(getDownloadVideoUrl($sessionId)).then(r => r.blob());
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = videoFilename || getBaseFilename() + '.mp4';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    notifyDownload(`✓ ${a.download} downloaded`);
+  }
+
+  async function downloadVideo() {
+    if (await ensureVideo()) await saveVideoFile();
+  }
+
+  async function removeVideo() {
+    await deleteYouTubeVideo($sessionId);
+    zipIncludeVideo = false;
+    await refreshVideoMeta();
   }
 
   $: hasArtist = !!($lyricsData?.artist?.trim());
@@ -425,6 +489,7 @@
         editVocals.trim(),
         editInstrumental.trim()
       );
+      await refreshVideoMeta();
       showEditPopup = false;
     } catch (e) {
       console.error('Failed to save metadata:', e);
@@ -439,12 +504,14 @@
   }
 
   async function downloadZip() {
+    if (zipIncludeVideo && !(await ensureVideo())) return;
     const params = new URLSearchParams({
       include_vocals: zipIncludeVocals ? '1' : '0',
       include_edited_vocals: zipIncludeEditedVocals ? '1' : '0',
       include_instrumental: zipIncludeInstrumental ? '1' : '0',
       include_summary: zipIncludeSummary ? '1' : '0',
       include_midi: zipIncludeMidi ? '1' : '0',
+      include_video: zipIncludeVideo ? '1' : '0',
     });
     const url = getDownloadZipUrl($sessionId) + '?' + params.toString();
     const blob = await fetch(url).then(r => r.blob());
@@ -465,6 +532,7 @@
       const params = new URLSearchParams({
         include_vocals: zipIncludeVocals ? '1' : '0',
         include_instrumental: zipIncludeInstrumental ? '1' : '0',
+        include_video: zipIncludeVideo ? '1' : '0',
       });
       url += '?' + params.toString();
     }
@@ -525,6 +593,7 @@
   }
 
   async function downloadAll() {
+    if (zipIncludeVideo && !(await ensureVideo())) return;
     // Download each file with a small delay so browser doesn't block them
     const files = ['txt'];
     if ($generationResult?.midi_file && zipIncludeMidi) files.push('midi');
@@ -549,7 +618,9 @@
     }
     if ($uploadData.hasOriginal) {
       downloadAudio('original');
+      await new Promise(r => setTimeout(r, 300));
     }
+    if (zipIncludeVideo) saveVideoFile();
     exported = true;
     notifyDownload('✓ All files downloaded');
   }
@@ -690,12 +761,17 @@
           <span class="asset-label">Video</span>
           <div class="video-inputs">
             <div class="video-input-row">
-              <input
-                class="video-filename-input"
-                type="text"
-                placeholder="filename.mp4 (leave blank to skip)"
-                bind:value={videoFilename}
-              />
+              {#if hasVideoFile}
+                <span class="asset-value">{videoFilename} · {videoSizeLabel}</span>
+                <button class="asset-action-btn danger" on:click={removeVideo} title="Remove the downloaded video">✕</button>
+              {:else}
+                <input
+                  class="video-filename-input"
+                  type="text"
+                  placeholder="filename.mp4 (leave blank to skip)"
+                  bind:value={videoFilename}
+                />
+              {/if}
             </div>
             <div class="video-input-row">
               <input
@@ -711,14 +787,19 @@
                 class="video-gap-input"
                 type="number"
                 step="0.1"
-                title="VIDEOGAP in seconds"
+                title="VIDEOGAP in seconds. Positive: the video is that many seconds into its file when the audio starts"
                 bind:value={videoGap}
               />
               <button class="asset-save-btn" on:click={saveVideoMeta} disabled={videoSaving}>
                 {videoSaved ? '✓ Saved' : 'Save'}
               </button>
             </div>
+            <p class="video-gap-hint">Leave at 0 if the audio comes from this video. To skip an intro, use START in the editor.</p>
           </div>
+          <label class="asset-include" title={canGetVideo ? 'Put the video in the ZIP and in "All Files Individual". It is downloaded from the YouTube link if needed' : 'Add a YouTube link first'}>
+            <input type="checkbox" bind:checked={zipIncludeVideo} disabled={!canGetVideo} />
+            Include
+          </label>
         </div>
 
         <!-- Full Mix audio (read-only display) -->
@@ -867,6 +948,12 @@
           <span class="file-desc">{$uploadData.hasOriginal ? 'Original audio file' : 'Not available'}</span>
         </button>
 
+        <button class="download-btn" on:click={downloadVideo} disabled={!canGetVideo}>
+          <span class="file-icon">🎬</span>
+          <span class="file-name">Video</span>
+          <span class="file-desc">{hasVideoFile ? `Downloaded from YouTube, ${videoSizeLabel}` : canGetVideo ? 'Downloads from the YouTube link, up to 1080p' : 'Add a YouTube link first'}</span>
+        </button>
+
         {#if $generationResult?.summary_file}
           <button class="download-btn" on:click={() => downloadFile('summary')}>
             <span class="file-icon">📋</span>
@@ -888,6 +975,11 @@
 
   {#if $errorMessage}
     <div class="error-bar">❌ {$errorMessage}</div>
+  {/if}
+
+  {#if videoTransfer}
+    <TransferModal title="Downloading the video" status={videoTransfer.status} percent={videoTransfer.percent}
+      on:cancel={() => cancelVideoTransfer?.()} />
   {/if}
 
   {#if showCropModal}
@@ -1390,6 +1482,12 @@
     font-size: 0.78rem;
     color: #777;
     white-space: nowrap;
+  }
+
+  .video-gap-hint {
+    margin: 0;
+    font-size: 0.72rem;
+    color: #777;
   }
 
   .video-filename-input {

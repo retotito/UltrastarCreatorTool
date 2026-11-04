@@ -1,6 +1,6 @@
 # Backlog
 
-> **Status:** Current · **Last updated:** 2026-11-01
+> **Status:** Current · **Last updated:** 2026-11-04
 
 Open ideas and tasks that aren't planned in detail yet. When one is started, it gets its own plan in this folder
 (or goes straight into the code if it is small) and is removed here.
@@ -16,10 +16,7 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 
 - Check that **mic sing-along** and **vocal trace** (pitch hits against the notes) are still accurate; they are
   months old.
-- **Set VIDEOGAP button**, like the Set END button: pick the position in the editor and write `#VIDEOGAP`. No video
-  in the editor.
-- **`#START`** (where the game starts playing, to skip an intro): a Set START mode like Set END. Not decided yet
-  whether it is worth it.
+- **Set PREVIEW button** (`#PREVIEWSTART`), like Set END. Low priority: the game picks a preview position by itself.
 
 ## Pipeline
 
@@ -41,6 +38,8 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 
 ## Later
 
+- **Work out `#VIDEOGAP` automatically** when the audio comes from elsewhere: compare the video's sound with the
+  song's audio. There is no video in the editor to line it up by eye.
 - **Linux without WebKitGTK**: Tauri's Linux web view (WebKitGTK) is the weak spot for audio, keys and drawing
   (silent players, Space delivered twice). Check Tauri's Chromium runtime (`tauri-runtime-cef`, alpha in
   2026-11) once it is stable, or open the app in the system browser on Linux. 5.0 ships without Linux: after the

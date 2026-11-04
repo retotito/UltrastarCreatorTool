@@ -57,6 +57,19 @@ a later correction brings them back. Step 2's tab lists the tracks by language n
 preselected. Loading by hand adds a warning when the text itself reads as another language (`text_language`,
 langdetect, only for 8+ lines at ≥ 90 %: "la la la" or mixed-language duets give no answer, so it never decides).
 
+## Video for the export (Step 4)
+
+With a YouTube link in the export step's Video row, the **🎬 Video** button downloads the video and saves it. The
+**Include** checkbox (off by default) puts it in the ZIP and in "All Files Individual", downloading it first if needed.
+Downloads run in the shared busy window with progress and Cancel.
+
+- H.264 and AAC in `.mp4`, up to 1080p (`VIDEO_FORMAT`): they play everywhere; YouTube's best is often AV1 or VP9.
+- Stored in the session's upload folder as `youtube_video.mp4` (`video_file`, `video_source` in the session). Removed
+  by ✕, or when the link changes to another video.
+- `#VIDEO` is `Artist - Title.mp4`, renamed with the song. A downloaded video that isn't included is left out of the
+  exported `.txt`; a file name typed by hand always stays.
+- The ZIP is built in a temporary file; the video is stored in it uncompressed.
+
 ## Tools: yt-dlp and QuickJS
 
 `backend/services/download_tools.py` downloads them on first use into the app's data folder (`tools/`; in dev
@@ -82,5 +95,4 @@ available in your country, live, removed, no network, "confirm you're not a bot"
 
 ## Not (yet) done
 
-- No video download (not needed for charting).
 - Lyrics shown only in the picture (burned in) can't be read; that would need text recognition on the video.

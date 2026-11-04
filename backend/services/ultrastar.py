@@ -9,10 +9,42 @@ USDB_KNOWN_HEADERS = {
     'TITLE', 'ARTIST', 'BPM', 'GAP', 'LANGUAGE', 'MP3', 'VOCALS',
     'INSTRUMENTAL', 'COVER', 'BACKGROUND', 'VIDEO', 'VIDEOGAP',
     'GENRE', 'YEAR', 'EDITION', 'CREATOR', 'COMMENT', 'YOUTUBE',
-    'END', 'PREVIEWSTART', 'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT',
+    'START', 'END', 'PREVIEWSTART', 'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT',
     'RELATIVE', 'ENCODING', 'TAGS',
     'P1', 'P2', 'DUETSINGERP1', 'DUETSINGERP2',  # duets
 }
+
+
+def video_assets_from_headers(headers: dict) -> dict:
+    """What an imported chart says about its video, as session fields (video_filename, video_gap, youtube_url).
+
+    #VIDEO is a file name, or USDB's tags ("v=<YouTube id>,co=...,p1=..."), which only give the link. #VIDEOGAP may
+    have a decimal comma; #YOUTUBE is the link in the app's own charts.
+    """
+    assets = {}
+    video = (headers.get("VIDEO") or "").strip()
+    usdb_id = next((part[2:].strip() for part in video.split(",") if part.startswith("v=")), "")
+    if video and not re.match(r"^\w+=", video):
+        assets["video_filename"] = video
+    link = usdb_id or (headers.get("YOUTUBE") or "").strip()
+    if link:
+        assets["youtube_url"] = f"https://www.youtube.com/watch?v={link}" if len(link) == 11 else link
+    try:
+        assets["video_gap"] = float((headers.get("VIDEOGAP") or "").strip().replace(",", "."))
+    except ValueError:
+        pass
+    return assets
+
+
+def video_gap_header(session: dict) -> str | None:
+    """The #VIDEOGAP value to write, or None for no header: it belongs to a video (a file or a YouTube link). Without
+    a file, a gap of 0 says nothing."""
+    gap = session.get("video_gap")
+    if gap is None:
+        return None
+    if session.get("video_filename") or (session.get("youtube_url") and gap):
+        return str(gap)
+    return None
 
 
 def _remove_header(content: str, key: str) -> str:
@@ -21,7 +53,8 @@ def _remove_header(content: str, key: str) -> str:
     return "\n".join(lines)
 
 
-def format_for_download(content: str, include_vocals: bool = True, include_instrumental: bool = True) -> str:
+def format_for_download(content: str, include_vocals: bool = True, include_instrumental: bool = True,
+                        include_video: bool = True) -> str:
     """Turn a stored .txt into the file the user downloads (USDB conventions).
 
     - YASS-style line breaks (``- 12 14`` → ``- 12``)
@@ -61,6 +94,8 @@ def format_for_download(content: str, include_vocals: bool = True, include_instr
         content = _remove_header(content, "VOCALS")
     if not include_instrumental:
         content = _remove_header(content, "INSTRUMENTAL")
+    if not include_video:
+        content = _remove_header(content, "VIDEO")
 
     seen_keys = set()
     filtered_lines = []

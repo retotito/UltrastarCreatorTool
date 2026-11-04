@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.ultrastar import (_fmt_bpm, generate_lyrics_only_txt, generate_ultrastar, language_header,
+from services.ultrastar import (video_assets_from_headers, video_gap_header, _fmt_bpm, generate_lyrics_only_txt, generate_ultrastar, language_header,
                                 parse_language_header)
 
 
@@ -131,3 +131,25 @@ def test_charts_already_in_midi_numbers_stay():
     from services.ultrastar import to_midi_pitches
     chart = ": 0 4 57 a\n: 4 4 64 b\n: 8 4 70 c\nE"
     assert to_midi_pitches(chart) == (chart, False)
+
+
+@pytest.mark.parametrize('headers, expected', [
+    ({}, {}),
+    ({'VIDEO': 'Song.mp4', 'VIDEOGAP': '2,5'}, {'video_filename': 'Song.mp4', 'video_gap': 2.5}),
+    ({'VIDEO': 'v=dQw4w9WgXcQ,co=c.jpg,p1=A'}, {'youtube_url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'}),
+    ({'YOUTUBE': 'https://youtu.be/abc'}, {'youtube_url': 'https://youtu.be/abc'}),
+    ({'VIDEOGAP': 'x'}, {}),
+])
+def test_video_assets_from_headers(headers, expected):
+    assert video_assets_from_headers(headers) == expected
+
+
+@pytest.mark.parametrize('session, expected', [
+    ({}, None),
+    ({'video_gap': 2.5}, None),                                     # no video
+    ({'video_gap': 0.0, 'video_filename': 'a.mp4'}, '0.0'),
+    ({'video_gap': 2.5, 'youtube_url': 'https://y'}, '2.5'),        # a USDB chart: the video comes from the link
+    ({'video_gap': 0.0, 'youtube_url': 'https://y'}, None),
+])
+def test_video_gap_header(session, expected):
+    assert video_gap_header(session) == expected

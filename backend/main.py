@@ -79,6 +79,7 @@ from utils.error_handler import (
 )
 from services.http_range import RangeNotSatisfiable, parse_range
 from services.hf_cache import fix_windows_cache
+from services.ultrastar import video_assets_from_headers, video_gap_header
 
 try:
     fix_windows_cache()   # Windows: Hugging Face cache files the app can open (no symlinks)
@@ -1662,6 +1663,7 @@ async def import_ultrastar(
             "ultrastar_content": txt_content,
         },
     }
+    session.update(video_assets_from_headers(headers))
     if downloaded:  # the mix came from YouTube: keep the link (#YOUTUBE) and the video's cover
         for key in ("youtube_url", "youtube_thumbnail", "filename"):
             if downloaded.get(key):
@@ -1851,6 +1853,125 @@ async def youtube_inspect(request: Request):
     _youtube_details[vid] = details
     log_step("YOUTUBE", f"Inspected {vid}: {details['artist']} - {details['title']} ({details['duration']}s)")
     return details
+
+
+def _song_base(session: dict) -> str:
+    artist = session.get("artist", "").strip()
+    title = session.get("title", "").strip()
+    return f"{artist} - {title}" if artist and title else title or artist or "Untitled Song"
+
+
+def _video_file(session: dict) -> Optional[str]:
+    """The video downloaded from the session's YouTube link, if it is there."""
+    path = session.get("video_file")
+    return path if path and os.path.exists(path) else None
+
+
+def _drop_video(session: dict) -> None:
+    if session.get("video_file"):
+        _safe_unlink(session["video_file"])
+        session.pop("video_filename", None)
+    session.pop("video_file", None)
+    session.pop("video_source", None)
+
+
+@app.get("/api/youtube/video-stream/{session_id}")
+async def youtube_video_stream(session_id: str):
+    """SSE: download the video of the session's YouTube link, for the export. Closing the stream cancels.
+
+    Events: {phase: "tools"|"download"|"done"|"error", message, percent?, filename?, size?}.
+    """
+    import asyncio
+    import queue
+    import threading
+    from services.youtube import YouTubeCancelled, YouTubeError, two_streams_percent, video_id
+
+    def send(phase: str, message: str = "", **kwargs) -> str:
+        return f"data: {json.dumps({'phase': phase, 'message': message, **kwargs})}\n\n"
+
+    async def events():
+        session = sessions.get(session_id)
+        if not session:
+            yield send("error", "Session not found")
+            return
+        vid = video_id(session.get("youtube_url") or "")
+        if not vid:
+            yield send("error", "Add a link to a YouTube video first.")
+            return
+        if not (_video_file(session) and session.get("video_source") == vid):
+            updates: "queue.Queue" = queue.Queue()
+            outcome: dict = {}
+            cancelled = threading.Event()
+
+            def work():
+                try:
+                    yt = _youtube()
+                    if not (yt.tools.installed("yt-dlp") and yt.tools.installed("quickjs")):
+                        updates.put(("tools", "Getting the YouTube download tools (first time only, about a minute)…", None))
+                    updates.put(("download", "Downloading the video…", 0))
+                    percent = two_streams_percent()
+                    outcome["file"] = yt.download_video(vid, os.path.join(UPLOAD_DIR, session_id),
+                                                        lambda done, total: updates.put(("download", "Downloading the video…", percent(done, total))),
+                                                        cancelled)
+                except YouTubeCancelled:
+                    log_step("YOUTUBE", f"Video download of {vid} cancelled")
+                except YouTubeError as e:
+                    outcome["error"] = str(e)
+                except Exception as e:  # unexpected: show it rather than hang
+                    outcome["error"] = f"{type(e).__name__}: {e}"
+                finally:
+                    updates.put(None)
+
+            threading.Thread(target=work, daemon=True).start()
+            try:
+                while True:
+                    try:
+                        item = updates.get_nowait()
+                    except queue.Empty:
+                        await asyncio.sleep(0.3)
+                        continue
+                    if item is None:
+                        break
+                    phase, message, percent_done = item
+                    yield send(phase, message, percent=percent_done)
+            except BaseException:  # client disconnected (asyncio.CancelledError / GeneratorExit)
+                cancelled.set()
+                raise
+            if "error" in outcome:
+                yield send("error", outcome["error"])
+                return
+            if "file" not in outcome:
+                return
+            session["video_file"] = outcome["file"]
+            session["video_source"] = vid
+            _update_txt_asset_headers(session)
+            save_session(session_id)
+            log_step("YOUTUBE", f"Session {session_id}: video from {vid} ({os.path.getsize(outcome['file']):,} bytes)")
+        yield send("done", "Video downloaded.", filename=session.get("video_filename"),
+                   size=os.path.getsize(session["video_file"]))
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.delete("/api/youtube/video/{session_id}")
+async def delete_youtube_video(session_id: str):
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _drop_video(session)
+    _update_txt_asset_headers(session)
+    save_session(session_id)
+    return {"status": "ok"}
+
+
+@app.get("/api/download-video/{session_id}")
+async def download_video(session_id: str):
+    session = sessions.get(session_id)
+    path = _video_file(session) if session else None
+    if not path:
+        raise HTTPException(status_code=404, detail="No downloaded video")
+    return FileResponse(path, media_type="video/mp4", filename=_song_base(session) + os.path.splitext(path)[1])
 
 
 @app.get("/api/youtube/import-stream")
@@ -5372,6 +5493,7 @@ async def download_file(
     file_type: str,
     include_vocals: str = "1",
     include_instrumental: str = "1",
+    include_video: str = "1",
 ):
     """Download a generated file."""
     session = sessions.get(session_id)
@@ -5405,6 +5527,8 @@ async def download_file(
             content,
             include_vocals=include_vocals == "1",
             include_instrumental=include_instrumental == "1",
+            # A downloaded video that stays behind isn't named; a file name the user typed is theirs
+            include_video=include_video == "1" or not _video_file(session),
         )
         # Build a user-friendly download name from artist/title
         artist = session.get("artist", "").strip()
@@ -5519,16 +5643,19 @@ def _update_txt_asset_headers(session: dict) -> None:
         else:
             content = _remove_header(content, "BACKGROUND")
 
+        # A video downloaded for the export is named like the song, as in the ZIP
+        video_file = _video_file(session)
+        if video_file:
+            session["video_filename"] = f"{base}{os.path.splitext(video_file)[1]}"
         video_filename = session.get("video_filename")
         if video_filename:
             content = _set_header(content, "VIDEO", video_filename)
-            video_gap = session.get("video_gap")
-            if video_gap is not None:
-                content = _set_header(content, "VIDEOGAP", str(video_gap))
-            else:
-                content = _remove_header(content, "VIDEOGAP")
         else:
             content = _remove_header(content, "VIDEO")
+        video_gap = video_gap_header(session)
+        if video_gap is not None:
+            content = _set_header(content, "VIDEOGAP", video_gap)
+        else:
             content = _remove_header(content, "VIDEOGAP")
 
         youtube_url = session.get("youtube_url")
@@ -5719,6 +5846,7 @@ async def get_assets_meta(session_id: str):
     return {
         "video_filename": session.get("video_filename", ""),
         "video_gap": session.get("video_gap", 0),
+        "video_size": os.path.getsize(_video_file(session)) if _video_file(session) else None,
         "youtube_url": session.get("youtube_url", ""),
         "genre": session.get("genre", ""),
         "year": session.get("year", ""),
@@ -5757,6 +5885,10 @@ async def save_assets_meta(session_id: str, request: Request):
             pass
     else:
         session.pop("video_gap", None)
+    # The downloaded video belongs to its link
+    from services.youtube import video_id as _video_id
+    if session.get("video_file") and _video_id(youtube_url) != session.get("video_source"):
+        _drop_video(session)
     if youtube_url:
         session["youtube_url"] = youtube_url
     else:
@@ -5800,11 +5932,11 @@ async def download_zip(
     include_instrumental: str = "1",
     include_summary: str = "1",
     include_midi: str = "1",
+    include_video: str = "0",
 ):
     """Bundle all generated files into a single ZIP download."""
     import zipfile
-    import io
-    from starlette.responses import Response
+    from starlette.background import BackgroundTask
 
     session = sessions.get(session_id)
     if not session:
@@ -5826,8 +5958,11 @@ async def download_zip(
     else:
         base = "Untitled Song"
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    # On disk, not in memory: a video can be hundreds of MB
+    video_file = _video_file(session)
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        zip_path = tmp.name
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         # Ultrastar .txt — inject asset headers before writing
         txt_file = result.get("corrected_txt_file", result.get("txt_file"))
         if txt_file:
@@ -5877,9 +6012,11 @@ async def download_zip(
                 video_filename = session.get("video_filename")
                 if video_filename:
                     txt_content = _set_header(txt_content, "VIDEO", video_filename)
-                    video_gap = session.get("video_gap")
-                    if video_gap is not None:
-                        txt_content = _set_header(txt_content, "VIDEOGAP", str(video_gap))
+                video_gap = video_gap_header(session)
+                if video_gap is not None:
+                    txt_content = _set_header(txt_content, "VIDEOGAP", video_gap)
+                if video_file and include_video != "1":
+                    txt_content = _remove_header(txt_content, "VIDEO")
 
                 # Strip VOCALS/INSTRUMENTAL headers from .txt copy if not included
                 if include_vocals != "1":
@@ -5950,7 +6087,10 @@ async def download_zip(
         if bg_path and os.path.exists(bg_path):
             zf.write(bg_path, f"{base} [BG].jpg")
 
-    buf.seek(0)
+        # Video: already compressed
+        if video_file and include_video == "1":
+            zf.write(video_file, f"{base}{os.path.splitext(video_file)[1]}", compress_type=zipfile.ZIP_STORED)
+
     zip_name = f"{base}.zip"
     log_step("EXPORT", f"ZIP download: {zip_name}")
 
@@ -5961,11 +6101,9 @@ async def download_zip(
     utf8_name = _urlquote(zip_name, safe="")
     content_disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{utf8_name}'
 
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/zip",
-        headers={"Content-Disposition": content_disposition},
-    )
+    return FileResponse(zip_path, media_type="application/zip",
+                        headers={"Content-Disposition": content_disposition},
+                        background=BackgroundTask(_safe_unlink, zip_path))
 
 
 # ────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 # Keyboard Shortcuts
 
-> **Status:** Current · **Last updated:** 2026-10-25
+> **Status:** Current · **Last updated:** 2026-11-04
 
 ## Find
 
@@ -70,6 +70,14 @@
 | **Ctrl/Cmd+Z** | Undo |
 | **Ctrl/Cmd+Shift+Z** | Redo |
 | **Ctrl/Cmd+S** | Force save |
+
+## Toolbar Layout
+
+The 🎛️ button in the top bar (editor only) chooses which toolbar controls to show, for small screens. Everything is
+shown until hidden; the choice is kept for all songs. Hiding only removes the control: shortcuts keep working, and a tool in
+use shows anyway (mic, vocal trace, pitch line, loop, metronome, a speed other than 1x, a START past the first note, Duet
+in a duet song). Not hideable: Play, the time, audio source and volume, MIDI, BPM, GAP. The list is in
+`frontend/src/lib/editorTools.js`.
 
 ## Tools & Modes
 

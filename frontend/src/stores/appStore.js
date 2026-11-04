@@ -2,6 +2,7 @@
  * Shared application state using Svelte writable stores.
  */
 import { writable, derived } from 'svelte/store';
+import { parseHiddenTools } from '../lib/editorTools.js';
 
 // Waveform peaks cache — module-level, persists across Step4Editor mounts for the entire session.
 // Key: audio URL string. Value: { peaks: Float32Array, duration: number, buffer: AudioBuffer }
@@ -114,6 +115,22 @@ export const storageManagerOpen = writable(false);
 export const editorHelpOpen = writable(false);
 // The editor's find widget, opened from the 🔍 button in the top bar or Cmd/Ctrl+F
 export const editorFindOpen = writable(false);
+// The top bar's layout menu, and the toolbar controls hidden with it (kept for the whole app)
+export const editorLayoutOpen = writable(false);
+const HIDDEN_TOOLS_KEY = 'editor_hidden_tools';
+function readHiddenTools() {
+  try {
+    return parseHiddenTools(localStorage.getItem(HIDDEN_TOOLS_KEY));
+  } catch {
+    return new Set();
+  }
+}
+export const hiddenEditorTools = writable(readHiddenTools());
+hiddenEditorTools.subscribe((hidden) => {
+  try {
+    localStorage.setItem(HIDDEN_TOOLS_KEY, JSON.stringify([...hidden]));
+  } catch { /* browser storage unavailable: the layout lasts until the app closes */ }
+});
 
 // Steps definition (Step 3 is a modal overlay, not a tab)
 export const steps = [

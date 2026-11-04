@@ -148,6 +148,31 @@ export function streamYouTubeImport(videoId, sessionId, onEvent) {
   return () => es.close();
 }
 
+/** The video of the session's YouTube link, for the export. Returns a function that cancels. */
+export function streamYouTubeVideo(sessionId, onEvent) {
+  const es = new EventSource(`${BASE}/youtube/video-stream/${sessionId}`);
+  es.onmessage = (e) => {
+    try {
+      const event = JSON.parse(e.data);
+      onEvent(event);
+      if (event.phase === 'done' || event.phase === 'error') es.close();
+    } catch {}
+  };
+  es.onerror = () => {
+    onEvent({ phase: 'error', message: 'Connection to server lost' });
+    es.close();
+  };
+  return () => es.close();
+}
+
+export async function deleteYouTubeVideo(sessionId) {
+  return request('DELETE', `/youtube/video/${sessionId}`);
+}
+
+export function getDownloadVideoUrl(sessionId) {
+  return `${BASE}/download-video/${sessionId}`;
+}
+
 export async function uploadCorrectedVocals(sessionId, file, signal = null) {
   const form = new FormData();
   form.append('vocals', file);

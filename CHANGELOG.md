@@ -4,6 +4,20 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 🎛️ Toolbar layout
+- New 🎛️ button at the top right in the editor: tick off toolbar controls you don't need, one by one, for small
+  screens. Shortcuts keep working, a tool in use stays visible, and a duet song always shows Duet
+
+### ⏱ START and video
+- **START** in the editor's toolbar, next to END: click where the game should start playing, to skip an intro
+  (`#START`). Refused after the first note, because notes before it score nothing in the game; a warning shows if
+  notes later end up before it. `#START` also stays in the downloaded .txt now; before it was dropped
+- Importing a chart keeps its `#VIDEO` file, `#VIDEOGAP` and YouTube link (`#YOUTUBE` or USDB's `v=`); before they were
+  removed unless the mix was downloaded in the import
+- Export step: a hint at Video GAP, 0 if the audio comes from this video
+- **Export the video**: with a YouTube link, the 🎬 Video button downloads it (H.264, up to 1080p), and the Include
+  checkbox puts it in the ZIP and "All Files Individual", with `#VIDEO` in the `.txt`
+
 ### 🪟 Windows
 - The installer includes ffmpeg again (the CI build put it on PATH in a form Windows doesn't read; the build now
   stops if ffmpeg is missing)

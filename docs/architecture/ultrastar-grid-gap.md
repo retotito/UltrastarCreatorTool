@@ -36,6 +36,22 @@ Where `gapSec = gapMs / 1000`, `bpm` is the Ultrastar BPM value.
 - All note startBeats are relative to this point
 - Beat 0 can be anywhere in the audio — it doesn't have to be the first note or the first beat
 
+## Playback Headers
+
+Measured from the start of the audio file, independent of each other, as UltraStar Deluxe reads them. None of them
+moves the notes, so changing BPM or GAP leaves them where they are in the song. Note the units.
+
+| Header | Unit | Meaning |
+|---|---|---|
+| `#GAP` | ms | Where beat 0 is |
+| `#START` | seconds | Where the game starts playing, to skip an intro. Notes before it become freestyle (no points), so the editor refuses a position after the first note and shows a warning if notes later end up before it. If the first note is less than 3 s after it, the game starts 3 s before that note |
+| `#END` | ms, whole number | Where the song counts as finished |
+| `#VIDEOGAP` | seconds | Video position = audio position + VIDEOGAP. 0 if the audio comes from the same video; only needed for audio from elsewhere. It belongs to a video: written with a video file, or if not 0 with a YouTube link |
+| `#PREVIEWSTART` | seconds | Where the preview starts in the song list; not set by the app |
+
+Importing a chart keeps its video: `#VIDEO` as a file name, or USDB's `v=<id>,...` tags as the YouTube link; `#YOUTUBE`
+and `#VIDEOGAP`. The editor's "Set GAP / Set Start" below is about beat 0, not `#START`.
+
 ## What the Grid Is
 
 - The grid is a visual representation of musical beat subdivisions

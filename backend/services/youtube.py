@@ -22,6 +22,8 @@ HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
          "www.youtube-nocookie.com", "youtu.be"}
 INSPECT_TIMEOUT_SEC = 120
 DOWNLOAD_TIMEOUT_SEC = 1800
+# For the game: H.264 and AAC play everywhere, up to 1080p. YouTube's best is often AV1 or VP9, riskier on old computers.
+VIDEO_FORMAT = "bv*[vcodec^=avc1][height<=1080]+ba[ext=m4a]/b[vcodec^=avc1][height<=1080]/bv*[height<=1080]+ba/b[height<=1080]/b"
 
 
 class YouTubeError(Exception):
@@ -359,16 +361,30 @@ class YouTube:
                        cancelled: Optional[threading.Event] = None) -> str:
         """Download the best audio stream as is into `folder` (as youtube_audio.<ext>); returns its path.
         Setting `cancelled` stops yt-dlp, removes the partial download and raises YouTubeError("Cancelled.")."""
+        return self._download(vid, folder, "youtube_audio", ["-f", "bestaudio[ext=m4a]/bestaudio/best"],
+                              on_progress, cancelled)
+
+    def download_video(self, vid: str, folder: str,
+                       on_progress: Optional[Callable[[int, Optional[int]], None]] = None,
+                       cancelled: Optional[threading.Event] = None) -> str:
+        """Download the video with sound for the game into `folder` (as youtube_video.mp4); returns its path. Picture
+        and sound are two streams, so the progress runs twice (see `two_streams_percent`). Cancel as download_audio."""
+        return self._download(vid, folder, "youtube_video", ["-f", VIDEO_FORMAT, "--merge-output-format", "mp4"],
+                              on_progress, cancelled)
+
+    def _download(self, vid: str, folder: str, stem: str, options: List[str],
+                  on_progress: Optional[Callable[[int, Optional[int]], None]],
+                  cancelled: Optional[threading.Event]) -> str:
         if not ID.match(vid or ""):
             raise YouTubeError("That isn't a YouTube video.", retryable=False)
         os.makedirs(folder, exist_ok=True)
+        pattern = os.path.join(glob.escape(folder), f"{stem}.*")
 
         def attempt(programs):
-            for old in glob.glob(os.path.join(folder, "youtube_audio.*")):
+            for old in glob.glob(pattern):
                 os.remove(old)
-            args = self._base_args(programs) + [
-                "-f", "bestaudio[ext=m4a]/bestaudio/best",
-                "-o", os.path.join(folder, "youtube_audio.%(ext)s"),
+            args = self._base_args(programs) + options + [
+                "-o", os.path.join(folder, f"{stem}.%(ext)s"),
                 "--newline", "--quiet", "--progress", "--progress-template",
                 "download:@progress %(progress.downloaded_bytes)s %(progress.total_bytes)s "
                 "%(progress.total_bytes_estimate)s",
@@ -385,16 +401,32 @@ class YouTube:
             stderr = process.stderr.read()
             code = process.wait(timeout=DOWNLOAD_TIMEOUT_SEC)
             if cancelled is not None and cancelled.is_set():
-                for partial in glob.glob(os.path.join(glob.escape(folder), "youtube_audio.*")):
+                for partial in glob.glob(pattern):
                     os.remove(partial)
                 raise YouTubeCancelled()
             if code != 0:
                 raise explain(stderr)
-            files = [f for f in glob.glob(os.path.join(folder, "youtube_audio.*")) if not f.endswith(".part")]
+            files = [f for f in glob.glob(pattern) if not f.endswith(".part")]
             if not files:
-                raise YouTubeError("yt-dlp finished but no audio file was written. Try again.")
+                raise YouTubeError("yt-dlp finished but no file was written. Try again.")
             return files[0]
         return self._with_update(attempt)
+
+
+def two_streams_percent() -> Callable[[int, Optional[int]], Optional[int]]:
+    """Turns the progress of a video download into one percentage: the picture (the big one) up to 90, the sound after
+    it. A smaller byte count means the next stream has started."""
+    state = {"stream": 0, "last": 0}
+
+    def percent(done: int, total: Optional[int]) -> Optional[int]:
+        if done < state["last"]:
+            state["stream"] = 1
+        state["last"] = done
+        if not total:
+            return None
+        part = min(1.0, done / total)
+        return min(99, int(90 * part if state["stream"] == 0 else 90 + 10 * part))
+    return percent
 
 
 def _kill_when_cancelled(process, cancelled: threading.Event) -> None:

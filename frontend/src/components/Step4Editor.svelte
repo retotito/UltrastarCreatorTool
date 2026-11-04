@@ -5,7 +5,7 @@
   import SelectionPanel from './SelectionPanel.svelte';
   import EditorHelpModal from './EditorHelpModal.svelte';
   import FixSpacesModal from './FixSpacesModal.svelte';
-  import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep, uploadData, recordingActive, storageManagerOpen, editorHelpOpen, editorFindOpen } from '../stores/appStore.js';
+  import { sessionId, generationResult, editorState, errorMessage, lyricsData, currentStep, uploadData, recordingActive, storageManagerOpen, editorHelpOpen, editorFindOpen, editorLayoutOpen, hiddenEditorTools } from '../stores/appStore.js';
   import { waveformPeaksCache } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, saveEditorState, generateCleanedAudio, suggestVibrato, getLiveWordsWindow, updateMetadata } from '../services/api.js';
   import { SUPPORTED_LANGUAGES, languageHeader, parseLanguageHeader } from '../lib/languages';
@@ -254,6 +254,27 @@
   let endMs = null;             // #END value in ms (null = not set)
   let setEndMode = false;       // user is picking a new END position
   let setEndHoverMs = null;     // ms position currently hovered in setEnd mode
+  let startSec = null;          // #START value in seconds (null = not set): where the game starts playing
+  let setStartMode = false;     // user is picking a new START position
+  let setStartHoverMs = null;   // ms position currently hovered in setStart mode
+  // Notes before #START score nothing in UltraStar Deluxe (they become freestyle)
+  $: firstNoteSec = firstNoteTime(notes, gapMs, bpm);
+  $: startPastFirstNote = startSec !== null && startSec > firstNoteSec;
+
+  // ── Toolbar layout: what the top bar's layout menu hides, unless it is in use ──
+  $: hiddenTools = $hiddenEditorTools;
+  $: showMic = !hiddenTools.has('mic') || micEnabled || micNoteHits.size > 0 || micPitchTrail.length > 0;
+  $: showVocal = !hiddenTools.has('vocal') || vocalTraceEnabled || vocalTraceLoading || vocalTraceFrames.length > 0;
+  $: showPitch = !hiddenTools.has('pitch') || pitchLineVisible || pitchLineLoading || pitchLineFrames.length > 0;
+  $: showStart = !hiddenTools.has('start') || startPastFirstNote;
+  $: showLoop = !hiddenTools.has('loop') || loopEnabled;
+  $: showSpeed = !hiddenTools.has('speed') || playbackRate !== 1;
+  $: showMetronome = !hiddenTools.has('metronome') || metronomeEnabled;
+  $: showDuet = !hiddenTools.has('duet') || isDuet;
+  $: allFileToolsHidden = ['fix', 'txt', 'notes', 'backup'].every(id => hiddenTools.has(id));
+  // The toolbar's height can change: the piano roll takes the rest. Not depending on canvasEl: resizeCanvas sets its
+  // size, which counts as a change of canvasEl and would run this forever.
+  $: if (hiddenTools) tick().then(resizeCanvas);
 
   // Downbeat handle drag (replaces Grid Align mode)
   const DOWNBEAT_HANDLE_H = 14; // px height of the top strip reserved for diamonds
@@ -2118,6 +2139,9 @@
 
       // Include downbeat offset in extra headers for persistence
       const headersToSave = [...extraHeaders];
+      if (startSec !== null) {
+        headersToSave.push({ key: 'START', value: startHeaderValue(startSec) });
+      }
       if (endMs !== null) {
         headersToSave.push({ key: 'END', value: String(endMs) });
       }
@@ -2245,11 +2269,44 @@
     draw();
   }
 
+  function firstNoteTime(list, gap, rate) {
+    let first = Infinity;
+    for (const n of list) if (n.type !== 'break' && n.startBeat < first) first = n.startBeat;
+    return gap / 1000 + (first * 15) / rate;
+  }
+
+  function parseStartHeader(value) {
+    const v = parseFloat(String(value).replace(',', '.'));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }
+
+  const startHeaderValue = sec => String(Number(sec.toFixed(3)));
+
+  function enterSetStartMode() {
+    if (isPlaying) return;
+    clearMetronomePickTarget();
+    clearMarkerSelection();
+    selectedCleanupSegment = null;
+    if (setEndMode) cancelSetEndMode();
+    setStartMode = true;
+    setStartHoverMs = null;
+    if (canvasEl) canvasEl.style.cursor = 'crosshair';
+    draw();
+  }
+
+  function cancelSetStartMode() {
+    setStartMode = false;
+    setStartHoverMs = null;
+    if (canvasEl) canvasEl.style.cursor = '';
+    draw();
+  }
+
   function enterSetEndMode() {
     if (isPlaying) return;
     clearMetronomePickTarget();
     clearMarkerSelection();
     selectedCleanupSegment = null;
+    if (setStartMode) cancelSetStartMode();
     setEndMode = true;
     setEndHoverMs = null;
     if (canvasEl) canvasEl.style.cursor = 'crosshair';
@@ -2738,6 +2795,50 @@
         ctx.font = 'bold 11px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(`END`, endX, 12);
+        ctx.restore();
+      }
+    }
+
+    // ── START marker — teal dashed line; red if notes lie before it ──
+    if (startSec !== null) {
+      const startX = beatToX(timeToBeat(startSec));
+      if (startX >= -1 && startX <= w + 1) {
+        const color = startPastFirstNote ? '#ff5252' : '#2dd4bf';
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(startX, 0);
+        ctx.lineTo(startX, pianoH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('START', startX, 12);
+        ctx.restore();
+      }
+    }
+
+    // ── Set START mode: hover line follows mouse, red past the first note ──
+    if (setStartMode && setStartHoverMs !== null) {
+      const hoverX = beatToX(timeToBeat(setStartHoverMs / 1000));
+      if (hoverX >= 0 && hoverX <= w) {
+        const color = setStartHoverMs / 1000 > firstNoteSec ? '#ff5252' : '#2dd4bf';
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.moveTo(hoverX, 0);
+        ctx.lineTo(hoverX, pianoH);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = color;
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`START ${(setStartHoverMs / 1000).toFixed(2)}s`, hoverX, 12);
         ctx.restore();
       }
     }
@@ -3609,6 +3710,21 @@
       return;
     }
 
+    // ── Set START mode click ──
+    if (setStartMode) {
+      if (setStartHoverMs === null) return;
+      const sec = setStartHoverMs / 1000;
+      if (sec > firstNoteTime(notes, gapMs, bpm)) {
+        showToast('START must be before the first note: notes before it score nothing in the game');
+        return;
+      }
+      startSec = sec;
+      console.log(`[SetSTART] Setting START to ${startSec}s`);
+      cancelSetStartMode();
+      markUnsaved();
+      return;
+    }
+
     // ── Set END mode click ──
     if (setEndMode && setEndHoverMs !== null) {
       endMs = setEndHoverMs;
@@ -4030,6 +4146,15 @@
         setGapHoverBeat = null; // can't set GAP before audio start
       }
       canvasEl.style.cursor = setGapHoverBeat !== null ? 'crosshair' : 'not-allowed';
+      draw();
+      return;
+    }
+
+    // ── Set START mode hover ──
+    if (setStartMode) {
+      const hoverTimeSec = beatToTime(xToBeat(mx));
+      setStartHoverMs = hoverTimeSec >= 0 ? Math.round(hoverTimeSec * 1000) : null;
+      canvasEl.style.cursor = setStartHoverMs !== null && hoverTimeSec <= firstNoteSec ? 'crosshair' : 'not-allowed';
       draw();
       return;
     }
@@ -6280,6 +6405,9 @@
     lines.push(`#LANGUAGE:${languageHeader($lyricsData?.language || 'en', $lyricsData?.language2 || '')}`);
     lines.push(`#BPM:${bpm}`);
     lines.push(`#GAP:${gapMs}`);
+    if (startSec !== null) {
+      lines.push(`#START:${startHeaderValue(startSec)}`);
+    }
     // END marker
     if (endMs !== null) {
       lines.push(`#END:${endMs}`);
@@ -6295,7 +6423,7 @@
       lines.push(`#METRONOMESPEED:${metronomeSpeedFactor}`);
     }
     // Extra headers (YOUTUBE, COVER, LANGUAGE, etc.)
-    const standardKeys = new Set(['TITLE', 'ARTIST', 'LANGUAGE', 'BPM', 'GAP', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
+    const standardKeys = new Set(['TITLE', 'ARTIST', 'LANGUAGE', 'BPM', 'GAP', 'START', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
     // Duet: singer names as #P1/#P2 and #DUETSINGERP1/P2, no medley (as the backend's save writes it)
     if (notes.some(n => n.singer != null)) {
       for (const k of [...DUET_HEADERS, 'MEDLEYSTARTBEAT', 'MEDLEYENDBEAT']) standardKeys.add(k);
@@ -6324,6 +6452,7 @@
     // Extract all headers from edited text
     const parsedHeaders = [];
     const song = { artist: $lyricsData?.artist || '', title: $lyricsData?.title || '', languageValue: null };
+    startSec = null;
     for (const line of textEditorContent.split('\n')) {
       const m = line.match(/^#([\w]+):(.*)/);
       if (m) {
@@ -6331,6 +6460,7 @@
         const value = m[2];
         if (key.toUpperCase() === 'BPM') bpm = parseFloat(value.replace(',', '.')) || bpm;
         else if (key.toUpperCase() === 'GAP') gapMs = parseInt(value) || gapMs;
+        else if (key.toUpperCase() === 'START') startSec = parseStartHeader(value);
         else if (key.toUpperCase() === 'END') { const v = parseInt(value, 10); endMs = Number.isFinite(v) && v > 0 ? v : null; }
         else if (key.toUpperCase() === 'TITLE') song.title = value.trim();
         else if (key.toUpperCase() === 'ARTIST') song.artist = value.trim();
@@ -6750,6 +6880,11 @@
       positions.add(Math.min(loopStartBeat, loopEndBeat));
     }
 
+    // START position (if set)
+    if (startSec !== null) {
+      positions.add(timeToBeat(startSec));
+    }
+
     // END position (if set)
     if (endMs !== null) {
       positions.add((endMs - gapMs) * bpm / 15000);
@@ -6799,6 +6934,7 @@
     if (selectAllOpen) return;
     if ($storageManagerOpen) return;
     if ($editorHelpOpen) return;
+    if ($editorLayoutOpen) return;
     // Skip shortcuts when typing in a text/number input field (BPM, GAP, context menu, etc.)
     // For range inputs: only block arrow keys (which move the slider); let all other shortcuts through
     if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') {
@@ -7286,6 +7422,8 @@
         closeContextMenu();
       } else if (setEndMode) {
         cancelSetEndMode();
+      } else if (setStartMode) {
+        cancelSetStartMode();
       } else if (beatMarkerMode) {
         exitBeatMarkerMode();
         draw();
@@ -9532,8 +9670,9 @@
       console.log('[Step4] Parsed', notes.length, 'notes/breaks');
 
       // Parse extra headers from ultrastar content
-      const standardKeys = new Set(['TITLE', 'ARTIST', 'LANGUAGE', 'BPM', 'GAP', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
+      const standardKeys = new Set(['TITLE', 'ARTIST', 'LANGUAGE', 'BPM', 'GAP', 'START', 'END', 'DOWNBEATOFFSET', 'METRONOMEANCHOR', 'METRONOMEIG', 'METRONOMESPEED']);
       extraHeaders = [];
+      startSec = null;
       endMs = null;
       let foundDownbeatOffset = false;
       let loadedMetronomeAnchorBeat = null;
@@ -9546,6 +9685,8 @@
           if (key === 'DOWNBEATOFFSET') {
             downbeatOffsetMs = parseFloat(m[2]) || 0;
             foundDownbeatOffset = true;
+          } else if (key === 'START') {
+            startSec = parseStartHeader(m[2]);
           } else if (key === 'END') {
             const v = parseInt(m[2], 10);
             endMs = Number.isFinite(v) && v > 0 ? v : null;
@@ -10111,7 +10252,7 @@
       {/if}
     </div> -->
     <div class="toolbar-toolset-wrapper">
-      <div id="mic-controls-wrapper">
+      <div id="mic-controls-wrapper" class:tool-hidden={!showMic}>
         <button class="tool-btn" class:active={micEnabled} disabled={uiModalGuardActive} class:disabled-audio={uiModalGuardActive} on:click={() => {
           if (uiModalGuardActive) return;
           micEnabled = !micEnabled;
@@ -10156,8 +10297,8 @@
       {/if}
 
       </div>
-      <div id="vocal_trace_outer_wrapper">
-        <div id="vocal_trace-controls-wrapper">
+      <div id="vocal_trace_outer_wrapper" class:tool-hidden={!showVocal && !showPitch}>
+        <div id="vocal_trace-controls-wrapper" class:tool-hidden={!showVocal}>
           <button class="tool-btn" class:active={vocalTraceEnabled} class:disabled-audio={!hasVocalsAudio || uiModalGuardActive} on:click={(e) => {
             if (uiModalGuardActive) return;
             if (!hasVocalsAudio) { handleMissingAudio('vocals'); return; }
@@ -10190,7 +10331,7 @@
             <button class="tool-btn sm" on:click={clearVocalTrace} title="Clear vocal trace">🗑</button>
           {/if}
         </div>
-        <div id="pitch-line-controls-wrapper">
+        <div id="pitch-line-controls-wrapper" class:tool-hidden={!showPitch}>
           <button class="tool-btn" class:active={pitchLineVisible} class:disabled-audio={!hasVocalsAudio || uiModalGuardActive} disabled={uiModalGuardActive}
             on:click={() => { if (uiModalGuardActive) return; if (!hasVocalsAudio) { handleMissingAudio('vocals'); return; } togglePitchLine(); }}
             title={uiModalGuardActive ? 'Disabled while modal is active' : hasVocalsAudio ? 'Pitch line — precompute pitch from selected Vocals/Edited source (cyan dots)' : 'No vocals — go to Step 1 to extract or upload'}>
@@ -10219,7 +10360,7 @@
           <!-- <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.01) * 1000) / 1000; handleBpmChange(); }}>.01+</button>
           <button class="tool-btn sm nudge" on:click={() => { bpm = Math.round((bpm + 0.1) * 1000) / 1000; handleBpmChange(); }}>.1+</button> -->
           <!-- <button class="tool-btn sm" on:click={() => { bpm = bpm + 1; handleBpmChange(); }}>+</button> -->
-              <button class="tool-btn" class:disabled-audio={uiModalGuardActive} style="margin-left: 4px;"
+              <button class="tool-btn" class:tool-hidden={hiddenTools.has('tap')} class:disabled-audio={uiModalGuardActive} style="margin-left: 4px;"
                 on:click={() => { if (uiModalGuardActive) return; openTapper(); }}
                 disabled={uiModalGuardActive}
                 title={uiModalGuardActive ? 'Disabled while modal is active' : 'Tap the beat to calculate BPM (Enter key)'}>
@@ -10243,7 +10384,30 @@
             {gapMs} ms
           </span>
         </div>
-        <div id="end-controls" title="Click to set the END position (Cmd+E) — song stops here in UltraStar">
+        <div id="start-controls" class:tool-hidden={!showStart} title="Click to set the START position: the game starts playing here, to skip an intro. Must be before the first note">
+          <span class="bpm-label gap-label">START</span>
+          {#if startSec !== null}
+            <span class="gap-input gap-display" class:disabled-audio={uiModalGuardActive} role="button" tabindex="0"
+              style={startPastFirstNote ? 'color: #ff5252' : ''}
+              on:click={() => { if (uiModalGuardActive) return; enterSetStartMode(); }}
+              on:keydown={(e) => { if (uiModalGuardActive) return; e.key === 'Enter' && enterSetStartMode(); }}
+              title={uiModalGuardActive ? 'Disabled while modal is active' : startPastFirstNote ? 'START is after the first note: notes before it score nothing in the game. Click to move it' : `Click to reposition START — ${startSec}s`}
+              >
+              {startPastFirstNote ? '⚠ ' : ''}{startSec.toFixed(2)} s
+            </span>
+            <button class="tool-btn sm" style="padding: 0 5px; margin-left: 2px;" title="Remove START marker"
+              on:click={() => { startSec = null; markUnsaved(); draw(); }}>🗑</button>
+          {:else}
+            <span class="gap-input gap-display gap-display-unset" class:disabled-audio={uiModalGuardActive} role="button" tabindex="0"
+              on:click={() => { if (uiModalGuardActive) return; enterSetStartMode(); }}
+              on:keydown={(e) => { if (uiModalGuardActive) return; e.key === 'Enter' && enterSetStartMode(); }}
+              title={uiModalGuardActive ? 'Disabled while modal is active' : 'Click to set START position'}
+              >
+              not set
+            </span>
+          {/if}
+        </div>
+        <div id="end-controls" class:tool-hidden={hiddenTools.has('end')} title="Click to set the END position (Cmd+E) — song stops here in UltraStar">
           <span class="bpm-label gap-label">END</span>
           {#if endMs !== null}
             <span class="gap-input gap-display" class:disabled-audio={uiModalGuardActive} role="button" tabindex="0"
@@ -10266,21 +10430,21 @@
           {/if}
         </div>
       </div>
-      <div id="edit-controls-wrapper">
-          <button class="tool-btn" class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; fixSpacesModalOpen = true; }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Convert old-style leading spaces to trailing (for imported songs)'}>
+      <div id="edit-controls-wrapper" class:tool-hidden={allFileToolsHidden}>
+          <button class="tool-btn" class:tool-hidden={hiddenTools.has('fix')} class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; fixSpacesModalOpen = true; }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Convert old-style leading spaces to trailing (for imported songs)'}>
            Fix&nbsp;🔤
         </button>
-          <button class="tool-btn" class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; openTextEditor(); }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Edit raw Ultrastar .txt'}>
+          <button class="tool-btn" class:tool-hidden={hiddenTools.has('txt')} class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; openTextEditor(); }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Edit raw Ultrastar .txt'}>
            .txt&nbsp;📝 
         </button>
-          <button class="tool-btn" class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; loadSessionNotes(); showNotesModal = true; }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Session notes'}>
+          <button class="tool-btn" class:tool-hidden={hiddenTools.has('notes')} class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; loadSessionNotes(); showNotesModal = true; }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Session notes'}>
            Notes&nbsp;🗒️
         </button>
-          <button class="tool-btn" class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; backupModalOpen = true; }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Song backups'}>
+          <button class="tool-btn" class:tool-hidden={hiddenTools.has('backup')} class:disabled-audio={uiModalGuardActive} on:click={() => { if (uiModalGuardActive) return; backupModalOpen = true; }} disabled={uiModalGuardActive} title={uiModalGuardActive ? 'Disabled while modal is active' : 'Song backups'}>
            Backup&nbsp;🕐
         </button>
       </div>
-      <div id="duet-controls-wrapper">
+      <div id="duet-controls-wrapper" class:tool-hidden={!showDuet}>
         <button class="tool-btn" class:active={isDuet} class:disabled-audio={uiModalGuardActive} disabled={uiModalGuardActive}
           on:click={() => { if (!uiModalGuardActive) duetModalOpen = true; }}
           title={isDuet ? 'Duet: rename or swap the singers, or make it a solo chart again' : 'Make this song a duet (two singers)'}>
@@ -10302,8 +10466,8 @@
     </div>
     <div class="toolbar-toolset-wrapper">
       <div class="playback-controls">
-        <button class="tool-btn" on:click={() => { console.log('[UI] jump to 0s'); seekToTime(0); }} title="Jump to 0s">⏮⏮</button>
-        <button class="tool-btn" on:click={() => { console.log('[UI] jump to GAP'); seekToTime(gapMs / 1000); }} title="Jump to GAP (beat 0)">GAP⏮</button>
+        <button class="tool-btn" class:tool-hidden={hiddenTools.has('jump0')} on:click={() => { console.log('[UI] jump to 0s'); seekToTime(0); }} title="Jump to 0s">⏮⏮</button>
+        <button class="tool-btn" class:tool-hidden={hiddenTools.has('jumpGap')} on:click={() => { console.log('[UI] jump to GAP'); seekToTime(gapMs / 1000); }} title="Jump to GAP (beat 0)">GAP⏮</button>
         <button class="tool-btn" id="toggle-playback-btn" on:click={() => { console.log('[UI] togglePlayback'); togglePlayback(); }} title="Space">
           {isPlaying ? '⏸ Pause' : '▶ Play'}
         </button>
@@ -10315,10 +10479,10 @@
           </button>
           <button class="tool-btn sm" on:click={() => { liveWordTokens = []; draw(); }} title="Clear analyzed words">🗑W</button>
         {/if}
-        <button class="tool-btn" on:click={() => { console.log('[UI] togglePlayback'); toggleLoop(); }} class:active={loopEnabled} title="Loop (L)">
+        <button class="tool-btn" class:tool-hidden={!showLoop} on:click={() => { console.log('[UI] togglePlayback'); toggleLoop(); }} class:active={loopEnabled} title="Loop (L)">
           <span class="mic-icon-wrap" class:mic-off={!loopEnabled}>🔁</span>
         </button>
-        <button class="tool-btn" style="width: 62px;"
+        <button class="tool-btn" class:tool-hidden={hiddenTools.has('scrollMode')} style="width: 62px;"
           on:click={toggleScrollMode}
           title={scrollMode ? 'Following playhead — click to pin' : 'View pinned — click to follow'}>
           {scrollMode ? 'Scroll' : 'Page'}
@@ -10327,7 +10491,7 @@
       <div id="time-display-wrapper">
         <span class="time-display">{formatTime(currentTimeSec)}</span>
       </div>
-      <div class="speed-controls">
+      <div class="speed-controls" class:tool-hidden={!showSpeed}>
         <span class="speed-label">Speed</span>
         {#each [0.25, 0.5, 0.75, 1.0] as rate}
           <button
@@ -10362,7 +10526,7 @@
           </button>
         {/if}
       </div>
-      <div id="metronome-wrapper">
+      <div id="metronome-wrapper" class:tool-hidden={!showMetronome}>
         <button class="tool-btn" class:active={metronomeEnabled} on:click={() => { console.log('[UI] toggleMetronome'); toggleMetronome(); }} title="Toggle Metronome click on each beat (0)">
           <span>Metronome</span><span style="padding-left: 4px">{metronomeEnabled ? ' 🔈' : ' 🔇'}</span>
         </button>
@@ -10566,6 +10730,15 @@
         SET GAP MODE — Click a grid line to set the GAP position, or press Esc to cancel
       </span>
       <button class="setgap-cancel-btn" on:click={cancelSetGapMode}>✕ Cancel</button>
+    </div>
+  {/if}
+
+  {#if setStartMode}
+    <div class="setgap-mode-bar" style="border-color: #2dd4bf; color: #2dd4bf;">
+      <span class="setgap-mode-text">
+        SET START MODE — Click before the first note to set where the game starts, or press Esc to cancel
+      </span>
+      <button class="setgap-cancel-btn" on:click={cancelSetStartMode}>✕ Cancel</button>
     </div>
   {/if}
 
@@ -10969,6 +11142,10 @@
       <div class="scrollbar-handle" style="left: {scrollHandlePct}%"></div>
       <!-- GAP tick (beat 0) -->
       <div class="scrollbar-gap-tick" style="left: {((-getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%"></div>
+      <!-- START tick -->
+      {#if startSec !== null}
+        <div class="scrollbar-end-tick" style="background: #2dd4bf; left: {((timeToBeat(startSec) - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%"></div>
+      {/if}
       <!-- END tick -->
       {#if endMs !== null}
         {@const endBeat = (endMs - gapMs) * bpm / 15000}
@@ -11811,6 +11988,11 @@
     align-items: center;
     flex-wrap: nowrap;
     gap: 10px;
+  }
+
+  /* Hidden with the top bar's layout menu; beats the display rules of the toolbar's parts */
+  .tool-hidden {
+    display: none !important;
   }
 
   /* .playback-controls, .zoom-controls {

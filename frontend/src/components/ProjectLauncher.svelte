@@ -6,6 +6,7 @@
   import StorageManager from './StorageManager.svelte';
   import TransferModal from './TransferModal.svelte';
   import { isDuet, singerNames, chartHeaders } from '../lib/ultrastar.js';
+  import { resetEditorState } from '../lib/editorPrefs.js';
 
   let showStorage = false;
   let sessions = [];
@@ -261,6 +262,7 @@
         preview: [],
       });
       generationResult.set(data.result || {});
+      resetEditorState(data.session_id);
       currentStep.set(4); // Go straight to editor
     } catch (e) {
       const msg = e.message || 'Import failed';
