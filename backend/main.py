@@ -1855,6 +1855,22 @@ async def youtube_inspect(request: Request):
     return details
 
 
+def _download_txt(session: dict, include_vocals: bool, include_instrumental: bool, include_video: bool) -> Optional[str]:
+    """The .txt as the user gets it, in the ZIP and as a single file: the asset headers up to date, in USDB's format."""
+    from services.ultrastar import format_for_download
+    result = session.get("result") or {}
+    txt_file = result.get("corrected_txt_file", result.get("txt_file"))
+    path = os.path.join(DOWNLOADS_DIR, txt_file) if txt_file else None
+    if not path or not os.path.exists(path):
+        return None
+    _update_txt_asset_headers(session)
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+    # A downloaded video that stays behind isn't named; a file name the user typed is theirs
+    return format_for_download(content, include_vocals, include_instrumental,
+                               include_video=include_video or not _video_file(session))
+
+
 def _song_base(session: dict) -> str:
     artist = session.get("artist", "").strip()
     title = session.get("title", "").strip()
@@ -5518,18 +5534,8 @@ async def download_file(
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found on disk")
 
-    # For .txt files, normalize linebreaks to YASS-style (single number) on the fly
     if file_type == "txt":
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        from services.ultrastar import format_for_download
-        content = format_for_download(
-            content,
-            include_vocals=include_vocals == "1",
-            include_instrumental=include_instrumental == "1",
-            # A downloaded video that stays behind isn't named; a file name the user typed is theirs
-            include_video=include_video == "1" or not _video_file(session),
-        )
+        content = _download_txt(session, include_vocals == "1", include_instrumental == "1", include_video == "1")
         # Build a user-friendly download name from artist/title
         artist = session.get("artist", "").strip()
         title = session.get("title", "").strip()
@@ -5963,68 +5969,10 @@ async def download_zip(
     with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
         zip_path = tmp.name
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Ultrastar .txt — inject asset headers before writing
-        txt_file = result.get("corrected_txt_file", result.get("txt_file"))
-        if txt_file:
-            path = os.path.join(DOWNLOADS_DIR, txt_file)
-            if os.path.exists(path):
-                with open(path, encoding="utf-8") as f:
-                    txt_content = f.read()
-
-                # Normalize linebreaks to YASS-style (single number) for old sessions
-                import re as _re_zip
-                txt_content = _re_zip.sub(r'^(- \d+) \d+$', r'\1', txt_content, flags=_re_zip.MULTILINE)
-
-                # Force .mp3 extension in #MP3 and #VOCALS headers
-                def _force_mp3_ext_zip(m):
-                    return m.group(1) + _re_zip.sub(r'\.[^.]+$', '.mp3', m.group(2))
-                txt_content = _re_zip.sub(r'^(#MP3:)(.+)$', _force_mp3_ext_zip, txt_content, flags=_re_zip.MULTILINE)
-                txt_content = _re_zip.sub(r'^(#VOCALS:)(.+)$', _force_mp3_ext_zip, txt_content, flags=_re_zip.MULTILINE)
-
-                # Helper: insert/replace a header line
-                def _set_header(content, key, value):
-                    import re
-                    tag = f"#{key}:"
-                    new_line = f"#{key}:{value}"
-                    if tag in content:
-                        return re.sub(rf"#{key}:[^\n]*", new_line, content)
-                    # Insert after last # header line
-                    lines = content.split("\n")
-                    idx = 0
-                    for i, ln in enumerate(lines):
-                        if ln.startswith("#"):
-                            idx = i + 1
-                        else:
-                            break
-                    lines.insert(idx, new_line)
-                    return "\n".join(lines)
-
-                cover_path = session.get("cover_file")
-                if cover_path and os.path.exists(cover_path):
-                    cover_archive = f"{base} [CO].jpg"
-                    txt_content = _set_header(txt_content, "COVER", cover_archive)
-
-                bg_path = session.get("bgimage_file")
-                if bg_path and os.path.exists(bg_path):
-                    bg_archive = f"{base} [BG].jpg"
-                    txt_content = _set_header(txt_content, "BACKGROUND", bg_archive)
-
-                video_filename = session.get("video_filename")
-                if video_filename:
-                    txt_content = _set_header(txt_content, "VIDEO", video_filename)
-                video_gap = video_gap_header(session)
-                if video_gap is not None:
-                    txt_content = _set_header(txt_content, "VIDEOGAP", video_gap)
-                if video_file and include_video != "1":
-                    txt_content = _remove_header(txt_content, "VIDEO")
-
-                # Strip VOCALS/INSTRUMENTAL headers from .txt copy if not included
-                if include_vocals != "1":
-                    txt_content = _remove_header(txt_content, "VOCALS")
-                if include_instrumental != "1":
-                    txt_content = _remove_header(txt_content, "INSTRUMENTAL")
-
-                zf.writestr(f"{base}.txt", txt_content)
+        # Ultrastar .txt: the same file as the single download
+        txt_content = _download_txt(session, include_vocals == "1", include_instrumental == "1", include_video == "1")
+        if txt_content is not None:
+            zf.writestr(f"{base}.txt", txt_content)
 
         # MIDI
         midi_file = result.get("midi_file")

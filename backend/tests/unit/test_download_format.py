@@ -89,7 +89,6 @@ def test_freestyle_and_rap_notes_get_hyphens_too():
     assert lines(content)[:2] == ["F 0 4 0 free-", "R 4 4 0 rap-"]
 
 
-@pytest.mark.xfail(reason="Known gap: golden rap notes (G) are not matched by the hyphen rule", strict=True)
 def test_golden_rap_notes_get_hyphens():
     content = format_for_download("G 0 4 0 gold\nE")
     assert lines(content)[0] == "G 0 4 0 gold-"

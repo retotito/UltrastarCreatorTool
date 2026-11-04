@@ -4,6 +4,14 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 📤 USDB-ready .txt
+- The downloaded `.txt` follows USDB's conventions: Windows line endings, mid-word syllables marked with `-` ("beau-"),
+  typographic apostrophes (’), `#MP3` and `#VOCALS` pointing to `.mp3`, YASS-style line breaks, no duplicate or unknown
+  headers
+- The `.txt` in the ZIP is now the same file as the single download; before it missed most of this and kept internal
+  headers such as `#DOWNBEATOFFSET`
+- Golden rap notes (`G`) get the `-` too
+
 ### 🎛️ Toolbar layout
 - New 🎛️ button at the top right in the editor: tick off toolbar controls you don't need, one by one, for small
   screens. Shortcuts keep working, a tool in use stays visible, and a duet song always shows Duet

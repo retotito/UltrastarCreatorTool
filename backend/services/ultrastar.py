@@ -77,7 +77,7 @@ def format_for_download(content: str, include_vocals: bool = True, include_instr
     # Note lines: "PREFIX BEAT DUR PITCH SYLLABLE"; no trailing space = word continues ("beau-").
     # Already hyphenated syllables (a re-imported download) stay as they are, and a note followed by
     # its own "~" melisma notes doesn't continue into another syllable yet: no hyphen there either.
-    note_line = re.compile(r'^[:*RF] \d+ \d+ -?\d+ (.*)$')
+    note_line = re.compile(r'^[:*RFG] \d+ \d+ -?\d+ (.*)$')
     lines = content.split('\n')
     notes = [i for i, ln in enumerate(lines) if note_line.match(ln)]
     for k, i in enumerate(notes):
