@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ultrastar Creator Tool: make karaoke charts with AI</title>
-  <meta name="description" content="A free desktop app that turns songs into UltraStar karaoke charts: AI finds the vocals, lyrics timing and notes, and you fine-tune them in a piano roll editor. For Mac and Windows.">
+  <title>Ultrastar Creator Tool: create UltraStar songs with AI</title>
+  <meta name="description" content="A free app that creates UltraStar karaoke songs with the help of AI: it extracts the vocals, times the lyrics and generates the notes, and you fine-tune the result. For Mac and Windows.">
   <link rel="canonical" href="https://retotito.github.io/UltrastarCreatorTool/">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://retotito.github.io/UltrastarCreatorTool/">
   <meta property="og:title" content="Ultrastar Creator Tool">
-  <meta property="og:description" content="Turn any song into an UltraStar karaoke chart. Free for Mac and Windows.">
+  <meta property="og:description" content="Create UltraStar karaoke songs with the help of AI. Free for Mac and Windows.">
   <meta property="og:image" content="https://retotito.github.io/UltrastarCreatorTool/img/editor.webp">
   <link rel="icon" href="img/icon.webp">
   <link rel="stylesheet" href="style.css">
@@ -28,11 +28,10 @@
 <main id="top">
   <div class="hero">
     <div class="wrap">
-      <h1>Turn any song into a karaoke chart</h1>
-      <p class="lead">Upload a song or paste a YouTube link. AI separates the vocals, times the lyrics and finds the notes, and you fine-tune the result in a piano roll editor.</p>
+      <h1>Create UltraStar songs with the help of AI</h1>
+      <p class="lead">Start with any song. The AI extracts the vocals, times the lyrics and generates the notes. You fine-tune the result, then sing it in an UltraStar karaoke game.</p>
       <a href="#download" class="btn">Download, free</a>
       <p class="muted small" style="margin-top:12px">For Mac and Windows</p>
-      <img class="shot" src="img/editor.webp" width="2000" height="1136" alt="The piano roll editor, with notes and lyrics over the song's waveform">
     </div>
   </div>
 
@@ -40,39 +39,39 @@
     <div class="wrap">
       <div class="intro">
         <h2>Four steps to a finished song</h2>
-        <p class="muted">From an audio file to an UltraStar chart you can sing in the game.</p>
+        <p class="muted">From a song on your computer or on YouTube to an UltraStar song you can sing.</p>
       </div>
       <div class="step">
         <div class="step-text">
           <div class="step-number">Step 1</div>
           <h3>Upload</h3>
-          <p class="muted">Choose a file or paste a YouTube link. The app proposes artist, title and language, and separates the vocals from the music.</p>
+          <p class="muted">Upload a song or paste a YouTube link. Then extract the vocals from the song.</p>
         </div>
-        <img class="shot" src="img/upload.webp" width="1600" height="910" loading="lazy" alt="Step 1: the full mix, vocals and instrumental, ready to play">
+        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/upload.webp" width="1600" height="910" loading="lazy" alt="Step 1: the full mix, vocals and instrumental, ready to play"></button>
       </div>
       <div class="step">
         <div class="step-text">
           <div class="step-number">Step 2</div>
           <h3>Lyrics</h3>
-          <p class="muted">Compare lyrics side by side from a published source, the video's subtitles, or what Whisper hears in the vocals. Then generate the chart.</p>
+          <p class="muted">Search for the song's lyrics or generate them from the vocals, then double-check and edit them.</p>
         </div>
-        <img class="shot" src="img/lyrics.webp" width="1600" height="1135" loading="lazy" alt="Step 2: lyrics from two sources side by side">
+        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/lyrics.webp" width="1600" height="1135" loading="lazy" alt="Step 2: lyrics from two sources side by side"></button>
       </div>
       <div class="step">
         <div class="step-text">
           <div class="step-number">Step 3</div>
           <h3>Editor</h3>
-          <p class="muted">Check every note against the waveform. Move, split and join notes, loop a difficult line, slow it down, or sing along with your microphone.</p>
+          <p class="muted">After the AI has generated the notes, fine-tune them by hand.</p>
         </div>
-        <img class="shot" src="img/editor.webp" width="2000" height="1136" loading="lazy" alt="Step 3: the piano roll editor">
+        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/editor.webp" width="2000" height="1136" loading="lazy" alt="Step 3: the piano roll editor"></button>
       </div>
       <div class="step">
         <div class="step-text">
           <div class="step-number">Step 4</div>
           <h3>Export</h3>
-          <p class="muted">Get a song folder ready for the game, with cover, background and video, or a <code>.txt</code> in the format <a href="https://usdb.animux.de">USDB</a> uses.</p>
+          <p class="muted">Save the finished song as a folder, ready to sing in the game, or as a file to share on <a href="https://usdb.animux.de">USDB</a>, the UltraStar song library.</p>
         </div>
-        <img class="shot" src="img/export.webp" width="1600" height="918" loading="lazy" alt="Step 4: song info, cover, background, video and files to export">
+        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/export.webp" width="1600" height="918" loading="lazy" alt="Step 4: song info, cover, background, video and files to export"></button>
       </div>
     </div>
   </section>
@@ -81,9 +80,9 @@
     <div class="wrap">
       <div class="intro"><h2>New in 5.0</h2></div>
       <div class="grid">
-        <div class="card"><h3>Duets</h3><p>Duet charts stay intact and both singers are shown. You edit one at a time, and any song can become a duet.</p></div>
+        <div class="card"><h3>Duets</h3><p>Duet songs stay intact and both singers are shown. You edit one at a time, and any song can become a duet.</p></div>
         <div class="card"><h3>YouTube links</h3><p>Paste a link instead of uploading a file, use its subtitles as lyrics, and export the video.</p></div>
-        <div class="card"><h3>Better charts</h3><p>Lyrics are aligned directly to the vocals: on six test songs, misplaced syllables dropped from 57 % to 7 %.</p></div>
+        <div class="card"><h3>Better results</h3><p>Lyrics are aligned directly to the vocals: on six test songs, misplaced syllables dropped from 57 % to 7 %.</p></div>
         <div class="card"><h3>Better vocal separation</h3><p>An optional slower model is much cleaner where voices overlap.</p></div>
         <div class="card"><h3>Export for the game or USDB</h3><p>A song folder wherever you want it, or a <code>.txt</code> ready to upload.</p></div>
         <div class="card"><h3>Automatic updates</h3><p>The app offers new versions and shows what's new. Your songs and models stay.</p></div>
@@ -134,9 +133,22 @@
   <div class="wrap">
     <p>Made by Reto Küpfer · Open source (<a href="https://github.com/retotito/UltrastarCreatorTool/blob/main/LICENSE">GPL-3.0</a>) · <a href="https://github.com/retotito/UltrastarCreatorTool">Source code on GitHub</a> · <a href="https://github.com/retotito/UltrastarCreatorTool/issues">Report a problem</a></p>
     <p>Some of the AI models are free for non-commercial use only. <a href="https://github.com/retotito/UltrastarCreatorTool/blob/main/docs/architecture/ai-models.md">See the models and their licences.</a></p>
-    <p>Sing your charts at a party with <a href="https://retotito.github.io/Ultrastar-DJ/">Ultrastar DJ</a>.</p>
+    <p>Sing your songs at a party with <a href="https://retotito.github.io/Ultrastar-DJ/">Ultrastar DJ</a>.</p>
   </div>
 </footer>
+<dialog class="lightbox" id="lightbox" aria-label="Enlarged image">
+  <button class="lightbox-close" type="button" aria-label="Close">✕</button>
+  <button class="lightbox-nav lightbox-prev" type="button" aria-label="Previous step">‹</button>
+  <figure>
+    <img src="" alt="">
+    <figcaption>
+      <h3></h3>
+      <p></p>
+      <span class="small"></span>
+    </figcaption>
+  </figure>
+  <button class="lightbox-nav lightbox-next" type="button" aria-label="Next step">›</button>
+</dialog>
 <script src="main.js"></script>
 </body>
 </html>
