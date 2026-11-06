@@ -8,6 +8,7 @@
 // When running inside a Tauri bundle there is no Vite dev-server proxy,
 // so we call the FastAPI backend directly on its port.
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+export const inTauriApp = isTauri;
 const BASE = isTauri ? 'http://localhost:8001/api' : '/api';
 
 async function request(method, path, body = null, isFormData = false, silent = false, signal = null) {
@@ -171,6 +172,17 @@ export async function deleteYouTubeVideo(sessionId) {
 
 export function getDownloadVideoUrl(sessionId) {
   return `${BASE}/download-video/${sessionId}`;
+}
+
+/** Write the song as a folder "Artist - Title" inside `folder`. Fails with "API error 409" if it exists and !replace. */
+export async function exportToFolder(sessionId, folder, include, replace = false) {
+  return request('POST', `/export-folder/${sessionId}`, { folder, include, replace });
+}
+
+/** Save one file of the song at `path`. `kind`: txt, usdb, midi, summary, vocals, edited, instrumental, original, cover,
+ * background, video, zip. */
+export async function exportToFile(sessionId, kind, path, include = {}) {
+  return request('POST', `/export-file/${sessionId}`, { kind, path, include });
 }
 
 export async function uploadCorrectedVocals(sessionId, file, signal = null) {

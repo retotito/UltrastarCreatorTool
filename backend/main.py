@@ -91,9 +91,12 @@ except Exception as _e:
 # ────────────────────────────────────────────────────────────
 app = FastAPI(title="Ultrastar Song Generator", version="2.0.0")
 
+ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "tauri://localhost",
+                   "http://tauri.localhost"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "tauri://localhost", "http://tauri.localhost"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1857,9 +1860,8 @@ async def youtube_inspect(request: Request):
     return details
 
 
-def _download_txt(session: dict, include_vocals: bool, include_instrumental: bool, include_video: bool) -> Optional[str]:
-    """The .txt as the user gets it, in the ZIP and as a single file: the asset headers up to date, in USDB's format."""
-    from services.ultrastar import format_for_download
+def _stored_txt(session: dict) -> Optional[str]:
+    """The session's chart with the asset headers up to date."""
     result = session.get("result") or {}
     txt_file = result.get("corrected_txt_file", result.get("txt_file"))
     path = os.path.join(DOWNLOADS_DIR, txt_file) if txt_file else None
@@ -1867,7 +1869,15 @@ def _download_txt(session: dict, include_vocals: bool, include_instrumental: boo
         return None
     _update_txt_asset_headers(session)
     with open(path, encoding="utf-8") as f:
-        content = f.read()
+        return f.read()
+
+
+def _download_txt(session: dict, include_vocals: bool, include_instrumental: bool, include_video: bool) -> Optional[str]:
+    """The .txt as the user gets it, in the ZIP and as a single file: the asset headers up to date, in USDB's format."""
+    from services.ultrastar import format_for_download
+    content = _stored_txt(session)
+    if content is None:
+        return None
     # A downloaded video that stays behind isn't named; a file name the user typed is theirs
     return format_for_download(content, include_vocals, include_instrumental,
                                include_video=include_video or not _video_file(session))
@@ -1881,9 +1891,168 @@ def _attachment_header(name: str) -> str:
 
 
 def _song_base(session: dict) -> str:
+    """The name of the song's exported files: safe on every system ("AC/DC" isn't a folder), the same in the .txt's headers."""
     artist = session.get("artist", "").strip()
     title = session.get("title", "").strip()
-    return f"{artist} - {title}" if artist and title else title or artist or "Untitled Song"
+    return _safe_filename(f"{artist} - {title}" if artist and title else title or artist or "Untitled Song")
+
+
+def _export_files(session: dict, include: dict) -> tuple:
+    """What a song's export holds: (kind, name, content or path) for the ZIP, the song folder and single saves, and the
+    temporary files to remove afterwards. `include` has what the user ticked; the chart, full mix, cover and background
+    always go."""
+    result = session.get("result") or {}
+    base = _song_base(session)
+    files, temps = [], []
+
+    def mp3(path):
+        serve, is_temp = _ensure_mp3_for_download(path)
+        if is_temp:
+            temps.append(serve)
+        return serve, os.path.splitext(serve)[1]
+
+    def downloaded(name):
+        path = os.path.join(DOWNLOADS_DIR, name) if name else None
+        return path if path and os.path.exists(path) else None
+
+    def existing(path):
+        return path if path and os.path.exists(path) else None
+
+    content = _download_txt(session, include.get("vocals", True), include.get("instrumental", True),
+                            include.get("video", True))
+    if content is not None:
+        files.append(("txt", f"{base}.txt", content.encode("utf-8")))
+    midi = downloaded(result.get("midi_file"))
+    if midi and include.get("midi", True):
+        files.append(("midi", f"{base}.mid", midi))
+    summary = downloaded(result.get("summary_file"))
+    if summary and include.get("summary", True):
+        files.append(("summary", f"{base}_summary.txt", summary))
+    vocal = existing(session.get("vocal_audio"))
+    if vocal and include.get("vocals", True):
+        path, ext = mp3(vocal)
+        files.append(("vocals", f"{base} [VOC]{ext}", path))
+    # The edited vocal: the new incremental one, else the older cleaned vocal
+    edited = (existing(session.get("edited_vocal")) or existing(result.get("cleaned_vocal_path"))
+              or downloaded(result.get("cleaned_vocal_file")))
+    if edited and include.get("edited", True):
+        path, ext = mp3(edited)
+        files.append(("edited", f"{base} [Edited Vocals]{ext}", path))
+    instrumental = existing(session.get("instrumental_audio"))
+    if instrumental and include.get("instrumental", True):
+        path, ext = mp3(instrumental)
+        files.append(("instrumental", f"{base} [INSTR]{ext}", path))
+    original = existing(session.get("original_audio"))
+    if original:
+        path, ext = mp3(original)
+        files.append(("original", f"{base}{ext}", path))
+    cover = existing(session.get("cover_file"))
+    if cover:
+        files.append(("cover", f"{base} [CO].jpg", cover))
+    background = existing(session.get("bgimage_file"))
+    if background:
+        files.append(("background", f"{base} [BG].jpg", background))
+    video = _video_file(session)
+    if video and include.get("video", True):
+        files.append(("video", f"{base}{os.path.splitext(video)[1]}", video))
+    return files, temps
+
+
+def _write_zip(files: list) -> str:
+    """The files of `_export_files` as a temporary .zip, on disk and not in memory: a video can be hundreds of MB."""
+    import zipfile
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        zip_path = tmp.name
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for kind, name, source in files:
+            if isinstance(source, bytes):
+                zf.writestr(name, source)
+            else:   # a video is already compressed
+                zf.write(source, name, compress_type=zipfile.ZIP_STORED if kind == "video" else zipfile.ZIP_DEFLATED)
+    return zip_path
+
+
+def _require_this_app(request: Request) -> None:
+    """Endpoints that write to chosen paths: a web page open in a browser can reach localhost too, so only this app's
+    own pages may call them, with JSON (a page can't send that to another origin unasked)."""
+    origin = request.headers.get("origin")
+    if origin and origin not in ALLOWED_ORIGINS:
+        raise HTTPException(status_code=403, detail="Not allowed from this page")
+    if "application/json" not in (request.headers.get("content-type") or ""):
+        raise HTTPException(status_code=415, detail="JSON expected")
+
+
+@app.post("/api/export-folder/{session_id}")
+async def export_to_folder(session_id: str, request: Request):
+    """Write the song as a folder "Artist - Title" inside `folder`, by default Downloads (a browser has no folder dialog).
+    409 if it exists and `replace` isn't set."""
+    import asyncio
+    from services.song_export import ExportTargetError, FolderExists, export_folder
+    _require_this_app(request)
+    session = sessions.get(session_id)
+    if not session or not session.get("result"):
+        raise HTTPException(status_code=404, detail="No files generated yet")
+    body = await request.json()
+
+    def work():
+        files, temps = _export_files(session, {k: bool(v) for k, v in (body.get("include") or {}).items()})
+        try:
+            return export_folder(str(body.get("folder") or "") or os.path.expanduser(os.path.join("~", "Downloads")),
+                                 _song_base(session),
+                                 [(name, source) for _, name, source in files], bool(body.get("replace")))
+        finally:
+            for temp in temps:
+                _safe_unlink(temp)
+    try:
+        path = await asyncio.to_thread(work)
+    except FolderExists as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ExportTargetError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    log_step("EXPORT", f"Session {session_id}: song folder {path}")
+    return {"status": "ok", "path": path}
+
+
+@app.post("/api/export-file/{session_id}")
+async def export_to_file(session_id: str, request: Request):
+    """Save one file of the song at `path` (from the save dialog). `kind`: "usdb", "zip" or a kind from `_export_files`."""
+    import asyncio
+    from services.song_export import ExportTargetError, export_file
+    from services.ultrastar import format_for_usdb
+    from services.youtube import video_id as _video_id
+    _require_this_app(request)
+    session = sessions.get(session_id)
+    if not session or not session.get("result"):
+        raise HTTPException(status_code=404, detail="No files generated yet")
+    body = await request.json()
+    kind = str(body.get("kind") or "")
+
+    def work():
+        if kind == "usdb":
+            stored = _stored_txt(session)
+            if stored is None:
+                raise HTTPException(status_code=404, detail="File not found on disk")
+            return export_file(str(body.get("path") or ""),
+                               format_for_usdb(stored, _video_id(session.get("youtube_url") or "")).encode("utf-8"))
+        files, temps = _export_files(session, {k: bool(v) for k, v in (body.get("include") or {}).items()})
+        try:
+            if kind == "zip":
+                zip_path = _write_zip(files)
+                temps.append(zip_path)
+                return export_file(str(body.get("path") or ""), zip_path)
+            source = next((source for k, _, source in files if k == kind), None)
+            if source is None:
+                raise HTTPException(status_code=404, detail=f"No {kind} file")
+            return export_file(str(body.get("path") or ""), source)
+        finally:
+            for temp in temps:
+                _safe_unlink(temp)
+    try:
+        path = await asyncio.to_thread(work)
+    except ExportTargetError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    log_step("EXPORT", f"Session {session_id}: {kind} saved as {path}")
+    return {"status": "ok", "path": path}
 
 
 def _video_file(session: dict) -> Optional[str]:
@@ -2563,7 +2732,7 @@ async def preview_audio(session_id: str, audio_type: str, request: Request):
         base = artist
     else:
         base = "Untitled Song"
-    suffix = " [Vocals]" if audio_type == "vocals" else ""
+    suffix = " [VOC]" if audio_type == "vocals" else ""
     return FileResponse(path, media_type=content_type, filename=base + suffix + ext,
                         headers={'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store'})
 
@@ -5532,13 +5701,10 @@ async def download_file(
     if file_type == "usdb":
         from services.ultrastar import format_for_usdb
         from services.youtube import video_id as _video_id
-        stored = result.get("corrected_txt_file", result.get("txt_file"))
-        path = os.path.join(DOWNLOADS_DIR, stored) if stored else None
-        if not path or not os.path.exists(path):
+        stored = _stored_txt(session)
+        if stored is None:
             raise HTTPException(status_code=404, detail="File not found on disk")
-        _update_txt_asset_headers(session)
-        with open(path, encoding="utf-8") as f:
-            content = format_for_usdb(f.read(), _video_id(session.get("youtube_url") or ""))
+        content = format_for_usdb(stored, _video_id(session.get("youtube_url") or ""))
         return Response(content=content, media_type="text/plain",
                         headers={"Content-Disposition": _attachment_header(f"{_song_base(session)} [USDB].txt")})
 
@@ -5560,10 +5726,7 @@ async def download_file(
         content = _download_txt(session, include_vocals == "1", include_instrumental == "1", include_video == "1")
         if content is None:
             raise HTTPException(status_code=404, detail="File not found on disk")
-        # Build a user-friendly download name from artist/title
-        artist = session.get("artist", "").strip()
-        title = session.get("title", "").strip()
-        base = f"{artist} - {title}" if artist and title else title or artist or "Untitled Song"
+        base = _song_base(session)
         return Response(content=content, media_type="text/plain",
                         headers={"Content-Disposition": _attachment_header(f"{base}.txt")})
 
@@ -5638,17 +5801,7 @@ def _update_txt_asset_headers(session: dict) -> None:
         with open(path, encoding="utf-8") as f:
             content = f.read()
 
-        artist = session.get("artist", "").strip()
-        title = session.get("title", "").strip()
-
-        if artist and title:
-            base = f"{artist} - {title}"
-        elif title:
-            base = title
-        elif artist:
-            base = artist
-        else:
-            base = "Untitled Song"
+        base = _song_base(session)
 
         # --- #MP3: use Artist - Title + original extension, or remove if no original ---
         original_audio = session.get("original_audio")
@@ -5719,7 +5872,7 @@ def _update_txt_asset_headers(session: dict) -> None:
 
         vocal_audio = session.get("vocal_audio")
         if vocal_audio:
-            vocals_header = f"{base} [Vocals].mp3"
+            vocals_header = f"{base} [VOC].mp3"
             content = _set_header(content, "VOCALS", vocals_header)
             log_step("TXT-HEADERS", f"Set #VOCALS to {vocals_header}")
         else:
@@ -5727,8 +5880,7 @@ def _update_txt_asset_headers(session: dict) -> None:
 
         instrumental_audio = session.get("instrumental_audio")
         if instrumental_audio:
-            ext_i = os.path.splitext(instrumental_audio)[1]
-            instrumental_header = f"{base} [Instrumental]{ext_i}"
+            instrumental_header = f"{base} [INSTR].mp3"
             content = _set_header(content, "INSTRUMENTAL", instrumental_header)
             log_step("TXT-HEADERS", f"Set #INSTRUMENTAL to {instrumental_header}")
         else:
@@ -5964,7 +6116,6 @@ async def download_zip(
     include_video: str = "0",
 ):
     """Bundle all generated files into a single ZIP download."""
-    import zipfile
     from starlette.background import BackgroundTask
 
     session = sessions.get(session_id)
@@ -5975,92 +6126,15 @@ async def download_zip(
     if not result:
         raise HTTPException(status_code=404, detail="No files generated yet")
 
-    # Build base name from artist/title
-    artist = session.get("artist", "").strip()
-    title_name = session.get("title", "").strip()
-    if artist and title_name:
-        base = f"{artist} - {title_name}"
-    elif title_name:
-        base = title_name
-    elif artist:
-        base = artist
-    else:
-        base = "Untitled Song"
-
-    # On disk, not in memory: a video can be hundreds of MB
-    video_file = _video_file(session)
-    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-        zip_path = tmp.name
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Ultrastar .txt: the same file as the single download
-        txt_content = _download_txt(session, include_vocals == "1", include_instrumental == "1", include_video == "1")
-        if txt_content is not None:
-            zf.writestr(f"{base}.txt", txt_content)
-
-        # MIDI
-        midi_file = result.get("midi_file")
-        if midi_file and include_midi == "1":
-            path = os.path.join(DOWNLOADS_DIR, midi_file)
-            if os.path.exists(path):
-                zf.write(path, f"{base}.mid")
-
-        # Summary
-        summary_file = result.get("summary_file")
-        if summary_file and include_summary == "1":
-            path = os.path.join(DOWNLOADS_DIR, summary_file)
-            if os.path.exists(path):
-                zf.write(path, f"{base}_summary.txt")
-
-        # Vocals audio
-        vocal_path = session.get("vocal_audio")
-        if vocal_path and os.path.exists(vocal_path) and include_vocals == "1":
-            serve_vocal, vocal_tmp = _ensure_mp3_for_download(vocal_path)
-            zf.write(serve_vocal, f"{base} [Vocals].mp3")
-            if vocal_tmp: _safe_unlink(serve_vocal)
-
-        # Edited vocals audio — prefer new edited_vocal (incremental design), fall back to legacy cleaned_vocal
-        edited_vocal_path = session.get("edited_vocal")
-        if not edited_vocal_path or not os.path.exists(edited_vocal_path):
-            edited_vocal_path = result.get("cleaned_vocal_path")
-            if not edited_vocal_path or not os.path.exists(edited_vocal_path):
-                cleaned_file = result.get("cleaned_vocal_file")
-                if cleaned_file:
-                    candidate = os.path.join(DOWNLOADS_DIR, cleaned_file)
-                    if os.path.exists(candidate):
-                        edited_vocal_path = candidate
-        if edited_vocal_path and os.path.exists(edited_vocal_path) and include_edited_vocals == "1":
-            serve_edited, edited_tmp = _ensure_mp3_for_download(edited_vocal_path)
-            zf.write(serve_edited, f"{base} [Edited Vocals].mp3")
-            if edited_tmp: _safe_unlink(serve_edited)
-
-        # Instrumental audio (no_vocals from Demucs)
-        instrumental_path = session.get("instrumental_audio")
-        if instrumental_path and os.path.exists(instrumental_path) and include_instrumental == "1":
-            ext = os.path.splitext(instrumental_path)[1]
-            zf.write(instrumental_path, f"{base} [Instrumental]{ext}")
-
-        # Original audio — convert WAV → MP3 for the download package
-        original_path = session.get("original_audio")
-        if original_path and os.path.exists(original_path):
-            serve_original, original_tmp = _ensure_mp3_for_download(original_path)
-            orig_name = session.get("filename") or os.path.basename(original_path)
-            download_base_name = f"{base}{os.path.splitext(orig_name)[1]}" if not serve_original.endswith(".mp3") else f"{base}.mp3"
-            zf.write(serve_original, download_base_name)
-            if original_tmp: _safe_unlink(serve_original)
-
-        # Cover image
-        cover_path = session.get("cover_file")
-        if cover_path and os.path.exists(cover_path):
-            zf.write(cover_path, f"{base} [CO].jpg")
-
-        # Background image
-        bg_path = session.get("bgimage_file")
-        if bg_path and os.path.exists(bg_path):
-            zf.write(bg_path, f"{base} [BG].jpg")
-
-        # Video: already compressed
-        if video_file and include_video == "1":
-            zf.write(video_file, f"{base}{os.path.splitext(video_file)[1]}", compress_type=zipfile.ZIP_STORED)
+    base = _song_base(session)
+    files, temps = _export_files(session, {
+        "vocals": include_vocals == "1", "edited": include_edited_vocals == "1",
+        "instrumental": include_instrumental == "1", "summary": include_summary == "1", "midi": include_midi == "1",
+        "video": include_video == "1",
+    })
+    zip_path = _write_zip(files)
+    for temp in temps:
+        _safe_unlink(temp)
 
     zip_name = f"{base}.zip"
     log_step("EXPORT", f"ZIP download: {zip_name}")
@@ -6279,4 +6353,5 @@ if __name__ == "__main__":
         log_step("PRELOAD", f"SDL preload skipped: {_preload_err}")
 
     log_step("SERVER", "Starting Ultrastar Song Generator v2.0")
-    uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
+    # Only this computer: the export endpoints write to any folder the user chooses
+    uvicorn.run(app, host="127.0.0.1", port=8001, log_level="info")

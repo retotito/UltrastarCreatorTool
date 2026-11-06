@@ -60,7 +60,7 @@ langdetect, only for 8+ lines at ≥ 90 %: "la la la" or mixed-language duets gi
 ## Video for the export (Step 4)
 
 With a YouTube link in the export step's Video row, the **🎬 Video** button downloads the video and saves it. The
-**Include** checkbox (off by default) puts it in the ZIP and in "All Files Individual", downloading it first if needed.
+**Include** checkbox (off by default) puts it in the song folder and the ZIP, downloading it first if needed.
 Downloads run in the shared busy window with progress and Cancel.
 
 - H.264 and AAC in `.mp4`, up to 1080p (`VIDEO_FORMAT`): they play everywhere; YouTube's best is often AV1 or VP9.
@@ -68,7 +68,8 @@ Downloads run in the shared busy window with progress and Cancel.
   by ✕, or when the link changes to another video.
 - `#VIDEO` is `Artist - Title.mp4`, renamed with the song. A downloaded video that isn't included is left out of the
   exported `.txt`; a file name typed by hand always stays.
-- The ZIP is built in a temporary file; the video is stored in it uncompressed.
+- The ZIP is built in a temporary file; the video is stored in it uncompressed. See also "The Exported File" in
+  [ultrastar-grid-gap.md](../architecture/ultrastar-grid-gap.md).
 
 ## Tools: yt-dlp and QuickJS
 

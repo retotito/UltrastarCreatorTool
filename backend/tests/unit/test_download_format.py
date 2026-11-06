@@ -173,3 +173,7 @@ def test_the_usdb_file_of_a_duet_has_its_singers_in_the_tags():
 def test_blank_and_doubled_lines_are_gone(ending):
     stored = ending.join(["#ARTIST:A", "#TITLE:T", "#BPM:240", "#GAP:0", ": 0 1 60 a ", "- 3", ": 4 1 62 b", "E", ""])
     assert format_for_download(stored) == "#ARTIST:A\r\n#TITLE:T\r\n#BPM:240\r\n#GAP:0\r\n: 0 1 0 a \r\n- 3\r\n: 4 1 2 b\r\nE\r\n"
+
+
+def test_the_usdb_file_leaves_out_a_video_gap_of_zero():
+    assert "VIDEOGAP" not in format_for_usdb(CHART.replace("#VIDEOGAP:1.5", "#VIDEOGAP:0.0"), "dQw4w9WgXcQ")

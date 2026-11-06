@@ -2,7 +2,9 @@
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
   import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
            uploadCover, getCoverUrl, deleteCover, uploadBgImage, getBgImageUrl, deleteBgImage, saveAssetsMeta, getAssetsMeta,
-           streamYouTubeVideo, deleteYouTubeVideo, getDownloadVideoUrl } from '../services/api.js';
+           streamYouTubeVideo, deleteYouTubeVideo, getDownloadVideoUrl, exportToFolder, exportToFile, inTauriApp } from '../services/api.js';
+  import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+  import { showConfirm } from '../stores/dialogStore.js';
   import TransferModal from './TransferModal.svelte';
   import { resetSession } from '../stores/appStore.js';
   import { SUPPORTED_LANGUAGES, languageHeader } from '../lib/languages';
@@ -261,6 +263,7 @@
   }
 
   async function downloadCover() {
+    if (await saveWithDialog('cover', getBaseFilename() + ' [CO].jpg') !== null) return;
     const res = await fetch(getCoverUrl($sessionId));
     const blob = await res.blob();
     const a = document.createElement('a');
@@ -363,6 +366,7 @@
   }
 
   async function downloadBg() {
+    if (await saveWithDialog('background', getBaseFilename() + ' [BG].jpg') !== null) return;
     const res = await fetch(getBgImageUrl($sessionId));
     const blob = await res.blob();
     const a = document.createElement('a');
@@ -418,6 +422,7 @@
   }
 
   async function saveVideoFile() {
+    if (await saveWithDialog('video', videoFilename || getBaseFilename() + '.mp4') !== null) return;
     const blob = await fetch(getDownloadVideoUrl($sessionId)).then(r => r.blob());
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -427,6 +432,73 @@
     a.remove();
     URL.revokeObjectURL(a.href);
     notifyDownload(`✓ ${a.download} downloaded`);
+  }
+
+  // ── Export location ──────────────────────────
+  const EXPORT_FOLDER_KEY = 'export_folder';   // where the last export went, for all songs
+  let folderBusy = null;   // the busy window while writing a song folder
+  let lastExportFolder = '';
+  try { lastExportFolder = localStorage.getItem(EXPORT_FOLDER_KEY) || ''; } catch { /* no storage: start at the default */ }
+
+  function rememberExportFolder(folder) {
+    lastExportFolder = folder;
+    try { localStorage.setItem(EXPORT_FOLDER_KEY, folder); } catch { /* the choice lasts until the app closes */ }
+  }
+
+  $: includes = {
+    vocals: zipIncludeVocals, edited: zipIncludeEditedVocals, instrumental: zipIncludeInstrumental,
+    summary: zipIncludeSummary, midi: zipIncludeMidi, video: zipIncludeVideo,
+  };
+
+  /** A file of the song, saved where the user says with the system's dialog. Returns true when saved, false when
+   * cancelled, null outside the app (no dialog in a browser: the caller downloads instead). */
+  async function saveWithDialog(kind, name) {
+    if (!inTauriApp) return null;
+    errorMessage.set('');
+    const sep = lastExportFolder.includes('\\') ? '\\' : '/';
+    const path = await saveDialog({ defaultPath: lastExportFolder ? `${lastExportFolder}${sep}${name}` : name });
+    if (!path) return false;
+    try {
+      await exportToFile($sessionId, kind, path, { ...includes, [kind]: true });
+    } catch (e) {
+      errorMessage.set(e.message);
+      return false;
+    }
+    rememberExportFolder(path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))));
+    notifyDownload(`✓ Saved ${path}`);
+    return true;
+  }
+
+  /** The whole song as a folder "Artist - Title", ready to test in a game. The app asks where each time, starting at the
+   * last location. A browser has no dialog: the backend uses Downloads. */
+  async function exportFolder() {
+    errorMessage.set('');
+    if (zipIncludeVideo && !(await ensureVideo())) return;
+    const folder = inTauriApp
+      ? await openDialog({ directory: true, defaultPath: lastExportFolder || undefined, title: 'Export the song folder into…' })
+      : '';
+    if (inTauriApp && !folder) return;
+    folderBusy = { status: `${getBaseFilename()}…` };
+    try {
+      let result;
+      try {
+        result = await exportToFolder($sessionId, folder, includes);
+      } catch (e) {
+        if (!e.message.includes('API error 409')) throw e;
+        folderBusy = null;
+        const replace = await showConfirm(`"${getBaseFilename()}" already exists in this folder. Replace it?`, { title: 'Replace the song folder?', confirmLabel: 'Replace' });
+        if (!replace) return;
+        folderBusy = { status: `${getBaseFilename()}…` };
+        result = await exportToFolder($sessionId, folder, includes, true);
+      }
+      if (folder) rememberExportFolder(folder);
+      exported = true;
+      notifyDownload(`✓ Exported to ${result.path}`);
+    } catch (e) {
+      errorMessage.set(e.message);
+    } finally {
+      folderBusy = null;
+    }
   }
 
   async function downloadVideo() {
@@ -450,7 +522,7 @@
     if (title) return title;
     if (artist) return artist;
     return 'Untitled Song';
-  })();
+  })().replace(/[\\/:*?"<>|]/g, '').trim();   // as the backend's safe_filename
 
   function getBaseFilename() {
     return baseFilename;
@@ -505,6 +577,11 @@
 
   async function downloadZip() {
     if (zipIncludeVideo && !(await ensureVideo())) return;
+    const saved = await saveWithDialog('zip', getBaseFilename() + '.zip');
+    if (saved !== null) {
+      if (saved) exported = true;
+      return;
+    }
     const params = new URLSearchParams({
       include_vocals: zipIncludeVocals ? '1' : '0',
       include_edited_vocals: zipIncludeEditedVocals ? '1' : '0',
@@ -529,6 +606,8 @@
   /** The .txt for uploading to USDB: the YouTube link as typed goes in its #VIDEO, the id USDB's tools find the video by. */
   async function downloadUsdb() {
     await saveVideoMeta();
+    if (!youtubeUrl.trim()) showToast('⚠ No YouTube link: this chart has no video source on USDB');
+    if (await saveWithDialog('usdb', `${getBaseFilename()} [USDB].txt`) !== null) return;
     const blob = await fetch(getDownloadUrl($sessionId, 'usdb')).then(r => r.blob());
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -541,6 +620,8 @@
   }
 
   async function downloadFile(type) {
+    const names = { txt: '.txt', midi: '.mid', summary: '_summary.txt' };
+    if (await saveWithDialog(type, getBaseFilename() + names[type]) !== null) return;
     let url = getDownloadUrl($sessionId, type);
     if (type === 'txt') {
       const params = new URLSearchParams({
@@ -567,12 +648,14 @@
     const url = getAudioUrl($sessionId, type);
     const base = getBaseFilename();
     const suffix = type === 'vocals'
-      ? ' [Vocals]'
+      ? ' [VOC]'
       : type === 'instrumental'
-        ? ' [Instrumental]'
+        ? ' [INSTR]'
         : type === 'cleaned'
           ? ' [Edited Vocals]'
           : '';
+    const saved = await saveWithDialog(type === 'cleaned' ? 'edited' : type, `${base}${suffix}.mp3`);
+    if (saved !== null) return;
     const blob = await fetch(url).then(r => r.blob());
     // Vocals are always .mp3 (Demucs --mp3 output).
     // For original, derive extension from the uploaded filename.
@@ -604,39 +687,6 @@
     a.remove();
     URL.revokeObjectURL(a.href);
     notifyDownload(`✓ ${a.download} downloaded`);
-  }
-
-  async function downloadAll() {
-    if (zipIncludeVideo && !(await ensureVideo())) return;
-    // Download each file with a small delay so browser doesn't block them
-    const files = ['txt'];
-    if ($generationResult?.midi_file && zipIncludeMidi) files.push('midi');
-    if ($generationResult?.summary_file && zipIncludeSummary) files.push('summary');
-
-    for (const type of files) {
-      downloadFile(type);
-      await new Promise(r => setTimeout(r, 300));
-    }
-    // Download available audio
-    if ($uploadData.hasVocals && zipIncludeVocals) {
-      downloadAudio('vocals');
-      await new Promise(r => setTimeout(r, 300));
-    }
-    if (hasEditedVocals && zipIncludeEditedVocals) {
-      downloadAudio('cleaned');
-      await new Promise(r => setTimeout(r, 300));
-    }
-    if (editInstrumental && zipIncludeInstrumental) {
-      downloadAudio('instrumental');
-      await new Promise(r => setTimeout(r, 300));
-    }
-    if ($uploadData.hasOriginal) {
-      downloadAudio('original');
-      await new Promise(r => setTimeout(r, 300));
-    }
-    if (zipIncludeVideo) saveVideoFile();
-    exported = true;
-    notifyDownload('✓ All files downloaded');
   }
 
   function startOver() {
@@ -810,7 +860,7 @@
             </div>
             <p class="video-gap-hint">Leave at 0 if the audio comes from this video. To skip an intro, use START in the editor.</p>
           </div>
-          <label class="asset-include" title={canGetVideo ? 'Put the video in the ZIP and in "All Files Individual". It is downloaded from the YouTube link if needed' : 'Add a YouTube link first'}>
+          <label class="asset-include" title={canGetVideo ? 'Put the video in the song folder and the ZIP. It is downloaded from the YouTube link if needed' : 'Add a YouTube link first'}>
             <input type="checkbox" bind:checked={zipIncludeVideo} disabled={!canGetVideo} />
             Include
           </label>
@@ -837,7 +887,7 @@
           <span class="asset-label">Vocals</span>
           <div class="video-inputs" style="padding-top: 10px;">
             {#if $uploadData?.hasVocals}
-              <span class="asset-value">{baseFilename} [Vocals].mp3</span>
+              <span class="asset-value">{baseFilename} [VOC].mp3</span>
             {:else}
               <small style="color:#f0a500;font-size:0.72rem">
                 💡 No vocals yet. Go to
@@ -872,7 +922,7 @@
           <span class="asset-label">Instrumental</span>
           <div class="video-inputs" style="padding-top: 10px;">
             {#if editInstrumental}
-              <span class="asset-value">{baseFilename} [Instrumental].mp3</span>
+              <span class="asset-value">{baseFilename} [INSTR].mp3</span>
             {:else}
               <small style="color:#888;font-size:0.72rem">Not available — run Demucs in Step 2 to generate.</small>
             {/if}
@@ -914,12 +964,16 @@
       <div class="download-header">
         <h3>Download Files</h3>
         <div class="download-header-buttons">
-          <button class="btn btn-primary download-all" on:click={downloadZip}>
+          <button class="btn btn-primary download-all" on:click={exportFolder}
+            title={`A folder "${baseFilename}" with the ticked files`}>
+            📁 Export to folder{inTauriApp ? '…' : ''}
+          </button>
+          <button class="btn btn-secondary download-all" on:click={downloadZip} title="The same files as one .zip, to pass on">
             📦 Download ZIP
           </button>
-          <button class="btn btn-secondary download-all" on:click={downloadAll}>
-            ⬇ All Files Individual
-          </button>
+          {#if !inTauriApp}
+            <span class="export-location">Exports to your Downloads folder</span>
+          {/if}
         </div>
       </div>
 
@@ -995,6 +1049,11 @@
 
   {#if $errorMessage}
     <div class="error-bar">❌ {$errorMessage}</div>
+  {/if}
+
+  {#if folderBusy}
+    <!-- Writing can't be stopped halfway: the folder appears when it is complete -->
+    <div class="modal-overlay"><div class="modal" role="alertdialog" aria-busy="true"><h3>Exporting the song folder</h3><p>{folderBusy.status}</p></div></div>
   {/if}
 
   {#if videoTransfer}
@@ -1203,6 +1262,8 @@
 
   .download-header-buttons {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 0.5rem;
   }
 
@@ -1502,6 +1563,14 @@
     font-size: 0.78rem;
     color: #777;
     white-space: nowrap;
+  }
+
+  .export-location {
+    flex-basis: 100%;
+    font-size: 0.75rem;
+    color: #888;
+    text-align: right;
+    overflow-wrap: anywhere;
   }
 
   .video-gap-hint {

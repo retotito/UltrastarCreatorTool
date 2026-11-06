@@ -67,11 +67,23 @@ syllables end in one, mostly the lyrics' own ("three-" + "wheeler "). The format
 of the app added a `-` to mid-word syllables: `strip_added_hyphens` removes them on import and download, recognised
 by a chart where mid-word syllables without one are at most half as many as those with one (38 of USDB's 28,868 charts).
 
+**Where it goes.** `_export_files` lists a song's files for all exports. **Export to folder** writes `Artist - Title/` in a location
+picked each time with Tauri's dialog plugin (starting at the last one), through the backend on the same computer (`services/song_export.py`): beside the
+target first, then renamed, so a failed export leaves what was there; an existing folder is replaced only after asking. The ZIP
+and single files open the save dialog; in a browser (dev) they download and the folder goes to Downloads. These endpoints write to any chosen
+path, so the backend listens on 127.0.0.1 only and accepts them only as JSON from the app's own origins
+(`_require_this_app`). Names come from `safe_filename`, the same in the files and the headers; `[VOC]` and `[INSTR]` as
+the format suggests.
+
 **The USDB `.txt`** (`format_for_usdb`) differs only where USDB's tools need it. `#VIDEO` can't serve both: a game needs
 the video's file name there, while USDB Syncer and Tune Studio find the video by the tag `v=<YouTube id>` and ignore a
 file name and `#YOUTUBE`. So the upload file has `#VIDEO:v=<id>`, no `#YOUTUBE`, no vocals or instrumental files, and a
-duet has its singers as `p1=`/`p2=` in the tags and [DUET] in the title. It isn't put in the ZIP: in a song folder a game
-would probably list the song twice.
+duet has its singers as `p1=`/`p2=` in the tags and [DUET] in the title, and a `#VIDEOGAP` of 0 is left out. It isn't put
+in the ZIP or the folder: a game would probably list the song twice.
+
+USDB reviews uploads by hand. A reviewed chart (Fire Lake, 2026-11) came back with `#VIDEO:v=<id>,co=<cover URL>`, no
+`#YOUTUBE` or zero `#VIDEOGAP`, its `-` removed, and word spaces and lyrics corrected. Its pitches stayed as uploaded, so
+USDB doesn't convert them.
 
 ## What the Grid Is
 

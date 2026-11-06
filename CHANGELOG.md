@@ -4,6 +4,15 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 📁 Choose where the song goes
+- **Export to folder…**: pick a location with the system's dialog, starting at the last one; the app writes a folder
+  "Artist - Title" with the `.txt`, audio, cover, background and the ticked extras, ready for a game. It asks before
+  replacing a folder. Large files no longer pass through memory. It replaces "All Files Individual"; the ZIP stays
+- The ZIP and single files (`.txt`, USDB `.txt`, video, audio…) open the system's save dialog in the app
+- File names are safe on every system ("AC/DC" no longer makes a subfolder) and match the `.txt`'s headers; the instrumental
+  is always an `.mp3`, as its header says. Vocals and instrumental are named `[VOC]` and `[INSTR]`, as the format suggests
+- The backend only accepts connections from this computer
+
 ### 📤 USDB-ready .txt
 - The downloaded `.txt` follows the format and USDB's charts: Windows line endings, typographic apostrophes (’), YASS-style
   line breaks, `#MP3`/`#VOCALS` pointing to `.mp3`, no duplicate or unknown headers, USDB's header order

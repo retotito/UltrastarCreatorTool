@@ -1,11 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
-  "description": "Default capability — grants shell access for sidecar and core defaults",
+  "description": "Default capability — grants shell access for sidecar, the export location dialogs and core defaults",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "shell:allow-spawn",
-    "shell:allow-execute"
+    "shell:allow-execute",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

@@ -18,7 +18,7 @@ export default defineConfig({
     // Proxy /api to FastAPI backend (dev only — Tauri prod uses direct URL)
     proxy: {
       '/api': {
-        target: 'http://localhost:8001',
+        target: 'http://127.0.0.1:8001',
         changeOrigin: true,
       }
     }

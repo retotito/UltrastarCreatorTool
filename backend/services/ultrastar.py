@@ -190,7 +190,7 @@ def format_for_usdb(content: str, youtube_id: Optional[str]) -> str:
             content = re.sub(r'^#TITLE:.*$', lambda m: f"#TITLE:{title} [DUET]", content, flags=re.MULTILINE)
     for key in ('VIDEO', 'YOUTUBE', *DUET_HEADERS):
         content = _remove_header(content, key)
-    if not youtube_id:
+    if not youtube_id or float(headers.get('VIDEOGAP', '0').replace(',', '.') or 0) == 0:
         content = _remove_header(content, 'VIDEOGAP')
     if tags:
         content = f"#VIDEO:{','.join(tags)}\n{content}"
