@@ -1,0 +1,33 @@
+name: Report a problem
+description: Something does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: Your computer
+      options:
+        - Mac with Apple Silicon
+        - Mac with Intel
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: 5.0.0
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: |
+        If something failed or got stuck, attach the backend log (drag the file in here):
+        Mac `~/Library/Logs/com.ultrastar.creator/backend.log`, Windows `%LOCALAPPDATA%\com.ultrastar.creator\logs\backend.log`.

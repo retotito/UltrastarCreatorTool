@@ -1,0 +1,16 @@
+name: Suggest an idea
+description: Something that would make creating songs easier or better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What would you like the app to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: When would it help?
+      description: The situation where you missed it.
