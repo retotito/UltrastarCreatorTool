@@ -14,7 +14,7 @@ Upload a song or add a link to a song on YouTube, and create an UltraStar song w
 </p>
 
 <p align="center">
-  <a href="https://github.com/retotito/UltrastarCreatorTool/releases"><img alt="Latest version" src="https://img.shields.io/github/v/release/retotito/UltrastarCreatorTool?label=version"></a>
+  <a href="https://github.com/retotito/UltrastarCreatorTool/releases/latest"><img alt="Latest version" src="https://img.shields.io/github/v/release/retotito/UltrastarCreatorTool?label=version"></a>
   <a href="https://github.com/retotito/UltrastarCreatorTool/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/retotito/UltrastarCreatorTool/actions/workflows/tests.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
 </p>
