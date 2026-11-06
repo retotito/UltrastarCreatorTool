@@ -94,6 +94,7 @@ for markers, fixtures, the evaluation songs and how to write tests.
 backend/            FastAPI sidecar: main.py (endpoints), services/ (pipeline), tests/, scripts/
 frontend/           Svelte UI (src/), Tauri shell (src-tauri/)
 docs/               Developer documentation, start at docs/README.md
+website/            The public website, published to GitHub Pages from main
 ```
 
 The architecture is described in [docs/architecture/overview.md](docs/architecture/overview.md) and the AI pipeline in

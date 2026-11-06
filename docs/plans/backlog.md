@@ -1,6 +1,6 @@
 # Backlog
 
-> **Status:** Current · **Last updated:** 2026-11-04
+> **Status:** Current · **Last updated:** 2026-11-06
 
 Open ideas and tasks that aren't planned in detail yet. When one is started, it gets its own plan in this folder
 (or goes straight into the code if it is small) and is removed here.
@@ -11,6 +11,13 @@ Open ideas and tasks that aren't planned in detail yet. When one is started, it 
 - **About / Credits view in the app**: the models, their authors and licences (non-commercial for the aligner and
   GAME), not only in the README.
 - **Windows build test** of the current branch, and an old Intel Mac.
+
+## Website
+
+- **Two new tutorials** (5.0 and duets): they go first in `website/index.html`. Then mark the part of the older videos
+  about Step 2 as outdated: in version 4 the alignment ignored manual corrections to the lyrics, and that's no longer so.
+- **Replace the old tutorials**: the old videos stay on the website until new ones exist. Before an old video is deleted
+  from YouTube, remove it from `website/index.html` and `README.md`, or its link breaks.
 
 ## Editor
 

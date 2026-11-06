@@ -8,6 +8,8 @@ A desktop app that turns songs into **UltraStar karaoke charts** with the help o
 link, check the lyrics, generate the notes, fine-tune them in the piano roll editor, and export a song folder for the
 game or a `.txt` for [USDB](https://usdb.animux.de).
 
+**[Website](https://retotito.github.io/UltrastarCreatorTool/)** with screenshots and tutorials.
+
 ## Download
 
 **[⬇ Download the latest version](https://github.com/retotito/UltrastarCreatorTool/releases/latest)**: choose your
@@ -61,10 +63,11 @@ The backend log shows every processing step and error:
 
 Please [open an issue](https://github.com/retotito/UltrastarCreatorTool/issues) and attach it.
 
-## AI models and licences
+## Licence
 
-The app builds on open models. Some, including the aligner and the note model, are **free for non-commercial use
-only**. See [AI models](docs/architecture/ai-models.md) for all of them and their licences.
+The app is free and open source under the [GPL-3.0](LICENSE). Its BPM detection uses Essentia, which stays under the
+AGPL-3.0. The licence doesn't cover the AI models: some, including the aligner and the note model, are **free for
+non-commercial use only**. See [AI models](docs/architecture/ai-models.md) for all of them and their licences.
 
 ## Development
 

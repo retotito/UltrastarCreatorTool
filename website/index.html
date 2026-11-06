@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ultrastar Creator Tool: make karaoke charts with AI</title>
+  <meta name="description" content="A free desktop app that turns songs into UltraStar karaoke charts: AI finds the vocals, lyrics timing and notes, and you fine-tune them in a piano roll editor. For Mac and Windows.">
+  <link rel="canonical" href="https://retotito.github.io/UltrastarCreatorTool/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://retotito.github.io/UltrastarCreatorTool/">
+  <meta property="og:title" content="Ultrastar Creator Tool">
+  <meta property="og:description" content="Turn any song into an UltraStar karaoke chart. Free for Mac and Windows.">
+  <meta property="og:image" content="https://retotito.github.io/UltrastarCreatorTool/img/editor.webp">
+  <link rel="icon" href="img/icon.webp">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#top"><img src="img/icon.webp" width="256" height="256" alt=""><span>Ultrastar Creator Tool</span></a>
+  <nav>
+    <a href="#how">How it works</a>
+    <a href="#tutorials" class="hide-small">Tutorials</a>
+    <a href="https://github.com/retotito/UltrastarCreatorTool" class="hide-small">GitHub</a>
+    <a href="#download" class="btn btn-small">Download</a>
+  </nav>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <h1>Turn any song into a karaoke chart</h1>
+      <p class="lead">Upload a song or paste a YouTube link. AI separates the vocals, times the lyrics and finds the notes, and you fine-tune the result in a piano roll editor.</p>
+      <a href="#download" class="btn">Download, free</a>
+      <p class="muted small" style="margin-top:12px">For Mac and Windows</p>
+      <img class="shot" src="img/editor.webp" width="2000" height="1136" alt="The piano roll editor, with notes and lyrics over the song's waveform">
+    </div>
+  </div>
+
+  <section id="how" class="tint">
+    <div class="wrap">
+      <div class="intro">
+        <h2>Four steps to a finished song</h2>
+        <p class="muted">From an audio file to an UltraStar chart you can sing in the game.</p>
+      </div>
+      <div class="step">
+        <div class="step-text">
+          <div class="step-number">Step 1</div>
+          <h3>Upload</h3>
+          <p class="muted">Choose a file or paste a YouTube link. The app proposes artist, title and language, and separates the vocals from the music.</p>
+        </div>
+        <img class="shot" src="img/upload.webp" width="1600" height="910" loading="lazy" alt="Step 1: the full mix, vocals and instrumental, ready to play">
+      </div>
+      <div class="step">
+        <div class="step-text">
+          <div class="step-number">Step 2</div>
+          <h3>Lyrics</h3>
+          <p class="muted">Compare lyrics side by side from a published source, the video's subtitles, or what Whisper hears in the vocals. Then generate the chart.</p>
+        </div>
+        <img class="shot" src="img/lyrics.webp" width="1600" height="1135" loading="lazy" alt="Step 2: lyrics from two sources side by side">
+      </div>
+      <div class="step">
+        <div class="step-text">
+          <div class="step-number">Step 3</div>
+          <h3>Editor</h3>
+          <p class="muted">Check every note against the waveform. Move, split and join notes, loop a difficult line, slow it down, or sing along with your microphone.</p>
+        </div>
+        <img class="shot" src="img/editor.webp" width="2000" height="1136" loading="lazy" alt="Step 3: the piano roll editor">
+      </div>
+      <div class="step">
+        <div class="step-text">
+          <div class="step-number">Step 4</div>
+          <h3>Export</h3>
+          <p class="muted">Get a song folder ready for the game, with cover, background and video, or a <code>.txt</code> in the format <a href="https://usdb.animux.de">USDB</a> uses.</p>
+        </div>
+        <img class="shot" src="img/export.webp" width="1600" height="918" loading="lazy" alt="Step 4: song info, cover, background, video and files to export">
+      </div>
+    </div>
+  </section>
+
+  <section id="new">
+    <div class="wrap">
+      <div class="intro"><h2>New in 5.0</h2></div>
+      <div class="grid">
+        <div class="card"><h3>Duets</h3><p>Duet charts stay intact and both singers are shown. You edit one at a time, and any song can become a duet.</p></div>
+        <div class="card"><h3>YouTube links</h3><p>Paste a link instead of uploading a file, use its subtitles as lyrics, and export the video.</p></div>
+        <div class="card"><h3>Better charts</h3><p>Lyrics are aligned directly to the vocals: on six test songs, misplaced syllables dropped from 57 % to 7 %.</p></div>
+        <div class="card"><h3>Better vocal separation</h3><p>An optional slower model is much cleaner where voices overlap.</p></div>
+        <div class="card"><h3>Export for the game or USDB</h3><p>A song folder wherever you want it, or a <code>.txt</code> ready to upload.</p></div>
+        <div class="card"><h3>Automatic updates</h3><p>The app offers new versions and shows what's new. Your songs and models stay.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tutorials" class="tint">
+    <div class="wrap">
+      <div class="intro">
+        <h2>Tutorials</h2>
+        <p class="muted">These show earlier versions, so some screens look different.</p>
+      </div>
+      <!-- New tutorials go first. Each one is a link and a thumbnail from its YouTube id. -->
+      <div class="grid">
+        <a class="video" href="https://www.youtube.com/watch?v=zKw03mhrYX8"><img src="https://img.youtube.com/vi/zKw03mhrYX8/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Overview: getting started</a>
+        <a class="video" href="https://www.youtube.com/watch?v=p4ihQaDhwfg"><img src="https://img.youtube.com/vi/p4ihQaDhwfg/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Pitch line, vocal tracing and sing along</a>
+        <a class="video" href="https://www.youtube.com/watch?v=WwAZQlhqSwE"><img src="https://img.youtube.com/vi/WwAZQlhqSwE/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Looping and scrubbing</a>
+        <a class="video" href="https://www.youtube.com/watch?v=L8jnov5M-XY"><img src="https://img.youtube.com/vi/L8jnov5M-XY/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">BPM and metronome</a>
+        <a class="video" href="https://www.youtube.com/watch?v=WOKcdjpthh0"><img src="https://img.youtube.com/vi/WOKcdjpthh0/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">AI limits and workarounds</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap center">
+      <h2>Download</h2>
+      <p class="muted" id="version">Free</p>
+      <div class="downloads">
+        <a class="btn dl" data-file="mac-arm" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest">Mac, Apple Silicon<small>M1 or newer, macOS 14+</small></a>
+        <a class="btn dl" data-file="mac-intel" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest">Mac, Intel<small>macOS 12+</small></a>
+        <a class="btn dl" data-file="windows" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest">Windows<small>64-bit</small></a>
+      </div>
+      <p class="small"><a href="https://github.com/retotito/UltrastarCreatorTool/releases">All versions</a></p>
+      <div class="notes" style="text-align:left">
+        <h3>The first start</h3>
+        <p class="muted">The app downloads its AI models, about 3.5 GB. It isn't code-signed yet, so your system warns you the first time:</p>
+        <p class="muted"><strong>macOS:</strong> drag the app to Applications and open it. When macOS blocks it, go to System Settings → Privacy &amp; Security and click Open Anyway.</p>
+        <p class="muted"><strong>Windows:</strong> when SmartScreen warns you, click More info, then Run anyway.</p>
+        <h3>Coming from a version before 5.0?</h3>
+        <p class="muted">Export the songs you want to keep as a ZIP, close and uninstall the old app, then install this one.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Made by Reto Küpfer · Open source (<a href="https://github.com/retotito/UltrastarCreatorTool/blob/main/LICENSE">GPL-3.0</a>) · <a href="https://github.com/retotito/UltrastarCreatorTool">Source code on GitHub</a> · <a href="https://github.com/retotito/UltrastarCreatorTool/issues">Report a problem</a></p>
+    <p>Some of the AI models are free for non-commercial use only. <a href="https://github.com/retotito/UltrastarCreatorTool/blob/main/docs/architecture/ai-models.md">See the models and their licences.</a></p>
+    <p>Sing your charts at a party with <a href="https://retotito.github.io/Ultrastar-DJ/">Ultrastar DJ</a>.</p>
+  </div>
+</footer>
+<script src="main.js"></script>
+</body>
+</html>
