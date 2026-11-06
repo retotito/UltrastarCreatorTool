@@ -1,5 +1,10 @@
 """Vocal separation using Demucs v4."""
 
+import contextlib
+import io
+import re
+import threading
+from typing import Callable, Optional
 import os
 import sys
 import subprocess
@@ -21,7 +26,59 @@ except Exception:
     log_step("INIT", "Demucs availability check failed")
 
 
-def _run_demucs_in_process(audio_path: str, temp_dir: str) -> None:
+_TQDM_PERCENT = re.compile(r"(\d{1,3})%\|")
+DEMUCS_TIMEOUT_SEC = 600
+
+
+def tqdm_percent(text: str) -> Optional[int]:
+    """The last percentage in a piece of tqdm's output (Demucs's progress bar), None if it has none."""
+    found = _TQDM_PERCENT.findall(text)
+    return min(100, int(found[-1])) if found else None
+
+
+class _ProgressStream(io.TextIOBase):
+    """Stands in for stderr while Demucs runs in this process: passes everything on, reports tqdm's percentage."""
+
+    def __init__(self, stream, on_progress: Callable[[int], None]):
+        self.stream = stream
+        self.on_progress = on_progress
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, text: str) -> int:
+        if self.stream:
+            self.stream.write(text)
+        percent = tqdm_percent(text)
+        if percent is not None:
+            self.on_progress(percent)
+        return len(text)
+
+    def flush(self) -> None:
+        if self.stream:
+            self.stream.flush()
+
+
+def _run_demucs_subprocess(cmd: list, on_progress: Optional[Callable[[int], None]]) -> None:
+    """Demucs as a process, its stderr read as it comes (tqdm's bar). Raises RuntimeError when it fails."""
+    process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    timer = threading.Timer(DEMUCS_TIMEOUT_SEC, process.kill)
+    timer.start()
+    tail = ""
+    try:
+        for chunk in iter(lambda: process.stderr.read(256), ""):
+            tail = (tail + chunk)[-4000:]
+            percent = tqdm_percent(chunk)
+            if percent is not None and on_progress:
+                on_progress(percent)
+        code = process.wait()
+    finally:
+        timer.cancel()
+    if code != 0:
+        raise RuntimeError(f"Demucs failed: {tail}")
+
+
+def _run_demucs_in_process(audio_path: str, temp_dir: str, on_progress: Optional[Callable[[int], None]] = None) -> None:
     """Call demucs in-process (required for PyInstaller frozen builds where
     sys.executable is the sidecar binary, not a real Python interpreter)."""
     from demucs.separate import main as demucs_main
@@ -32,7 +89,11 @@ def _run_demucs_in_process(audio_path: str, temp_dir: str) -> None:
         audio_path,
     ]
     try:
-        demucs_main(args)
+        if on_progress:
+            with contextlib.redirect_stderr(_ProgressStream(sys.stderr, on_progress)):
+                demucs_main(args)
+        else:
+            demucs_main(args)
     except SystemExit as e:
         if e.code not in (0, None):
             raise RuntimeError(f"Demucs exited with code {e.code}")
@@ -73,13 +134,14 @@ def _ensure_wav(audio_path: str, temp_dir: str) -> str:
     return wav_path
 
 
-def separate_vocals(audio_path: str, output_dir: str) -> str:
+def separate_vocals(audio_path: str, output_dir: str, on_progress: Optional[Callable[[int], None]] = None) -> str:
     """Extract vocals from a full song using Demucs v4.
     
     Args:
         audio_path: Path to the input audio file (MP3/WAV)
         output_dir: Directory to save the extracted vocals
-        
+        on_progress: Called with Demucs's percentage as it separates
+
     Returns:
         Path to the extracted vocal audio file
     """
@@ -98,7 +160,7 @@ def separate_vocals(audio_path: str, output_dir: str) -> str:
             # Spawning it with "-m demucs" would try to restart the server and fail
             # with "address already in use".  Call demucs in-process instead.
             log_step("SEPARATE", "Running Demucs in-process (frozen build)...")
-            _run_demucs_in_process(demucs_input, temp_dir)
+            _run_demucs_in_process(demucs_input, temp_dir, on_progress)
         else:
             # Dev mode: run as subprocess so heavy torch work is isolated.
             cmd = [
@@ -109,9 +171,7 @@ def separate_vocals(audio_path: str, output_dir: str) -> str:
                 demucs_input,
             ]
             log_step("SEPARATE", "Running Demucs (this may take a few minutes)...")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            if result.returncode != 0:
-                raise RuntimeError(f"Demucs failed: {result.stderr}")
+            _run_demucs_subprocess(cmd, on_progress)
         
         # Demucs names its output folder after the input file's stem
         song_name = os.path.splitext(os.path.basename(demucs_input))[0]

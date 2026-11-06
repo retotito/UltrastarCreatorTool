@@ -18,7 +18,7 @@ import os
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 
@@ -517,12 +517,14 @@ def _sung_session():
 
 
 def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[str] = None,
-                      model_name: str = "sung") -> np.ndarray:
+                      model_name: str = "sung",
+                      on_progress: Optional[Callable[[int, int], None]] = None) -> np.ndarray:
     """The aligner's (frames × 31) log-probabilities for the audio, one frame per 20 ms.
 
     Runs in 30 s windows with 2 s of context on each side. With `cache_dir`, results are cached
     per file (path, size, modification time) so re-generating a song is fast. `model_name`: "sung"
-    (default, the singing fine-tune) or "mms" (the stock speech model, for comparison).
+    (default, the singing fine-tune) or "mms" (the stock speech model, for comparison). `on_progress(done, total)`
+    follows the windows; a cached result calls it not at all.
     """
     revision = SUNG_MODEL_REVISION if model_name == "sung" else MODEL_REVISION
     cache_path = None
@@ -556,6 +558,8 @@ def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[
             shifted = logits - logits.max(axis=-1, keepdims=True)
             log_probs = shifted - np.log(np.exp(shifted).sum(axis=-1, keepdims=True))
             chunks.append(log_probs[skip:skip + keep].astype(np.float32))
+            if on_progress:
+                on_progress(k + 1, windows)
     else:
         import torch
         model = _load_model(device)
@@ -567,6 +571,8 @@ def compute_emissions(audio_path: str, device: str = "cpu", cache_dir: Optional[
                 logits = model(torch.from_numpy(chunk)[None].to(device)).logits[0]
                 log_probs = torch.log_softmax(logits.float(), dim=-1).cpu().numpy()
                 chunks.append(log_probs[skip:skip + keep])
+                if on_progress:
+                    on_progress(k + 1, windows)
     emissions = np.concatenate(chunks)[:total_frames]
     if emissions.shape[0] < total_frames:
         pad = np.full((total_frames - emissions.shape[0], emissions.shape[1]), -1e4, np.float32)
@@ -587,13 +593,13 @@ def frame_loudness(audio_path: str) -> np.ndarray:
 
 def align_lyrics(audio_path: str, lyrics_text: str, pitch_data: Optional[dict] = None,
                  device: str = "cpu", cache_dir: Optional[str] = None, snap_voice: bool = False,
-                 language: str = "en") -> List[dict]:
+                 language: str = "en", on_progress: Optional[Callable[[int, int], None]] = None) -> List[dict]:
     """Syllable timings for the user's lyrics in `audio_path`. Same format as `align_whisper()`.
 
     `snap_voice` is off by default: on the evaluation songs it made starts later than the charts
     (bias +40 ms) without fixing any misplaced notes. See eval/run_eval.py.
     """
-    emissions = compute_emissions(audio_path, device=device, cache_dir=cache_dir)
+    emissions = compute_emissions(audio_path, device=device, cache_dir=cache_dir, on_progress=on_progress)
     results = align_lyrics_to_emissions(lyrics_text, emissions, pitch_data=pitch_data, snap_voice=snap_voice,
                                         loudness_db=frame_loudness(audio_path), language=language)
     low = sum(1 for r in results if r["low_confidence"])

@@ -10,6 +10,19 @@
   let cancelled = false;
   let abortController = null;
 
+  // What the backend is doing (generate_ultrastar_files' report_step). The long steps count, so they get a bar with a
+  // real percentage, or a moving one when they can't (the fallback aligners, a repeat run with cached alignment).
+  const STEPS = [
+    { id: 'tempo', label: 'Finding the tempo' },
+    { id: 'pitch', label: 'Detecting the pitch' },
+    { id: 'align', label: 'Aligning the lyrics', long: true },
+    { id: 'notes', label: 'Finding the notes', long: true },
+    { id: 'write', label: 'Writing the files' },
+  ];
+  let progress = { step: 'tempo', percent: null };
+  let failed = false;
+  $: activeStep = STEPS.findIndex(step => step.id === progress.step);
+
   onMount(() => {
     handleGenerate();
   });
@@ -31,15 +44,13 @@
     cancelled = false;
     abortController = new AbortController();
 
-    addLog('Starting generation pipeline...');
-    addLog('Step 1/4: Detecting BPM...');
-    addLog('Step 2/4: Running pitch detection...');
-    addLog('Step 3/4: Aligning syllables to audio...');
-    addLog('Step 4/4: Generating Ultrastar files...');
+    progress = { step: 'tempo', percent: null };
+    failed = false;
 
     try {
-      const result = await pollGenerate($sessionId, (status) => {
+      const result = await pollGenerate($sessionId, (status, stepProgress) => {
         processingStatus.set(`Generating… (${status})`);
+        if (stepProgress) progress = stepProgress;
       }, abortController.signal, $generationUseCleaned);
 
       generationResult.set(result);
@@ -73,6 +84,7 @@
         // Silent — user cancelled intentionally
         return;
       }
+      failed = true;
       addLog(`❌ Error: ${err.message}`);
       errorMessage.set(err.message);
     } finally {
@@ -98,6 +110,26 @@
         <button class="close-btn" on:click={cancel} title="Close">✕</button>
       {/if}
     </div>
+
+  {#if $isProcessing || failed}
+    <ol class="gen-steps" aria-label="Generation steps">
+      {#each STEPS as step, i}
+        {@const state = i < activeStep ? 'done' : i === activeStep ? (failed ? 'failed' : 'active') : 'waiting'}
+        <li class="gen-step {state}" aria-current={state === 'active' ? 'step' : undefined}>
+          <span class="gen-icon" aria-hidden="true">{state === 'done' ? '✓' : state === 'failed' ? '✕' : state === 'active' ? '●' : '○'}</span>
+          <span class="gen-label">{step.label}</span>
+          {#if state === 'active' && step.long}
+            {#if progress.percent !== null}
+              <progress max="100" value={progress.percent} aria-label={step.label}></progress>
+              <span class="gen-percent">{progress.percent}%</span>
+            {:else}
+              <progress aria-label={step.label}></progress>
+            {/if}
+          {/if}
+        </li>
+      {/each}
+    </ol>
+  {/if}
 
   {#if logMessages.length > 0}
     <div class="log-panel">
@@ -326,6 +358,19 @@
     font-size: 0.9rem;
   }
   .btn-cancel:hover { background: #333; color: white; }
+
+  .gen-steps { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+  .gen-step { display: flex; align-items: center; gap: 0.6rem; min-height: 1.5rem; font-size: 0.92rem; color: #777; }
+  .gen-step.done { color: #aaa; }
+  .gen-step.done .gen-icon { color: #66bb6a; }
+  .gen-step.active { color: #e0e0e0; }
+  .gen-step.active .gen-icon { color: #4fc3f7; }
+  .gen-step.failed { color: #ef9a9a; }
+  .gen-step.failed .gen-icon { color: #ef5350; }
+  .gen-icon { width: 1rem; text-align: center; }
+  .gen-label { flex: 0 0 11rem; }
+  .gen-step progress { flex: 1; min-width: 0; height: 6px; }
+  .gen-percent { flex: 0 0 2.6rem; text-align: right; font-variant-numeric: tabular-nums; color: #aaa; font-size: 0.82rem; }
 
   .log-panel {
     background: #0d1117;

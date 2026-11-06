@@ -2405,7 +2405,12 @@ async def extract_vocals_stream(session_id: str, engine: str = "demucs"):
         audio_path = session["original_audio"]
 
         # Launch demucs in a thread pool so the event loop stays responsive
-        executor_future = loop.run_in_executor(None, separate_vocals, audio_path, output_dir)
+        progress = {"percent": None}
+
+        def on_progress(percent: int):
+            progress["percent"] = percent
+
+        executor_future = loop.run_in_executor(None, separate_vocals, audio_path, output_dir, on_progress)
 
         yield _send("separating", "Separating vocals — may take 1–5 minutes depending on song length…")
 
@@ -2417,9 +2422,12 @@ async def extract_vocals_stream(session_id: str, engine: str = "demucs"):
                 yield _send("cancelled", "Extraction cancelled")
                 return
             elapsed = int(loop.time() - start)
-            yield _send("heartbeat", "", elapsed=elapsed)
+            if progress["percent"] is None:
+                yield _send("heartbeat", "", elapsed=elapsed)
+            else:
+                yield _send("heartbeat", "", elapsed=elapsed, percent=progress["percent"])
             try:
-                await asyncio.wait_for(asyncio.shield(executor_future), timeout=3.0)
+                await asyncio.wait_for(asyncio.shield(executor_future), timeout=1.0)
             except asyncio.TimeoutError:
                 pass
             except Exception:
@@ -4366,8 +4374,18 @@ def generate_ultrastar_files(session_id: str):
             session["status"] = "cancelled"
             raise ServiceError("Generation cancelled", "Cancelled by user")
 
+    def report_step(step: str):
+        """The step the window shows (Step3Generate: tempo, pitch, align, notes, write), None percent while it can't count."""
+        session["generation_progress"] = {"step": step, "percent": None}
+
+    def report_percent(step: str):
+        def report(done: int, total: int):   # under 100: more work follows the counted part
+            session["generation_progress"] = {"step": step, "percent": min(99, done * 100 // max(1, total))}
+        return report
+
     try:
         # Step 3a: BPM Detection
+        report_step("tempo")
         log_step("GENERATE", "Step 1/4: BPM detection")
         from services.bpm_detection import detect_bpm, get_audio_duration, refine_bpm, detect_beat_phase
         
@@ -4379,6 +4397,7 @@ def generate_ultrastar_files(session_id: str):
         beat_phase_sec = detect_beat_phase(original_path or vocal_path, bpm)
         
         # Step 3b: Pitch Detection
+        report_step("pitch")
         log_step("GENERATE", "Step 2/4: Pitch detection")
         check_cancelled()
         from services.pitch_detection import detect_pitches
@@ -4386,6 +4405,7 @@ def generate_ultrastar_files(session_id: str):
         pitch_data = detect_pitches(vocal_path)
         
         # Step 3c: Alignment
+        report_step("align")
         log_step("GENERATE", "Step 3/4: Syllable alignment")
         check_cancelled()
         whisper_words = session.get("whisper_words", [])
@@ -4401,6 +4421,7 @@ def generate_ultrastar_files(session_id: str):
             whisper_words=whisper_words,
             whisper_chars=whisper_chars,
             cache_dir=os.path.join(SESSIONS_DIR, session_id, "cache"),
+            on_progress=report_percent("align"),
         )
         log_step("GENERATE", f"Alignment ({align_engine}, whisper={whisper_method}): {len(syllable_timings)} syllables")
 
@@ -4440,11 +4461,13 @@ def generate_ultrastar_files(session_id: str):
         # Melisma, GAME's notes, the final pitches and consonant trimming: the same steps as for a range
         # (segment_generate). See services/note_pipeline.py and docs/architecture/pipeline.md.
         from services.note_pipeline import build_notes
+        report_step("notes")
         syllable_timings, notes_info = build_notes(vocal_path, syllable_timings, pitch_data, language, MODELS_DIR,
-                                                   align_engine, check_cancelled)
+                                                   align_engine, check_cancelled, on_progress=report_percent("notes"))
         found = notes_info["game_found"]
         
         # Step 3d: Generate files
+        report_step("write")
         log_step("GENERATE", "Step 4/4: Generating output files")
         check_cancelled()
         from services.ultrastar import generate_ultrastar, generate_processing_summary
@@ -4525,6 +4548,7 @@ def generate_ultrastar_files(session_id: str):
         
         # Store result in session
         session["status"] = "generated"
+        session.pop("generation_progress", None)
         # Preserve cleanup state across regeneration (segments stored in ms — no BPM/GAP conversion needed)
         _old_result = session.get("result") or {}
         # Aggressive cleanup: remove superseded generation artifacts immediately.
@@ -4596,6 +4620,7 @@ def generate_ultrastar_files(session_id: str):
         }
     except Exception as e:
         session["status"] = "generation_failed"
+        session.pop("generation_progress", None)
         session["error"] = str(e)
         log.error(f"Generation failed for session {session_id}: {e}")
         import traceback
@@ -4697,7 +4722,7 @@ async def get_generation_result(session_id: str):
     if session["status"] == "cancelled":
         return {"status": "cancelled", "current_status": session["status"]}
     if session["status"] != "generated":
-        return {"status": "pending", "current_status": session["status"]}
+        return {"status": "pending", "current_status": session["status"], "progress": session.get("generation_progress")}
     
     result = session.get("result", {})
     # Build response safely — exclude large fields

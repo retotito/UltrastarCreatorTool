@@ -481,10 +481,12 @@
         <div class="extract-elapsed">{extractPercent}%</div>
       {/if}
       {#if extractPhase === 'separating' || extractPhase === 'heartbeat'}
-        {#if extractEngine === 'roformer' && extractPercent !== null}
+        {#if extractPercent !== null}
           <progress max="100" value={extractPercent}></progress>
+        {:else}
+          <progress></progress>
         {/if}
-        <div class="extract-elapsed">⏱ {extractElapsed}s elapsed{extractEngine === 'roformer' && extractPercent !== null ? ` · ${extractPercent}%` : ''}</div>
+        <div class="extract-elapsed">⏱ {extractElapsed}s elapsed{extractPercent !== null ? ` · ${extractPercent}%` : ''}</div>
         <div class="extract-hint">
           {#if extractEngine === 'roformer'}
             Mel-Band RoFormer separates vocals from the full mix, cleaner where voices overlap.<br>

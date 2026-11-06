@@ -4,7 +4,8 @@
    * correct, and the language(s) it is sung in (a second one for bilingual songs: "#LANGUAGE:English, German").
    * The artist/title proposal is checked against lrclib.net in the background (it tells "Title - Artist" from
    * "Artist - Title" and ignores wrong tags). Saving the names confirms them, names the song's audio file
-   * "Artist - Title", and Step 2 then searches the lyrics with them.
+   * "Artist - Title", and Step 2 then searches the lyrics with them. The check never holds the user up (it can take
+   * 20 s): everything can be edited and confirmed meanwhile, and a late result doesn't replace what was changed.
    */
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { identifySong, updateMetadata } from '../services/api.js';
@@ -21,12 +22,14 @@
   let searching = false;
   let saving = false;
   let message = '';
+  let namesEdited = false;   // the user changed a name: the online check's proposal no longer replaces it
 
   async function propose() {
     searching = true;
     message = '';
     try {
       const found = await identifySong(sessionId);
+      if (namesEdited || saving) return;
       artist = found.proposal?.artist ?? artist;
       title = found.proposal?.title ?? title;
       if (!(found.matches || []).length && !(artist.trim() && title.trim())) {
@@ -40,6 +43,7 @@
   }
 
   function swap() {
+    namesEdited = true;
     [artist, title] = [title, artist];
   }
 
@@ -86,18 +90,20 @@
     <h2 id="song-title">Which song is this?</h2>
     {#if searching}
       <div class="busy-bar" role="progressbar" aria-label="Recognising the song"></div>
+      <p class="song-checking">Checking the names online… you don't have to wait.</p>
     {/if}
     <p class="song-hint">Please check the artist and song name, and choose the language it is sung in (a second one if the song mixes two).</p>
     {#if message}<p class="song-message">{message}</p>{/if}
 
     <form class="song-fields" on:submit|preventDefault={confirm}>
-      <label>Artist <input type="text" bind:value={artist} placeholder="Artist" disabled={searching} /></label>
+      <label>Artist <input type="text" bind:value={artist} placeholder="Artist" on:input={() => { namesEdited = true; }} /></label>
       <button type="button" class="swap-btn" on:click={swap} title="Swap artist and title">⇄</button>
-      <label>Title <input type="text" bind:value={title} placeholder="Song title" disabled={searching} /></label>
+      <label>Title <input type="text" bind:value={title} placeholder="Song title" on:input={() => { namesEdited = true; }} /></label>
     </form>
     <div class="song-languages">
-      <label class="song-language">Language
-        <select bind:value={language}>
+      <label class="song-language">
+        <span>Language{#if !language}<span class="required" aria-hidden="true"> *</span>{/if}</span>
+        <select bind:value={language} class:missing={!language} aria-required="true">
           <option value="" disabled>Select language…</option>
           {#each SUPPORTED_LANGUAGES as lang}
             <option value={lang.code}>{lang.label}</option>
@@ -121,7 +127,7 @@
       {/if}
       <!-- The tooltip sits on a wrapper: a disabled button gets no hover, so it shows no title of its own. -->
       <span title={missingHint}>
-        <button class="btn btn-primary" on:click={confirm} disabled={saving || searching || !!missingHint}>
+        <button class="btn btn-primary" on:click={confirm} disabled={saving || !!missingHint}>
           {saving ? 'Saving…' : '✓ Confirm'}
         </button>
       </span>
@@ -141,6 +147,7 @@
   h2 { margin: 0; font-size: 1.15rem; }
   .song-hint { margin: 0; color: #999; font-size: 0.82rem; }
   .song-message { margin: 0; color: #e0a030; font-size: 0.85rem; }
+  .song-checking { margin: 0; color: #4fc3f7; font-size: 0.78rem; }
   .song-fields { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
   .song-fields label { flex: 1 1 200px; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: #aaa; }
   .song-fields input {
@@ -154,9 +161,14 @@
   .swap-btn:hover { background: #303045; }
   .song-languages { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   .song-language { flex: 1 1 200px; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; color: #aaa; }
+  /* Our own arrow: the system's sits at a different place on each OS */
   .song-language select {
-    background: #11111d; color: #e0e0e0; border: 1px solid #333; border-radius: 6px; padding: 0.5rem 0.6rem; font-size: 0.95rem;
+    appearance: none; -webkit-appearance: none;
+    background: #11111d url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23aaa' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 0.65rem center;
+    color: #e0e0e0; border: 1px solid #333; border-radius: 6px; padding: 0.5rem 1.8rem 0.5rem 0.6rem; font-size: 0.95rem;
   }
+  .song-language select.missing { border-color: #ef5350; color: #ef9a9a; }
+  .required { color: #ef5350; font-weight: 600; }
   .song-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.25rem; }
   .btn { padding: 0.6rem 1.2rem; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; }
   .btn-primary { background: #1976d2; color: white; }

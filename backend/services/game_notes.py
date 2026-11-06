@@ -98,14 +98,15 @@ def download(models_dir: str, on_progress: Optional[Callable[[int, int], None]] 
         shutil.rmtree(work, ignore_errors=True)
 
 
-def apply(models_dir: str, vocal_path: str, syllable_timings: list, language: str = "en") -> int:
+def apply(models_dir: str, vocal_path: str, syllable_timings: list, language: str = "en",
+          on_progress: Optional[Callable[[int, int], None]] = None) -> int:
     """Set GAME's pitch on the syllables that have none yet (melisma parts bring their own); returns how many.
     Does nothing when the model isn't downloaded or GAME is turned off."""
     if not enabled() or not is_downloaded(models_dir) or not syllable_timings:
         return 0
     import librosa
     samples, _ = librosa.load(vocal_path, sr=SAMPLE_RATE, mono=True)
-    pitches = syllable_pitches(model_folder(models_dir), samples, syllable_timings, language)
+    pitches = syllable_pitches(model_folder(models_dir), samples, syllable_timings, language, on_progress)
     count = 0
     for timing, pitch in zip(syllable_timings, pitches):
         if pitch is not None and not timing.get("pitch") and not timing.get("is_rap"):
@@ -156,16 +157,18 @@ def extract(folder: str, waveform: np.ndarray, known: Sequence[float], language:
     return notes
 
 
-def syllable_pitches(folder: str, samples: np.ndarray, syllable_timings: list,
-                     language: str = "en") -> List[Optional[float]]:
+def syllable_pitches(folder: str, samples: np.ndarray, syllable_timings: list, language: str = "en",
+                     on_progress: Optional[Callable[[int, int], None]] = None) -> List[Optional[float]]:
     """GAME's pitch per syllable (its longest voiced note inside the syllable), None where it found none.
-    Runs line by line, like Tune Studio."""
+    Runs line by line, like Tune Studio; `on_progress(done, total)` follows the lines."""
     lines: Dict[int, List[int]] = {}
     for i, t in enumerate(syllable_timings):
         lines.setdefault(t.get("line_index", 0), []).append(i)
     out: List[Optional[float]] = [None] * len(syllable_timings)
     total = len(samples) / SAMPLE_RATE
-    for members in lines.values():
+    for line_number, members in enumerate(lines.values(), 1):
+        if on_progress:
+            on_progress(line_number - 1, len(lines))
         spans = [syllable_timings[i] for i in members]
         ends = [min(t["end"], t["start"] + MAX_SYLLABLE_SEC) for t in spans]
         a, b = max(0.0, spans[0]["start"] - PAD_SEC), min(total, ends[-1] + PAD_SEC)

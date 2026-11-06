@@ -85,3 +85,11 @@ class TestSyllablePitches:
         monkeypatch.setenv("ULTRASTAR_NOTE_ENGINE", "fcpe")
         monkeypatch.setattr(game, "is_downloaded", lambda models_dir: True)
         assert game.apply(str(tmp_path), "vocals.wav", timings) == 0 and "pitch" not in timings[0]
+
+
+def test_the_note_model_reports_its_lines(monkeypatch):
+    monkeypatch.setattr(game, "extract", lambda *args: [])
+    timings = [{"start": 1.0, "end": 1.4, "line_index": 0}, {"start": 2.0, "end": 2.4, "line_index": 1}]
+    seen = []
+    game.syllable_pitches("folder", np.zeros(44100 * 4), timings, on_progress=lambda done, total: seen.append((done, total)))
+    assert seen == [(0, 2), (1, 2)]

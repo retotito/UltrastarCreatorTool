@@ -4,6 +4,15 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 📊 Real progress
+- Generating shows what is really happening, step by step (it listed all steps at the start): tempo, pitch, aligning the
+  lyrics and finding the notes, the last two with a real percentage
+- Extracting vocals with Demucs shows a real percentage. A step that can't count shows a moving bar, never a made-up number
+
+### 🎵 "Which song is this?" doesn't make you wait
+- The names can be edited and confirmed while they are being checked online (it can take 20 s); a late result doesn't
+  replace names you changed
+
 ### 📁 Choose where the song goes
 - **Export to folder…**: pick a location with the system's dialog, starting at the last one; the app writes a folder
   "Artist - Title" with the `.txt`, audio, cover, background and the ticked extras, ready for a game. It asks before

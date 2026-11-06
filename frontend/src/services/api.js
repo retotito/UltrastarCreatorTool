@@ -335,7 +335,7 @@ export async function startGenerate(sessionId, useCleaned = false) {
 export async function pollGenerate(sessionId, onStatus, signal, useCleaned = false) {
   // Start generation
   await startGenerate(sessionId, useCleaned);
-  // Poll every 3s until done, error, or cancelled
+  // Poll every second until done, error, or cancelled. onStatus(status, {step, percent})
   return new Promise((resolve, reject) => {
     let interval = setInterval(async () => {
       if (signal && signal.aborted) {
@@ -344,8 +344,8 @@ export async function pollGenerate(sessionId, onStatus, signal, useCleaned = fal
         return;
       }
       try {
-        const data = await request('GET', `/generate/result/${sessionId}`);
-        if (onStatus) onStatus(data.current_status || data.status);
+        const data = await request('GET', `/generate/result/${sessionId}`, null, false, true);
+        if (onStatus) onStatus(data.current_status || data.status, data.progress || null);
         if (data.status === 'ok') {
           clearInterval(interval);
           resolve({ ...data, type: 'done' });
@@ -359,7 +359,7 @@ export async function pollGenerate(sessionId, onStatus, signal, useCleaned = fal
       } catch (e) {
         // transient network error — keep polling
       }
-    }, 3000);
+    }, 1000);
   });
 }
 

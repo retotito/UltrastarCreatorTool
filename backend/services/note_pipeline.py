@@ -20,7 +20,8 @@ from utils.logger import log_step
 
 def build_notes(vocal_path: str, syllable_timings: List[dict], pitch_data: dict, language: str, models_dir: str,
                 align_engine: str = "ctc", check_cancelled: Optional[Callable[[], None]] = None,
-                tag: str = "GENERATE") -> Tuple[List[dict], dict]:
+                tag: str = "GENERATE",
+                on_progress: Optional[Callable[[int, int], None]] = None) -> Tuple[List[dict], dict]:
     """The timings as notes (one entry per note, each with its frozen "pitch"; None for rap) and what was done:
     {"held_notes", "melisma_notes", "game_found", "trimmed"}."""
     from services import consonant_trim, game_notes, melisma, note_holds
@@ -48,7 +49,7 @@ def build_notes(vocal_path: str, syllable_timings: List[dict], pitch_data: dict,
         check_cancelled()
     try:
         started = time.time()
-        info["game_found"] = game_notes.apply(models_dir, vocal_path, syllable_timings, language)
+        info["game_found"] = game_notes.apply(models_dir, vocal_path, syllable_timings, language, on_progress)
         log_step(tag, f"Notes (GAME): {info['game_found']}/{len(syllable_timings)} syllables in {time.time() - started:.0f}s")
     except Exception as e:  # the model can't run: FCPE's pitch stays
         log_step(tag, f"Notes (GAME) skipped: {type(e).__name__}: {e}")

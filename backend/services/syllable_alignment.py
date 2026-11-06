@@ -29,19 +29,22 @@ def align_syllables(
     get_whisper: Optional[Callable[[], Tuple[list, list]]] = None,
     engine: Optional[str] = None,
     cache_dir: Optional[str] = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> Tuple[List[dict], str]:
     """Syllable timings for `lyrics` in `audio_path`, and the engine that made them.
 
     `whisper_words` / `whisper_chars` are used by the legacy engine. `get_whisper` produces them on
     demand, so callers that only have audio (segment regenerate) transcribe only when needed.
-    Returns (timings, engine) with engine "ctc", "legacy" or "energy".
+    Returns (timings, engine) with engine "ctc", "legacy" or "energy". `on_progress(done, total)` follows forced
+    alignment; the fallbacks can't count.
     """
     engine = engine or configured_engine()
 
     if engine == "ctc":
         try:
             from services.forced_alignment import align_lyrics
-            timings = align_lyrics(audio_path, lyrics, pitch_data=pitch_data, cache_dir=cache_dir, language=language)
+            timings = align_lyrics(audio_path, lyrics, pitch_data=pitch_data, cache_dir=cache_dir, language=language,
+                                  on_progress=on_progress)
             if timings:
                 return timings, "ctc"
             log_step("ALIGN", "Forced alignment returned nothing, falling back to WhisperX matching")
