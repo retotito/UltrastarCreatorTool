@@ -95,7 +95,6 @@
             <div class="row"><kbd>Shift+,</kbd> prev marker</div>
             <div class="row"><kbd>Shift+.</kbd> next marker</div>
             <div class="row"><kbd>⌘/Ctrl+F</kbd> find syllable (or 🔍)</div>
-            <div class="row"><kbd>D</kbd> duet: switch the singer you edit</div>
           </div>
 
           <div class="shortcut-group">
@@ -131,6 +130,15 @@
             <div class="row"><kbd>Ctrl+S</kbd> save</div>
             <div class="row"><kbd>Ctrl+G</kbd> set GAP</div>
             <div class="row"><kbd>9</kbd> MIDI &nbsp;·&nbsp; <kbd>0</kbd> metronome</div>
+          </div>
+
+          <div class="shortcut-group">
+            <div class="group-label">Duet</div>
+            <div class="row"><kbd>D</kbd> switch the singer you edit</div>
+            <div class="row"><kbd>Duet 🎤</kbd> start a duet, rename or swap singers, back to solo</div>
+            <div class="row"><kbd>Right-click note</kbd> move, link, unlink, select a singer's notes</div>
+            <div class="row"><kbd>Right-click break</kbd> for both singers or only one</div>
+            <div class="row"><kbd>Both</kbd> next to MIDI: tones for both singers or only yours</div>
           </div>
 
         </div>

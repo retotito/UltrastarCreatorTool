@@ -5,8 +5,64 @@ and get a change merged.
 
 ## Setup
 
-Follow [Quick Start in the README](README.md#quick-start): Python 3.12 virtual environment in `.venv`, backend
-requirements (plus the optional AI packages), and `npm install` in `frontend/`. Then add the test tools:
+### Prerequisites
+
+- **Python 3.10–3.12** with `pip` (3.13+ may have compatibility issues with some AI libraries)
+- **Node.js 18+** with `npm`
+- **FFmpeg** — required by audio processing libraries
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt install ffmpeg
+```
+
+### 1. Clone & Setup Backend
+
+```bash
+git clone https://github.com/retotito/UltrastarCreatorTool.git
+cd UltrastarCreatorTool
+
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install core Python dependencies
+pip install -r backend/requirements.txt
+
+# Install AI dependencies (optional — requires PyTorch ~2GB, Python 3.10-3.12)
+# Skip these if torch doesn't support your platform
+pip install demucs==4.0.1        # vocal separation
+pip install whisperx openai-whisper  # transcription + forced alignment
+
+# Optional: Pre-download AI models (~3GB, avoids delay on first use)
+python backend/download_models.py
+
+# Start backend server (port 8001)
+cd backend && python main.py
+```
+
+> **Note:** The first time you run "Generate", WhisperX and Demucs will download their AI models automatically (~1–3GB). This can take several minutes depending on your internet connection. You can avoid this wait by running `python backend/download_models.py` after install.
+
+### 2. Setup Frontend (new terminal)
+
+```bash
+cd UltrastarCreatorTool/frontend
+
+# Install Node dependencies
+npm install
+
+# Start dev server (port 5173)
+npm run dev
+```
+
+### 3. Open the App
+
+Open **http://localhost:5173** in your browser. The Vite proxy automatically forwards `/api/*` requests to the backend on port 8001.
+
+### Test tools
 
 ```bash
 .venv/bin/pip install -r backend/requirements-dev.txt

@@ -20,10 +20,12 @@ Developer documentation for Ultrastar Creator Tool. For what the app does and ho
 **Architecture**
 - [Overview](architecture/overview.md): components, processes, data storage
 - [AI pipeline](architecture/pipeline.md): from audio to UltraStar `.txt`, as currently implemented
+- [AI models](architecture/ai-models.md): the models and their licences
 - [UltraStar grid, beats & GAP](architecture/ultrastar-grid-gap.md)
 - [BPM / GAP change recalculation rules](architecture/recalculation.md)
 
 **Features**
+- [Overview](features/overview.md): everything the app can do
 - [YouTube import](features/youtube-import.md)
 - [Backup](features/backup.md)
 - [Cleanup sections](features/cleanup-sections.md)

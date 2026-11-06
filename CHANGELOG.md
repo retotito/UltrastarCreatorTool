@@ -2,7 +2,10 @@
 
 All notable changes to Ultrastar Creator Tool. Newest first.
 
-## Unreleased
+## 5.0.0 (2026-11-06)
+
+### ❓ Help
+- Help & Shortcuts has its own **Duet** group
 
 ### 🔄 Automatic updates
 - At start the app checks for a newer release on GitHub and offers it with what's new: **Update now**, **Later** or
@@ -92,7 +95,7 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   they disappeared. New type **G Golden Rap** in the right-click menu (orange with a gold border)
 - Imports also keep standard rap (`R`) and freestyle (`F`) notes in the session's timings
 
-### 🎤 Duets (in progress)
+### 🎤 Duets
 - Duet charts (`P1`/`P2`) keep both singers' parts when opened in the editor and saved; before, both parts were
   mixed into one. Notes sung together are read as one note. Headers `#P1`/`#P2` and `#DUETSINGERP1`/`P2`
 - Importing a duet shows "Duet · name & name" (names from `#P1`/`#P2`, older headers or USDB's `#VIDEO`); duet
