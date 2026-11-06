@@ -12,9 +12,15 @@
   <meta property="og:description" content="Create UltraStar karaoke songs with the help of AI. Free for Mac and Windows.">
   <meta property="og:image" content="https://retotito.github.io/UltrastarCreatorTool/img/editor.webp">
   <link rel="icon" href="img/icon.webp">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
+<!-- System icons (Apple from Simple Icons, CC0) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="os-mac" viewBox="0 0 24 24"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></symbol>
+  <symbol id="os-windows" viewBox="0 0 24 24"><path d="M0 0h11.4v11.4H0zM12.6 0H24v11.4H12.6zM0 12.6h11.4V24H0zM12.6 12.6H24V24H12.6z"/></symbol>
+</svg>
+
 <header class="topbar">
   <a class="brand" href="#top"><img src="img/icon.webp" width="256" height="256" alt=""><span>Ultrastar Creator Tool</span></a>
   <nav>
@@ -80,15 +86,19 @@
   </section>
 
   <section id="download" class="tint">
-    <div class="wrap center">
+    <div class="wrap">
       <h2>Download</h2>
-      <p class="muted" id="version">Free</p>
+      <p class="download-lead">Version <b id="version">5.0.0</b> · free · the app updates itself after that.</p>
+      <!-- The links are the current release's; main.js replaces them with the newest release's files. -->
       <div class="downloads">
-        <a class="btn dl" data-file="mac-arm" data-help="mac" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest" target="_blank" rel="noopener">Mac, Apple Silicon<small>M1 or newer, macOS 14+</small></a>
-        <a class="btn dl" data-file="mac-intel" data-help="mac" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest" target="_blank" rel="noopener">Mac, Intel<small>macOS 12+</small></a>
-        <a class="btn dl" data-file="windows" data-help="windows" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest" target="_blank" rel="noopener">Windows<small>64-bit</small></a>
+        <a class="dl" data-file="mac-arm" data-os="mac" data-help="mac" href="https://github.com/retotito/UltrastarCreatorTool/releases/download/v5.0.0/UltrastarCreatorTool_5.0.0_aarch64.dmg">
+          <svg class="os" aria-hidden="true"><use href="#os-mac"/></svg><b>Mac with Apple Silicon</b><span>M1 or newer · macOS 14 or newer</span></a>
+        <a class="dl" data-file="mac-intel" data-os="mac" data-help="mac" href="https://github.com/retotito/UltrastarCreatorTool/releases/download/v5.0.0/UltrastarCreatorTool_5.0.0_x86_64.dmg">
+          <svg class="os" aria-hidden="true"><use href="#os-mac"/></svg><b>Mac with Intel</b><span>macOS 12 or newer</span></a>
+        <a class="dl" data-file="windows" data-os="windows" data-help="windows" href="https://github.com/retotito/UltrastarCreatorTool/releases/download/v5.0.0/UltrastarCreatorTool_5.0.0_x64_en-US.msi">
+          <svg class="os" aria-hidden="true"><use href="#os-windows"/></svg><b>Windows</b><span>64-bit</span></a>
       </div>
-      <p class="small"><a href="https://github.com/retotito/UltrastarCreatorTool/releases" target="_blank" rel="noopener">All versions</a></p>
+      <p class="small muted"><a href="https://github.com/retotito/UltrastarCreatorTool/releases" target="_blank" rel="noopener">All versions</a></p>
       <button type="button" class="link" data-open-help>The app is not signed — how to open it the first time</button>
     </div>
   </section>
@@ -154,6 +164,6 @@
   </figure>
   <button class="lightbox-nav lightbox-next" type="button" aria-label="Next step">›</button>
 </dialog>
-<script src="main.js?v=8"></script>
+<script src="main.js?v=9"></script>
 </body>
 </html>

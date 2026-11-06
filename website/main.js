@@ -1,21 +1,27 @@
-// The download buttons point at the newest release's files. File names contain the version, so they are looked up;
-// without an answer (offline, rate limit) the buttons keep their link to the release page.
+// The download links in the page are for the current release. Newer releases have other file names, so they are
+// looked up; without an answer (offline, rate limit) the links in the page still work. No published release at all
+// (404): nothing can be downloaded, so a click only opens the popup.
 const PATTERNS = { 'mac-arm': /aarch64\.dmg$/, 'mac-intel': /(x86_64|x64)\.dmg$/, windows: /\.msi$/ };
+let nothingPublished = false;
 
 fetch('https://api.github.com/repos/retotito/UltrastarCreatorTool/releases/latest')
-  .then((response) => (response.ok ? response.json() : null))
+  .then((response) => {
+    nothingPublished = response.status === 404;
+    return response.ok ? response.json() : null;
+  })
   .then((release) => {
     if (!release) return;
-    document.getElementById('version').textContent = `Version ${release.tag_name.replace(/^v/, '')} · free`;
+    document.getElementById('version').textContent = release.tag_name.replace(/^v/, '');
     for (const button of document.querySelectorAll('.dl')) {
       const asset = release.assets.find((a) => PATTERNS[button.dataset.file].test(a.name));
-      if (!asset) continue;
-      button.href = asset.browser_download_url;
-      button.removeAttribute('target');   // the file downloads; without a file, the release page opens in a new tab
-      button.dataset.direct = 'yes';
+      if (asset) button.href = asset.browser_download_url;
     }
   })
   .catch(() => {});
+
+// Highlight the visitor's system. Both Mac buttons: a browser can't tell Apple Silicon from Intel.
+const system = /Mac/.test(navigator.userAgent) ? 'mac' : /Win/.test(navigator.userAgent) ? 'windows' : null;
+for (const button of document.querySelectorAll(`.dl[data-os="${system}"]`)) button.classList.add('mine');
 
 // Lightbox: the steps' images with their titles and texts, one at a time.
 const lightbox = document.getElementById('lightbox');
@@ -68,8 +74,9 @@ for (const tab of help.querySelectorAll('[data-tab]')) {
   tab.addEventListener('click', () => showHelp(helpTitle.textContent, tab.dataset.tab));
 }
 for (const button of document.querySelectorAll('.dl')) {
-  button.addEventListener('click', () => {
-    showHelp(button.dataset.direct ? 'Your download has started' : OPENING, button.dataset.help);
+  button.addEventListener('click', (event) => {
+    if (nothingPublished) event.preventDefault();
+    showHelp(nothingPublished ? 'This download is not available yet' : 'Your download has started', button.dataset.help);
   });
 }
 document.querySelector('[data-open-help]').addEventListener('click', () => {
