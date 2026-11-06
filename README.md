@@ -82,5 +82,39 @@ non-commercial use only**. See [AI models](docs/architecture/ai-models.md) for a
 
 ## Development
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers setup, tests and conventions; [docs/](docs/README.md) covers the architecture
-and the build guides.
+To run the app from the source code you need Python 3.12, Node.js 18 or newer, and FFmpeg
+(macOS: `brew install ffmpeg`).
+
+```bash
+git clone https://github.com/retotito/UltrastarCreatorTool.git
+cd UltrastarCreatorTool
+
+# Backend
+python3.12 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
+
+# AI packages (about 2 GB). Without them, upload the vocals and lyrics yourself.
+pip install torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+pip install -r backend/requirements-ai.txt onnxruntime==1.24.4 whisperx==3.8.5 faster-whisper==1.2.1
+
+python backend/main.py           # runs on port 8001
+
+# Frontend, in a second terminal
+cd frontend
+npm install
+npm run dev                      # open http://localhost:5173
+```
+
+Intel Macs need older AI packages: see the versions in [the build workflow](.github/workflows/release.yml). To build the
+desktop app, see the guides for [macOS](docs/development/building/macos.md) and
+[Windows](docs/development/building/windows.md).
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers tests and conventions, and [docs/](docs/README.md) covers the architecture.
+
+## Thanks
+
+A big thank you to [Zeni (ZerNico)](https://github.com/ZerNico) from [Tune Perfect](https://huggingface.co/tuneperfect)
+for the [aligner model](https://huggingface.co/tuneperfect/tunestudio-aligner). Fine-tuned on singing for
+[Tune Studio](https://github.com/ZerNico/tunestudio), it now places your lyrics on the vocals in this app, and it made
+the biggest difference to the results in 5.0.
