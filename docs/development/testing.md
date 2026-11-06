@@ -48,7 +48,6 @@ backend/
 - A test that needs models gets `@pytest.mark.slow`; one that needs local songs gets `@pytest.mark.eval`.
 - **Known bugs** are written as `@pytest.mark.xfail(reason="Known gap: ...", strict=True)`. When someone fixes the
   bug the test passes, `strict` turns that into a failure, and the marker must be removed. Open gaps:
-  - Golden rap notes (`G`) don't get the trailing `-` on download.
   - `parse_ultrastar_file` ignores standard `R`, `G` and `F` note lines, so reference comparisons skip rap and
     freestyle notes.
 - Logic that sits inside an endpoint in `main.py` can't be unit-tested: move it into a function in `services/`

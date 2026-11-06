@@ -190,8 +190,8 @@ worse. `ULTRASTAR_TRIM_CONSONANTS=0` turns it off.
 - Notes are quantised to the beat grid. UltraStar BPM is 4× the musical BPM. See
   [ultrastar-grid-gap.md](ultrastar-grid-gap.md).
 - Pitch per note from the PYIN track over the note's time span.
-- Line breaks from the lyric lines; trailing spaces after words; apostrophes normalised to `’`; mid-word syllables
-  get a trailing `-` on download (after the last `~` of a melisma, never before a `~`).
+- Line breaks from the lyric lines; trailing spaces after words; mid-word syllables have no ending; apostrophes
+  normalised to `’`. The downloaded file: see [ultrastar-grid-gap.md](ultrastar-grid-gap.md), "The Exported File".
 - Also written: MIDI (`services/midi_export.py`) and a processing summary.
 
 If a reference `.txt` is stored for the song, the result is compared to it automatically

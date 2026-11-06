@@ -9,7 +9,7 @@
   import { waveformPeaksCache } from '../stores/appStore.js';
   import { getEditorData, getAudioUrl, saveEditorState, generateCleanedAudio, suggestVibrato, getLiveWordsWindow, updateMetadata } from '../services/api.js';
   import { SUPPORTED_LANGUAGES, languageHeader, parseLanguageHeader } from '../lib/languages';
-  import { parseUltrastar, notesToUltrastar, singerNames, duetHeaderLines, DUET_HEADERS } from '../lib/ultrastar.js';
+  import { parseUltrastar, notesToUltrastar, singerNames, duetHeaderLines, DUET_HEADERS, cleanSyllable } from '../lib/ultrastar.js';
   import DuetModal from './DuetModal.svelte';
   import SelectAllModal from './SelectAllModal.svelte';
   import * as duet from '../lib/duet.js';
@@ -10843,7 +10843,7 @@
                 class="ctx-syllable-input"
                 type="text"
                 bind:value={editingSyllable}
-                on:input={() => updateSyllable(ctxNote.id, editingSyllable)}
+                on:input={() => { editingSyllable = cleanSyllable(editingSyllable); updateSyllable(ctxNote.id, editingSyllable); }}
                 on:keydown|stopPropagation={(e) => { if (e.key === 'Escape' || e.key === 'Enter') closeContextMenu(); }}
                 placeholder="syllable"
               />

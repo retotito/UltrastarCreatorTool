@@ -80,6 +80,16 @@ export function parseUltrastar(content) {
 
 export const BOTH = 'both';
 
+/** A note's text without what doesn't belong in it, as the backend's clean_syllable: odd spaces (non-breaking, tabs) as
+ * plain ones, invisible and control characters removed, runs of spaces as one. A trailing space stays: it ends the word. */
+export function cleanSyllable(text) {
+  return text
+    .replace(/[\t\u00a0\u2000-\u200a\u202f\u205f\u3000]/g, ' ')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b\u2060\ufeff]/g, '')
+    .replace(/ {2,}/g, ' ');
+}
+
 /** The singer a `P1`/`P2` line starts (1, 2), 'both' for an old chart's `P3`, else null. */
 export function trackMarker(line) {
   const m = line.trim().match(/^P\s*(\d)$/);

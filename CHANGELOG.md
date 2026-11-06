@@ -5,12 +5,19 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 ## Unreleased
 
 ### 📤 USDB-ready .txt
-- The downloaded `.txt` follows USDB's conventions: Windows line endings, mid-word syllables marked with `-` ("beau-"),
-  typographic apostrophes (’), `#MP3` and `#VOCALS` pointing to `.mp3`, YASS-style line breaks, no duplicate or unknown
-  headers
-- The `.txt` in the ZIP is now the same file as the single download; before it missed most of this and kept internal
-  headers such as `#DOWNBEATOFFSET`
-- Golden rap notes (`G`) get the `-` too
+- The downloaded `.txt` follows the format and USDB's charts: Windows line endings, typographic apostrophes (’), YASS-style
+  line breaks, `#MP3`/`#VOCALS` pointing to `.mp3`, no duplicate or unknown headers, USDB's header order
+- **Pitches are written as the format wants them (0 = C4).** They were MIDI numbers, which tools that play the notes
+  (Tune Studio, USDB Syncer) read as 5 octaves too high. The editor still shows and edits the same notes
+- **New download "USDB .txt"**: for uploading, with `#VIDEO:v=<YouTube id>`, which is how USDB Syncer finds the exact video.
+  The normal `.txt` keeps the video's file name for playing in the game
+- Mid-word syllables no longer get a `-` on download ("gon" + "na ", as in USDB's charts); the `-` was shown in the lyrics.
+  Imports and downloads remove it from charts made with older versions; `-` in the lyrics ("three-wheeler") stays
+- Note texts are cleaned in the editor and on download: odd spaces and invisible characters that can come in with pasted
+  lyrics. `~-` no longer happens
+- The `.txt` in the ZIP is now the same file as the single download; before it missed most of this
+- Downloading the `.txt` of a song with a character like `’` in its title no longer fails
+- Re-importing a downloaded `.txt` no longer stores a blank line after every line; downloads drop blank lines anyway
 
 ### 🎛️ Toolbar layout
 - New 🎛️ button at the top right in the editor: tick off toolbar controls you don't need, one by one, for small

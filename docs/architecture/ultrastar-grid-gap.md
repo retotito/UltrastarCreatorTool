@@ -15,10 +15,11 @@
 
 ## Note Pitches
 
-The UltraStar format's pitch is relative in most charts: **0 = C4** (USDB). This app writes and edits **MIDI
-numbers: 60 = C4** (its pitch line, MIDI tones and pitch tools work in MIDI). The games mostly score the pitch class,
-so both play the same. On import, a chart whose median pitch is below 30 is moved up 5 octaves (+60,
-`services/ultrastar.py` `to_midi_pitches`), so it matches the vocals at once.
+The UltraStar format's pitch is relative: **0 = C4** ("The number 0 corresponds to the note C4 and Midi Note 60"). This
+app stores and edits **MIDI numbers: 60 = C4** (its pitch line, MIDI tones and pitch tools work in MIDI). On import, a
+chart whose median pitch is below 30 is moved up 5 octaves (+60, `services/ultrastar.py` `to_midi_pitches`), so it
+matches the vocals at once; the downloaded file goes back to 0 = C4 (`to_relative_pitches`). Tools that play the notes
+(Tune Studio, USDB Syncer) read a MIDI number as 5 octaves too high; the games mostly score the pitch class.
 
 ## Key Formulas
 
@@ -51,6 +52,26 @@ moves the notes, so changing BPM or GAP leaves them where they are in the song. 
 
 Importing a chart keeps its video: `#VIDEO` as a file name, or USDB's `v=<id>,...` tags as the YouTube link; `#YOUTUBE`
 and `#VIDEOGAP`. The editor's "Set GAP / Set Start" below is about beat 0, not `#START`.
+
+## The Exported File
+
+`format_for_download` makes the `.txt` of the ZIP and the single download (one function, so they are the same file):
+UTF-8 without BOM, CRLF (USDB reads a file with only LF as one long line), no blank lines, pitches relative to C4, USDB's
+header order, values trimmed, only known headers. Inside the app charts are read with LF; an imported file's line endings are
+normalised, since writing CRLF text as CRLF again gives `\r\r\n`, which is read as blank lines.
+
+Note texts: "If the text is not followed by a space, the next text will be directly attached" (USDB Syncer's format
+page). So a mid-word syllable has no ending (`wel` + `come `) and a `-` is shown as written: only 0.3 % of USDB's
+syllables end in one, mostly the lyrics' own ("three-" + "wheeler "). The format forbids no characters; `clean_syllable`
+(and `cleanSyllable` in the editor) makes odd spaces plain and removes invisible and control characters. Older versions
+of the app added a `-` to mid-word syllables: `strip_added_hyphens` removes them on import and download, recognised
+by a chart where mid-word syllables without one are at most half as many as those with one (38 of USDB's 28,868 charts).
+
+**The USDB `.txt`** (`format_for_usdb`) differs only where USDB's tools need it. `#VIDEO` can't serve both: a game needs
+the video's file name there, while USDB Syncer and Tune Studio find the video by the tag `v=<YouTube id>` and ignore a
+file name and `#YOUTUBE`. So the upload file has `#VIDEO:v=<id>`, no `#YOUTUBE`, no vocals or instrumental files, and a
+duet has its singers as `p1=`/`p2=` in the tags and [DUET] in the title. It isn't put in the ZIP: in a song folder a game
+would probably list the song twice.
 
 ## What the Grid Is
 

@@ -53,16 +53,88 @@ def _remove_header(content: str, key: str) -> str:
     return "\n".join(lines)
 
 
+# The order of USDB's own charts; the games don't mind.
+_HEADER_ORDER = ['ARTIST', 'TITLE', 'MP3', 'VOCALS', 'INSTRUMENTAL', 'CREATOR', 'EDITION', 'COVER', 'BACKGROUND', 'GENRE',
+                 'YEAR', 'LANGUAGE', 'BPM', 'GAP', 'VIDEO', 'VIDEOGAP', 'START', 'END', 'PREVIEWSTART', 'MEDLEYSTARTBEAT',
+                 'MEDLEYENDBEAT', 'RELATIVE', 'ENCODING', 'TAGS', 'COMMENT', 'YOUTUBE', 'P1', 'P2', 'DUETSINGERP1',
+                 'DUETSINGERP2']
+_DOWNLOAD_NOTE = re.compile(r'^([:*RFG] \d+ \d+ -?\d+ )(.*)$')
+_SPACES = re.compile(r'[\t  -   　]')
+_INVISIBLE = re.compile(r'[\u0000-\u001f\u007f-\u009f​⁠﻿]')
+
+
+def clean_syllable(text: str) -> str:
+    """A note's text without what doesn't belong in it: odd spaces (non-breaking, tabs) as plain ones, invisible and
+    control characters removed, runs of spaces as one. A trailing space stays: it ends the word. The format forbids no
+    other characters; a `-` is the lyrics' own ("three-wheeler")."""
+    return re.sub(r' {2,}', ' ', _INVISIBLE.sub('', _SPACES.sub(' ', text)))
+
+
+def strip_added_hyphens(content: str) -> str:
+    """Removes the `-` older versions of this app put on mid-word syllables on download ("gon-" + "na "), recognised by
+    a chart whose mid-word syllables nearly all have one. A `-` in the lyrics ("three-" + "wheeler ") stays in any other
+    chart, whose mid-word syllables have no ending. `~-` is never right."""
+    lines = content.split('\n')
+    notes = [(i, m) for i, m in ((i, _DOWNLOAD_NOTE.match(ln.rstrip('\r'))) for i, ln in enumerate(lines)) if m]
+    hyphens = open_ended = 0
+    for k, (_, m) in enumerate(notes):
+        text = m.group(2)
+        if text.endswith('-'):
+            hyphens += 1
+        elif (not text.endswith(' ') and text.strip() != '~' and k + 1 < len(notes)
+              and not notes[k + 1][1].group(2).lstrip().startswith('~')):
+            open_ended += 1
+    strip_all = hyphens >= 5 and open_ended <= hyphens * 0.5   # at most half: 38 of USDB's 28,868 charts
+    for i, m in notes:
+        text = m.group(2)
+        if text.endswith('-') and (strip_all or text.rstrip('-').strip() == '~'):
+            lines[i] = lines[i].replace(m.group(0), m.group(1) + text.rstrip('-'))
+    return '\n'.join(lines)
+
+
+def to_relative_pitches(content: str) -> str:
+    """The app's MIDI pitches (C4 = 60) as the format wants them (0 = C4). The other direction of `to_midi_pitches`;
+    a chart that already is relative stays."""
+    pitches = [int(m.group(2)) for m in map(_NOTE_LINE.match, content.splitlines()) if m]
+    if not pitches or sorted(pitches)[len(pitches) // 2] < 30:
+        return content
+    lines = []
+    for line in content.split("\n"):
+        m = _NOTE_LINE.match(line)
+        lines.append(f"{m.group(1)}{int(m.group(2)) - MIDI_C4}{m.group(3)}" if m else line)
+    return "\n".join(lines)
+
+
+def _clean_note_lines(content: str) -> str:
+    """Every note's text cleaned; a leading space moved to the end of the note before, where the word ends."""
+    lines = content.split('\n')
+    previous = None
+    for i, line in enumerate(lines):
+        m = _DOWNLOAD_NOTE.match(line)
+        if not m:
+            continue
+        text = clean_syllable(m.group(2))
+        if text.startswith(' '):
+            text = text.lstrip()
+            if previous is not None and not lines[previous].endswith(' '):
+                lines[previous] += ' '
+        lines[i] = m.group(1) + text
+        previous = i
+    return '\n'.join(lines)
+
+
 def format_for_download(content: str, include_vocals: bool = True, include_instrumental: bool = True,
                         include_video: bool = True) -> str:
-    """Turn a stored .txt into the file the user downloads (USDB conventions).
+    """Turn a stored .txt into the file the user downloads, as the UltraStar format and USDB's charts have it.
 
     - YASS-style line breaks (``- 12 14`` → ``- 12``)
     - ``#MP3`` / ``#VOCALS`` always point to ``.mp3``
     - apostrophes in note lines normalised to ``’`` (U+2019)
-    - mid-word syllables (no trailing space) get a trailing ``-``
-    - unknown and duplicate headers removed; CRLF line endings
+    - note texts cleaned (`clean_syllable`), no `-` from older versions (`strip_added_hyphens`)
+    - pitches relative to C4 = 0 (the app works in MIDI numbers)
+    - unknown and duplicate headers removed, values trimmed, in USDB's order; no blank lines; CRLF line endings
     """
+    content = re.sub(r'\r\n?', '\n', content)
     content = re.sub(r'^(- \d+) \d+$', r'\1', content, flags=re.MULTILINE)
 
     def _force_mp3_ext(m):
@@ -74,21 +146,7 @@ def format_for_download(content: str, include_vocals: bool = True, include_instr
         return re.sub(r"['`´ʼ‘‚]", "’", m.group(0))
     content = re.sub(r'^[^#].*$', _fix_apostrophes, content, flags=re.MULTILINE)
 
-    # Note lines: "PREFIX BEAT DUR PITCH SYLLABLE"; no trailing space = word continues ("beau-").
-    # Already hyphenated syllables (a re-imported download) stay as they are, and a note followed by
-    # its own "~" melisma notes doesn't continue into another syllable yet: no hyphen there either.
-    note_line = re.compile(r'^[:*RFG] \d+ \d+ -?\d+ (.*)$')
-    lines = content.split('\n')
-    notes = [i for i, ln in enumerate(lines) if note_line.match(ln)]
-    for k, i in enumerate(notes):
-        line = lines[i]
-        if line.endswith((' ', '-')):
-            continue
-        following = note_line.match(lines[notes[k + 1]]).group(1) if k + 1 < len(notes) else ''
-        if following.lstrip().startswith('~'):
-            continue
-        lines[i] = line + '-'
-    content = '\n'.join(lines)
+    content = to_relative_pitches(_clean_note_lines(strip_added_hyphens(content)))
 
     if not include_vocals:
         content = _remove_header(content, "VOCALS")
@@ -97,21 +155,46 @@ def format_for_download(content: str, include_vocals: bool = True, include_instr
     if not include_video:
         content = _remove_header(content, "VIDEO")
 
-    seen_keys = set()
-    filtered_lines = []
-    for ln in content.splitlines():
+    headers = {}
+    body = []
+    for ln in content.split('\n'):
         if ln.startswith('#'):
-            key_part = ln[1:].split(':')[0].upper()
-            if key_part not in USDB_KNOWN_HEADERS:
-                continue
-            if key_part in seen_keys:
-                continue
-            seen_keys.add(key_part)
-        filtered_lines.append(ln)
-    content = '\r\n'.join(filtered_lines)
+            key, _, value = ln[1:].partition(':')
+            key, value = key.upper(), clean_syllable(value).strip()
+            if key == 'VIDEOGAP':
+                value = re.sub(r'\.0+$', '', value)
+            if key in USDB_KNOWN_HEADERS and key not in headers and value:
+                headers[key] = f"#{ln[1:].partition(':')[0]}:{value}"
+        elif ln.strip():   # no blank lines, also from a file stored with doubled line endings
+            body.append(ln)
+    ordered = [headers[key] for key in _HEADER_ORDER if key in headers]
+    content = '\r\n'.join(ordered + body)
     if not content.endswith('\r\n'):
         content += '\r\n'
     return content
+
+
+def format_for_usdb(content: str, youtube_id: Optional[str]) -> str:
+    """The downloaded .txt for uploading to USDB. It differs from the file for the game only where USDB's tools need it:
+    `#VIDEO` holds the YouTube id (`v=…`, the one thing USDB Syncer finds the video by) instead of a file name, no
+    `#YOUTUBE`, no vocals and instrumental files. A duet has its singers in the tags and [DUET] in the title."""
+    from services.duet import DUET_HEADERS, is_duet, singer_names
+    headers = {ln[1:].partition(':')[0].upper(): ln[1:].partition(':')[2].strip()
+               for ln in content.splitlines() if ln.startswith('#')}
+    tags = [f"v={youtube_id}"] if youtube_id else []
+    if is_duet(content):
+        names = singer_names(headers)
+        tags += [f"p1={names['p1'].replace(',', '%2C')}", f"p2={names['p2'].replace(',', '%2C')}"]
+        title = headers.get('TITLE', '')
+        if '[DUET]' not in title.upper():
+            content = re.sub(r'^#TITLE:.*$', lambda m: f"#TITLE:{title} [DUET]", content, flags=re.MULTILINE)
+    for key in ('VIDEO', 'YOUTUBE', *DUET_HEADERS):
+        content = _remove_header(content, key)
+    if not youtube_id:
+        content = _remove_header(content, 'VIDEOGAP')
+    if tags:
+        content = f"#VIDEO:{','.join(tags)}\n{content}"
+    return format_for_download(content, include_vocals=False, include_instrumental=False)
 
 
 def _fmt_bpm(bpm: float) -> str:
@@ -281,7 +364,7 @@ def generate_ultrastar(
             break_start = last_end_beat + 2  # 2 beat padding after last note
             note_lines.append(f"- {break_start}")
         
-        syllable = syllable.replace("\u00a0", " ")
+        syllable = clean_syllable(syllable)
         note_lines.append(f"{prefix} {start_beat} {duration_beats} {midi_pitch} {syllable}")
         
         last_end_beat = start_beat + duration_beats

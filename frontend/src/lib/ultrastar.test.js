@@ -1,7 +1,7 @@
 // Duet charts in the editor's reader and writer; the same cases as backend/tests/unit/test_duet.py.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseUltrastar, notesToUltrastar, singerNames, trackMarker, isDuet, duetHeaderLines, chartHeaders } from './ultrastar.js';
+import { parseUltrastar, notesToUltrastar, singerNames, trackMarker, isDuet, duetHeaderLines, chartHeaders, cleanSyllable } from './ultrastar.js';
 
 const CHART = `#TITLE:Song
 #BPM:300
@@ -86,4 +86,11 @@ test('singer names and headers', () => {
   assert.deepEqual(singerNames({ VIDEO: 'v=x,p1=Whitney Houston,p2=Mariah Carey' }), { p1: 'Whitney Houston', p2: 'Mariah Carey' });
   assert.deepEqual(singerNames({ P1: 'Anna' }), { p1: 'Anna', p2: 'Singer 2' });
   assert.deepEqual(duetHeaderLines({ p1: 'Anna', p2: 'Ben' }), ['#P1:Anna', '#P2:Ben', '#DUETSINGERP1:Anna', '#DUETSINGERP2:Ben']);
+});
+
+test('a note text is cleaned, its word-ending space and letters stay', () => {
+  assert.equal(cleanSyllable('gon\u00a0'), 'gon ');
+  assert.equal(cleanSyllable('a\u200b\tb  c '), 'a b c ');
+  assert.equal(cleanSyllable('three-'), 'three-');
+  assert.equal(cleanSyllable('don’t~ '), 'don’t~ ');
 });

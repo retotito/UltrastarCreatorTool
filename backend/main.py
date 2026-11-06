@@ -1536,8 +1536,10 @@ async def import_ultrastar(
         raise HTTPException(status_code=400, detail="At least one audio file is required (mix or vocals)")
 
     # Read .txt content; relative pitches (USDB: C4 = 0) as MIDI numbers like the app's own charts (C4 = 60)
-    from services.ultrastar import to_midi_pitches
-    txt_content = (await txt_file.read()).decode("utf-8", errors="replace")
+    from services.ultrastar import strip_added_hyphens, to_midi_pitches
+    # One line ending inside the app: a CRLF file written with newline="\r\n" below would get \r\r\n, read as blank lines
+    txt_content = (await txt_file.read()).decode("utf-8-sig", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+    txt_content = strip_added_hyphens(txt_content)
     txt_content, pitches_shifted = to_midi_pitches(txt_content)
     if pitches_shifted:
         log_step("IMPORT", "Relative pitches (C4 = 0) moved up 5 octaves to MIDI numbers (C4 = 60)")
@@ -1869,6 +1871,13 @@ def _download_txt(session: dict, include_vocals: bool, include_instrumental: boo
     # A downloaded video that stays behind isn't named; a file name the user typed is theirs
     return format_for_download(content, include_vocals, include_instrumental,
                                include_video=include_video or not _video_file(session))
+
+
+def _attachment_header(name: str) -> str:
+    """Content-Disposition for any song title: headers are latin-1 only, so non-latin names go in RFC 5987's filename*."""
+    from urllib.parse import quote
+    ascii_name = name.encode("ascii", errors="replace").decode("ascii").replace('"', "'")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 
 def _song_base(session: dict) -> str:
@@ -5520,6 +5529,19 @@ async def download_file(
     if not result:
         raise HTTPException(status_code=404, detail="No files generated yet")
     
+    if file_type == "usdb":
+        from services.ultrastar import format_for_usdb
+        from services.youtube import video_id as _video_id
+        stored = result.get("corrected_txt_file", result.get("txt_file"))
+        path = os.path.join(DOWNLOADS_DIR, stored) if stored else None
+        if not path or not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        _update_txt_asset_headers(session)
+        with open(path, encoding="utf-8") as f:
+            content = format_for_usdb(f.read(), _video_id(session.get("youtube_url") or ""))
+        return Response(content=content, media_type="text/plain",
+                        headers={"Content-Disposition": _attachment_header(f"{_song_base(session)} [USDB].txt")})
+
     file_map = {
         "txt": result.get("corrected_txt_file", result.get("txt_file")),
         "midi": result.get("midi_file"),
@@ -5536,13 +5558,14 @@ async def download_file(
 
     if file_type == "txt":
         content = _download_txt(session, include_vocals == "1", include_instrumental == "1", include_video == "1")
+        if content is None:
+            raise HTTPException(status_code=404, detail="File not found on disk")
         # Build a user-friendly download name from artist/title
         artist = session.get("artist", "").strip()
         title = session.get("title", "").strip()
         base = f"{artist} - {title}" if artist and title else title or artist or "Untitled Song"
-        from fastapi.responses import Response
         return Response(content=content, media_type="text/plain",
-                        headers={"Content-Disposition": f'attachment; filename="{base}.txt"'})
+                        headers={"Content-Disposition": _attachment_header(f"{base}.txt")})
 
     artist = session.get("artist", "").strip()
     title = session.get("title", "").strip()
@@ -6042,15 +6065,8 @@ async def download_zip(
     zip_name = f"{base}.zip"
     log_step("EXPORT", f"ZIP download: {zip_name}")
 
-    # Content-Disposition headers are latin-1 only; use RFC 5987 filename* for
-    # song titles that contain non-ASCII characters (curly quotes, accents, …).
-    from urllib.parse import quote as _urlquote
-    ascii_name = zip_name.encode("ascii", errors="replace").decode("ascii")
-    utf8_name = _urlquote(zip_name, safe="")
-    content_disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{utf8_name}'
-
     return FileResponse(zip_path, media_type="application/zip",
-                        headers={"Content-Disposition": content_disposition},
+                        headers={"Content-Disposition": _attachment_header(zip_name)},
                         background=BackgroundTask(_safe_unlink, zip_path))
 
 

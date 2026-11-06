@@ -526,6 +526,20 @@
     notifyDownload('✓ ZIP downloaded');
   }
 
+  /** The .txt for uploading to USDB: the YouTube link as typed goes in its #VIDEO, the id USDB's tools find the video by. */
+  async function downloadUsdb() {
+    await saveVideoMeta();
+    const blob = await fetch(getDownloadUrl($sessionId, 'usdb')).then(r => r.blob());
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${getBaseFilename()} [USDB].txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    notifyDownload(youtubeUrl.trim() ? `✓ ${a.download} downloaded` : '⚠ No YouTube link: this chart has no video source on USDB');
+  }
+
   async function downloadFile(type) {
     let url = getDownloadUrl($sessionId, type);
     if (type === 'txt') {
@@ -914,6 +928,12 @@
           <span class="file-icon">📄</span>
           <span class="file-name">Ultrastar .txt</span>
           <span class="file-desc">Note file for Ultrastar players</span>
+        </button>
+
+        <button class="download-btn" on:click={downloadUsdb}>
+          <span class="file-icon">📤</span>
+          <span class="file-name">USDB .txt</span>
+          <span class="file-desc">{youtubeUrl.trim() ? 'For uploading to USDB, with the YouTube link' : 'For uploading to USDB. Add a YouTube link first'}</span>
         </button>
 
         {#if $generationResult?.midi_file}
