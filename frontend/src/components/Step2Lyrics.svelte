@@ -670,12 +670,6 @@
     </button>
   </div>
 
-  {#if $processingStatus}
-    <div class="status-bar">{$processingStatus}</div>
-  {/if}
-  {#if $errorMessage}
-    <div class="error-bar">❌ {$errorMessage}</div>
-  {/if}
 </div>
 
 {#if versionsOpen}
@@ -946,25 +940,7 @@
 
 
 
-  .status-bar {
-    background: #1a2e4a;
-    border: 1px solid #1976d2;
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin-top: 1rem;
-    color: #4fc3f7;
-    text-align: center;
-  }
 
-  .error-bar {
-    background: #3e1a1a;
-    border: 1px solid #c62828;
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin-top: 1rem;
-    color: #ef9a9a;
-    text-align: center;
-  }
 
   /* Transcription modal */
   .transcribe-modal-backdrop {

@@ -4,6 +4,14 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### 🔄 Automatic updates
+- At start the app checks for a newer release on GitHub and offers it with what's new: **Update now**, **Later** or
+  **Skip this version**. Updates are signed, downloaded with progress, and restart the app; songs and models stay
+
+### 💬 Messages you can see
+- Errors and status messages appear at the top of the window instead of below the page, where they could be out of sight.
+  Errors stay until closed; status messages go by themselves. The editor's "Save failed" was shown nowhere before
+
 ### ⚠ Warnings for probable mistakes
 - The editor marks notes that overlap a note of the same singer, line breaks inside a note and notes without text: a red
   border and ⚠ on the note, a mark in the bottom bar, and a ⚠ button that goes through them. Two singers at the same time

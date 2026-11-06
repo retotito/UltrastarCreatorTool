@@ -48,3 +48,16 @@ Legend: ⏳ not tested · ✅ pass · ❌ fail
 - [ ] ⏳ Audio plays in sync with notes
 - [ ] ⏳ Export .zip downloads correctly
 - [ ] ⏳ Resume last session works
+
+## Releasing with automatic updates
+
+1. Write `RELEASE_NOTES.md`: the app's "What's new" window and the GitHub release's text.
+2. Set the version in `frontend/src-tauri/tauri.conf.json` and `frontend/package.json`, with numeric pre-releases only
+   (`5.0.0-2`; the Windows .msi refuses "beta"). Installed apps offer an update only when this is higher than their own.
+3. Tag and push (`v5.0.0`). The workflow signs the updates and adds `latest.json` to a draft release.
+4. Check the draft, then publish it as the **latest** release. Installed apps read
+   `releases/latest/download/latest.json`: drafts and pre-releases are never offered.
+
+Updates are signed with the key in `~/.tauri/ultrastar-updater.key`, also stored as the `TAURI_SIGNING_PRIVATE_KEY` repository
+secret; its public part is in `tauri.conf.json`. **Back the key up: without it, installed apps can't be updated anymore**, since
+they only accept updates signed with it. Never commit it.

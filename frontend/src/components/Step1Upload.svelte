@@ -449,13 +449,7 @@
 
   </div>
 
-  {#if $processingStatus}
-    <div class="status-bar">{$processingStatus}</div>
-  {/if}
 
-  {#if $errorMessage}
-    <div class="error-bar">❌ {$errorMessage}</div>
-  {/if}
 </div>
 
 {#if extractModalOpen}
@@ -679,16 +673,6 @@
   .btn-extract:disabled { opacity: 0.45; cursor: not-allowed; }
 
   /* ── Status / Error bars ── */
-  .status-bar {
-    background: #1a2e4a;
-    border: 1px solid #1976d2;
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    margin-top: 1rem;
-    color: #4fc3f7;
-    font-size: 0.88rem;
-    text-align: center;
-  }
 
   /* Extract Vocals modal */
   .extract-modal-backdrop {

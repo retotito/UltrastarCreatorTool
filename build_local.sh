@@ -81,6 +81,15 @@ ln -s /Applications "$STAGING/Applications"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 rm -rf "$STAGING"
 
+# ── Update file: from the re-signed .app, signed for the app's updater (only with the signing key, for releases) ──
+if [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+  UPDATE="src-tauri/target/release/bundle/macos/${APP_NAME}_${ARCH/x86_64/x64}.app.tar.gz"
+  UPDATE="${UPDATE/_arm64./_aarch64.}"
+  COPYFILE_DISABLE=1 tar -czf "$UPDATE" -C "$(dirname "$APP")" "$(basename "$APP")"
+  npx tauri signer sign "$UPDATE"
+  echo "✓ Update file: $UPDATE"
+fi
+
 echo ""
 echo "✓ Build complete!"
 echo "  .dmg → $SCRIPT_DIR/frontend/$DMG"

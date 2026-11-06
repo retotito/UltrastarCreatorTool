@@ -1073,9 +1073,6 @@
     <p class="no-result">No generation result yet. Go back to Step 3 to generate files.</p>
   {/if}
 
-  {#if $errorMessage}
-    <div class="error-bar">❌ {$errorMessage}</div>
-  {/if}
 
   {#if folderBusy}
     <!-- Writing can't be stopped halfway: the folder appears when it is complete -->
@@ -1390,15 +1387,6 @@
     border-color: #fdd835;
   }
 
-  .error-bar {
-    background: #3e1a1a;
-    border: 1px solid #c62828;
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin-top: 1rem;
-    color: #ef9a9a;
-    text-align: center;
-  }
 
   /* Modal overlay & popup */
   .modal-overlay {

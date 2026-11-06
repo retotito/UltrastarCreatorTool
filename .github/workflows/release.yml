@@ -2,7 +2,8 @@ name: Release build
 
 # A tag (v5.0.0, v5.0.0-beta.1) builds all platforms and makes a draft GitHub release with their installers.
 # "Run workflow" (manual) builds them as artifacts only, for testing. The app's version is tauri.conf.json's
-# (numeric pre-releases only, e.g. 5.0.0-1: the Windows .msi refuses "beta").
+# (numeric pre-releases only, e.g. 5.0.0-1: the Windows .msi refuses "beta"). Tags also sign the updates, with the
+# TAURI_SIGNING_PRIVATE_KEY secret, and write the update manifest; RELEASE_NOTES.md becomes "what's new".
 
 on:
   push:
@@ -108,11 +109,18 @@ jobs:
       # macOS: the same script as local builds (sidecar, .app, ad-hoc re-signing, .dmg)
       - name: Build (macOS)
         if: matrix.platform == 'macos'
+        env:
+          # Tags only: the update file doubles the artifact's size
+          TAURI_SIGNING_PRIVATE_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         run: ./build_local.sh
 
       - name: Build (Windows, Linux)
         if: matrix.platform != 'macos'
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         run: |
           if [ -x .venv/bin/pyinstaller ]; then PYI=.venv/bin/pyinstaller; else PYI=.venv/Scripts/pyinstaller.exe; fi
           $PYI backend/backend.spec --distpath dist-backend --noconfirm --clean
@@ -130,12 +138,16 @@ jobs:
           # tries to resolve every library in the backend and fails on torch's)
           if [ "${{ matrix.platform }}" = windows ]; then npm run tauri build -- --bundles msi --verbose
           else npm run tauri build -- --bundles deb --verbose; fi
+          # The app's updater installs the .msi itself: it only needs a signature (see build_local.sh for the Macs)
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && [ "${{ matrix.platform }}" = windows ]; then
+            for msi in src-tauri/target/release/bundle/msi/*.msi; do npx tauri signer sign "$msi"; done
+          fi
 
       - name: Collect installers
         shell: bash
         run: |
           mkdir -p out
-          find frontend/src-tauri/target/release/bundle \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' \) -exec cp {} out/ \;
+          find frontend/src-tauri/target/release/bundle \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.sig' -o -name '*.app.tar.gz' \) -exec cp {} out/ \;
           ls -la out
 
       - uses: actions/upload-artifact@v4
@@ -153,12 +165,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
+      # The update manifest the installed apps check. It is only reachable once the draft is published as the latest
+      # release: a pre-release isn't offered as an update
+      - name: Update manifest
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('frontend/src-tauri/tauri.conf.json'))['version'])")
+          python3 .ci/make_latest_json.py out "${{ github.ref_name }}" "$VERSION" RELEASE_NOTES.md
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+          body_path: RELEASE_NOTES.md
           files: out/*

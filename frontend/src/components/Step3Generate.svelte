@@ -226,9 +226,6 @@
     </div>
   {/if}
 
-  {#if $errorMessage}
-    <div class="error-bar">❌ {$errorMessage}</div>
-  {/if}
 
   <div class="modal-footer">
     <button class="btn btn-cancel" on:click={cancel}>
@@ -506,13 +503,4 @@
     font-size: 0.65rem;
   }
 
-  .error-bar {
-    background: #3e1a1a;
-    border: 1px solid #c62828;
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin-top: 1rem;
-    color: #ef9a9a;
-    text-align: center;
-  }
 </style>

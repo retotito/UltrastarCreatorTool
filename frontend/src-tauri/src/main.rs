@@ -16,10 +16,39 @@ impl Drop for BackendProcess {
     }
 }
 
+fn stop_backend_now(app: &tauri::AppHandle) {
+    // Kill the managed backend child process
+    if let Ok(mut guard) = app.state::<BackendProcess>().0.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait(); // reap zombie so OS fully releases the port
+        }
+    }
+    // Belt-and-suspenders: taskkill by name covers the case where Drop
+    // didn't run (e.g. force-killed by an installer update).
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("taskkill")
+        .args(["/F", "/IM", "backend.exe"])
+        .output();
+    #[cfg(not(target_os = "windows"))]
+    let _ = std::process::Command::new("sh")
+        .args(["-c", "lsof -ti:8001 | xargs kill -9 2>/dev/null || true"])
+        .status();
+}
+
+/// Before an update installs: the running backend's files would stay locked on Windows.
+#[tauri::command]
+fn stop_backend(app: tauri::AppHandle) {
+    stop_backend_now(&app);
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .invoke_handler(tauri::generate_handler![stop_backend])
         .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
             // In debug/dev mode there is no bundled sidecar binary —
@@ -128,23 +157,7 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                // Kill the managed backend child process
-                if let Ok(mut guard) = window.app_handle().state::<BackendProcess>().0.lock() {
-                    if let Some(mut child) = guard.take() {
-                        let _ = child.kill();
-                        let _ = child.wait(); // reap zombie so OS fully releases the port
-                    }
-                }
-                // Belt-and-suspenders: taskkill by name covers the case where Drop
-                // didn't run (e.g. force-killed by an installer update).
-                #[cfg(target_os = "windows")]
-                let _ = std::process::Command::new("taskkill")
-                    .args(["/F", "/IM", "backend.exe"])
-                    .output();
-                #[cfg(not(target_os = "windows"))]
-                let _ = std::process::Command::new("sh")
-                    .args(["-c", "lsof -ti:8001 | xargs kill -9 2>/dev/null || true"])
-                    .status();
+                stop_backend_now(window.app_handle());
             }
         })
         .run(tauri::generate_context!())

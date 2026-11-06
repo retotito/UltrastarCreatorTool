@@ -48,5 +48,12 @@
       "entitlements": "entitlements.plist",
       "infoPlist": "Info.plist"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhDRjFENEExMDc3REJBN0IKUldSN3VuMEhvZFR4akNBalJVcVp1V1o1ZFBFWm8yOUhxUitHYkhoc0k3TkR3ME0rZllsNGhmK2MK",
+      "endpoints": ["https://github.com/retotito/UltrastarCreatorTool/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
   }
 }

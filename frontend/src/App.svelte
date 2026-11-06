@@ -4,6 +4,8 @@
   import { checkHealth, resumeSession, getAudioUrl, submitLyrics, checkSetupStatus } from './services/api.js';
   import StepNavigation from './components/StepNavigation.svelte';
   import ProjectLauncher from './components/ProjectLauncher.svelte';
+  import Toasts from './components/Toasts.svelte';
+  import UpdateDialog from './components/UpdateDialog.svelte';
   import Step1Upload from './components/Step1Upload.svelte';
   import Step2Lyrics from './components/Step2Lyrics.svelte';
   import Step3Generate from './components/Step3Generate.svelte';
@@ -152,6 +154,8 @@
 {/if}
 
 <div class="app" class:wide-width={$currentStep === 2} class:full-width={$currentStep === 4}>
+  <Toasts />
+  <UpdateDialog />
   {#if $currentStep === 0}
     <ProjectLauncher />
   {:else}
