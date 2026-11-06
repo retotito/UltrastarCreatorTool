@@ -31,7 +31,7 @@ function showStep(index) {
   const image = step.querySelector('img');
   shown.image.src = image.src;
   shown.image.alt = image.alt;
-  shown.title.textContent = `${step.querySelector('.step-number').textContent}: ${step.querySelector('h3').textContent}`;
+  shown.title.textContent = `Step ${current + 1}: ${step.querySelector('h3').textContent}`;
   shown.text.innerHTML = step.querySelector('p').innerHTML;
   shown.position.textContent = `${current + 1} of ${steps.length}`;
 }

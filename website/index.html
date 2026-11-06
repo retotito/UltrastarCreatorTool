@@ -12,7 +12,7 @@
   <meta property="og:description" content="Create UltraStar karaoke songs with the help of AI. Free for Mac and Windows.">
   <meta property="og:image" content="https://retotito.github.io/UltrastarCreatorTool/img/editor.webp">
   <link rel="icon" href="img/icon.webp">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <header class="topbar">
@@ -29,7 +29,7 @@
   <div class="hero">
     <div class="wrap">
       <h1>Create UltraStar songs with the help of AI</h1>
-      <p class="lead">Start with any song. The AI extracts the vocals, times the lyrics and generates the notes. You fine-tune the result, then sing it in an UltraStar karaoke game.</p>
+      <p class="lead">Upload a song or add a link to a song on YouTube, and create an UltraStar song with a little help from AI.</p>
       <a href="#download" class="btn">Download, free</a>
       <p class="muted small" style="margin-top:12px">For Mac and Windows</p>
     </div>
@@ -41,38 +41,24 @@
         <h2>Four steps to a finished song</h2>
         <p class="muted">From a song on your computer or on YouTube to an UltraStar song you can sing.</p>
       </div>
-      <div class="step">
-        <div class="step-text">
-          <div class="step-number">Step 1</div>
-          <h3>Upload</h3>
-          <p class="muted">Upload a song or paste a YouTube link. Then extract the vocals from the song.</p>
-        </div>
-        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/upload.webp" width="1600" height="910" loading="lazy" alt="Step 1: the full mix, vocals and instrumental, ready to play"></button>
-      </div>
-      <div class="step">
-        <div class="step-text">
-          <div class="step-number">Step 2</div>
-          <h3>Lyrics</h3>
-          <p class="muted">Search for the song's lyrics or generate them from the vocals, then double-check and edit them.</p>
-        </div>
-        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/lyrics.webp" width="1600" height="1135" loading="lazy" alt="Step 2: lyrics from two sources side by side"></button>
-      </div>
-      <div class="step">
-        <div class="step-text">
-          <div class="step-number">Step 3</div>
-          <h3>Editor</h3>
-          <p class="muted">After the AI has generated the notes, fine-tune them by hand.</p>
-        </div>
-        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/editor.webp" width="2000" height="1136" loading="lazy" alt="Step 3: the piano roll editor"></button>
-      </div>
-      <div class="step">
-        <div class="step-text">
-          <div class="step-number">Step 4</div>
-          <h3>Export</h3>
-          <p class="muted">Save the finished song as a folder, ready to sing in the game, or as a file to share on <a href="https://usdb.animux.de">USDB</a>, the UltraStar song library.</p>
-        </div>
-        <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/export.webp" width="1600" height="918" loading="lazy" alt="Step 4: song info, cover, background, video and files to export"></button>
-      </div>
+      <ol class="timeline">
+        <li class="step">
+          <div><h3>Upload</h3><p class="muted">Upload a song or paste a YouTube link. Then extract the vocals from the song.</p></div>
+          <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/upload.webp" width="1600" height="910" loading="lazy" alt="Step 1: the full mix, vocals and instrumental, ready to play"></button>
+        </li>
+        <li class="step">
+          <div><h3>Lyrics</h3><p class="muted">Search for the song's lyrics or generate them from the vocals, then double-check and edit them.</p></div>
+          <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/lyrics.webp" width="1600" height="1135" loading="lazy" alt="Step 2: lyrics from two sources side by side"></button>
+        </li>
+        <li class="step">
+          <div><h3>Editor</h3><p class="muted">After the AI has generated the notes, fine-tune them by hand.</p></div>
+          <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/editor.webp" width="2000" height="1136" loading="lazy" alt="Step 3: the piano roll editor"></button>
+        </li>
+        <li class="step">
+          <div><h3>Export</h3><p class="muted">Save the finished song as a folder, ready to sing in the game, or as a file to share on <a href="https://usdb.animux.de">USDB</a>, the UltraStar song library.</p></div>
+          <button class="shot-button" type="button" aria-label="Enlarge this image"><img class="shot" src="img/export.webp" width="1600" height="918" loading="lazy" alt="Step 4: song info, cover, background, video and files to export"></button>
+        </li>
+      </ol>
     </div>
   </section>
 
@@ -149,6 +135,6 @@
   </figure>
   <button class="lightbox-nav lightbox-next" type="button" aria-label="Next step">›</button>
 </dialog>
-<script src="main.js"></script>
+<script src="main.js?v=3"></script>
 </body>
 </html>
