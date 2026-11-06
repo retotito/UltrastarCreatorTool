@@ -5,7 +5,7 @@
 <h1 align="center">Ultrastar Creator Tool</h1>
 
 <p align="center"><b>Create UltraStar songs with the help of AI.</b><br>
-Upload a song or add a link to a song on YouTube — free for Mac and Windows.</p>
+Upload a song or add a link to a song on YouTube, and create an UltraStar song with a little help from AI.</p>
 
 <p align="center">
   <a href="https://retotito.github.io/UltrastarCreatorTool/"><b>Website</b></a> ·
@@ -46,10 +46,10 @@ install this one.
 
 ## What's new in 5.0
 
-- **Duets:** duet charts stay intact, both singers are shown, and you edit one at a time
+- **Duets:** duet songs stay intact, both singers are shown, and you edit one at a time
 - **YouTube:** paste a link instead of uploading a file, use its subtitles as lyrics, and export the video
 - **Export:** a song folder ready for the game, or a `.txt` in USDB's format
-- **Better charts:** on six test songs, misplaced syllables dropped from 57 % to 7 %; a new model finds the notes
+- **Better results:** on six test songs, misplaced syllables dropped from 57 % to 7 %; a new model finds the notes
 - **Better vocal separation:** an optional slower model, much cleaner where voices overlap
 - **Automatic updates:** the app offers new versions and shows what's new
 
