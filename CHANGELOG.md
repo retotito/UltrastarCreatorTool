@@ -4,6 +4,12 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 
 ## Unreleased
 
+### ⚠ Warnings for probable mistakes
+- The editor marks notes that overlap a note of the same singer, line breaks inside a note and notes without text: a red
+  border and ⚠ on the note, a mark in the bottom bar, and a ⚠ button that goes through them. Two singers at the same time
+  in a duet is normal and isn't marked
+- The export step shows a banner. Exports aren't blocked; the USDB `.txt` asks once, because a reviewer reads it
+
 ### 📊 Real progress
 - Generating shows what is really happening, step by step (it listed all steps at the start): tempo, pitch, aligning the
   lyrics and finding the notes, the last two with a real percentage

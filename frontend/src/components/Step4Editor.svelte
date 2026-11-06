@@ -12,6 +12,7 @@
   import { parseUltrastar, notesToUltrastar, singerNames, duetHeaderLines, DUET_HEADERS, cleanSyllable } from '../lib/ultrastar.js';
   import DuetModal from './DuetModal.svelte';
   import SelectAllModal from './SelectAllModal.svelte';
+  import { chartProblems, describeProblems, PROBLEM_TEXT } from '../lib/chartChecks.js';
   import * as duet from '../lib/duet.js';
   import { medianPitch, groupPitchFrames, mergePlaceholderNotes, trimPlaceholdersAgainstNotes, buildPitchSplitGroups, splitPlaceholderNotesByPitchRuns } from '../lib/pitchUtils.js';
   import { createAutoBackup, getStoredIntervalMin, getStoredAutoEnabled } from '../lib/autoBackup.js';
@@ -2492,9 +2493,35 @@
     exitBeatMarkerMode();
   }
 
+  // ──── Probable mistakes: overlaps and the like (lib/chartChecks.js) ────
+  let problems = { list: [], ids: new Set() };
+  let problemIndex = -1;
+
+  /** Notes also change in place while dragging, so this follows the drawing; the toolbar only updates on a change. */
+  function refreshProblems() {
+    const current = chartProblems(notes);
+    const key = list => list.map(p => `${p.kind}${p.beat}:${p.ids}`).join();
+    if (key(current.list) !== key(problems.list)) problems = current;
+  }
+
+  /** The ⚠ button: the next problem after the last one, the note selected if it can be edited, the reason in a toast. */
+  function nextProblem() {
+    if (!problems.list.length) return;
+    problemIndex = (problemIndex + 1) % problems.list.length;
+    const problem = problems.list[problemIndex];
+    const note = notes.find(n => problem.ids.includes(n.id) && isEditable(n));
+    selectedNotes = new Set(note ? [note.id] : []);
+    selectedNote = note ? note.id : null;
+    seekToTime(beatToTime(problem.beat));
+    ensureBeatVisible(problem.beat);
+    showToast(`${problemIndex + 1}/${problems.list.length}: ${PROBLEM_TEXT[problem.kind]}${note ? '' : ` (${singerName(duet.other(activeSinger))}'s note)`}`);
+    draw();
+  }
+
   // ──── Drawing ────────────────────────────────
   function draw() {
     if (!ctx || !canvasEl) return;
+    refreshProblems();
     // A note fills its pitch row, leaving a pixel to the lines on each side (9–16px, so the syllable stays readable)
     noteHeight = Math.max(9, Math.min(16, Math.floor(Math.abs(pitchToY(0) - pitchToY(1))) - 2));
 
@@ -3164,10 +3191,19 @@
       // Syllable text — show · after syllable if it has a trailing space (space visualisation)
       if (zoom > 1 && width > 10) {
         const hasTrailingSpace = note.syllable.endsWith(' ');
-        const displayText = note.syllable.trim() + (hasTrailingSpace ? '·' : '');
+        const displayText = (problems.ids.has(note.id) ? '⚠ ' : '') + note.syllable.trim() + (hasTrailingSpace ? '·' : '');
         ctx.fillStyle = hasTrailingSpace ? '#cccccc' : '#ffffff';
         ctx.font = '10px sans-serif';
         ctx.fillText(displayText, x + 2, y + 3);
+      }
+
+      // A probable mistake: a red border outside the note's own
+      if (problems.ids.has(note.id)) {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#ff1744';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 1, y - noteHeight / 2 - 1, width + 2, noteHeight + 2);
+        ctx.lineWidth = 1;
       }
 
       // Red dot indicator: this note has no trailing space (word continues into next note)
@@ -10444,6 +10480,9 @@
            Backup&nbsp;🕐
         </button>
       </div>
+      {#if problems.list.length}
+        <button class="tool-btn problem-btn" on:click={nextProblem} title="{describeProblems(problems.list)}. Click to go to the next one">⚠ {problems.list.length}</button>
+      {/if}
       <div id="duet-controls-wrapper" class:tool-hidden={!showDuet}>
         <button class="tool-btn" class:active={isDuet} class:disabled-audio={uiModalGuardActive} disabled={uiModalGuardActive}
           on:click={() => { if (!uiModalGuardActive) duetModalOpen = true; }}
@@ -11137,6 +11176,9 @@
           <div class="scrollbar-break"
             style="left: {((note.startBeat - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%; --break-color: {isDuet && note.singer !== duet.BOTH && note.singer != null ? duet.SINGER_COLORS[note.singer] : '#ff6b6b'}"></div>
         {/if}
+      {/each}
+      {#each problems.list as problem}
+        <div class="scrollbar-end-tick" style="background: #ff1744; left: {((problem.beat - getMinBeat()) / scrollBeatRange * 100).toFixed(3)}%"></div>
       {/each}
       <!-- draggable handle -->
       <div class="scrollbar-handle" style="left: {scrollHandlePct}%"></div>
@@ -11989,6 +12031,8 @@
     flex-wrap: nowrap;
     gap: 10px;
   }
+
+  .problem-btn { color: #ff8a80; border-color: #ff1744; }
 
   /* Hidden with the top bar's layout menu; beats the display rules of the toolbar's parts */
   .tool-hidden {

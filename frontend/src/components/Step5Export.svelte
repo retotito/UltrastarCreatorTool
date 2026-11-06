@@ -2,10 +2,12 @@
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
   import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
            uploadCover, getCoverUrl, deleteCover, uploadBgImage, getBgImageUrl, deleteBgImage, saveAssetsMeta, getAssetsMeta,
-           streamYouTubeVideo, deleteYouTubeVideo, getDownloadVideoUrl, exportToFolder, exportToFile, inTauriApp } from '../services/api.js';
+           getEditorData, streamYouTubeVideo, deleteYouTubeVideo, getDownloadVideoUrl, exportToFolder, exportToFile, inTauriApp } from '../services/api.js';
   import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
   import { showConfirm } from '../stores/dialogStore.js';
   import TransferModal from './TransferModal.svelte';
+  import { parseUltrastar } from '../lib/ultrastar.js';
+  import { chartProblems, describeProblems } from '../lib/chartChecks.js';
   import { resetSession } from '../stores/appStore.js';
   import { SUPPORTED_LANGUAGES, languageHeader } from '../lib/languages';
 
@@ -124,7 +126,21 @@
     editedVocalsProbeSession = '';
   }
 
+  // Probable mistakes in the chart (a banner here; never blocks an export)
+  let chartWarning = '';
+
+  async function checkChart() {
+    try {
+      const data = await getEditorData($sessionId);
+      chartWarning = describeProblems(chartProblems(parseUltrastar(data.ultrastar_content || '')).list);
+    } catch {
+      chartWarning = '';   // no chart to read yet
+    }
+    return chartWarning;
+  }
+
   async function loadExistingAssets() {
+    checkChart();
     // Probe cover
     try {
       const r = await fetch(getCoverUrl($sessionId));
@@ -605,6 +621,9 @@
 
   /** The .txt for uploading to USDB: the YouTube link as typed goes in its #VIDEO, the id USDB's tools find the video by. */
   async function downloadUsdb() {
+    // A reviewer reads this one: worth a question, unlike a test in the game
+    const warning = await checkChart();
+    if (warning && !(await showConfirm(`${warning}. Save the file for USDB anyway?`, { title: 'Probable mistakes in the chart', confirmLabel: 'Save anyway' }))) return;
     await saveVideoMeta();
     if (!youtubeUrl.trim()) showToast('⚠ No YouTube link: this chart has no video source on USDB');
     if (await saveWithDialog('usdb', `${getBaseFilename()} [USDB].txt`) !== null) return;
@@ -704,6 +723,13 @@
       <div class="info-banner">
         <span>⚠️ {!hasArtist && !hasTitle ? 'Artist and title are' : !hasArtist ? 'Artist is' : 'Title is'} missing — filenames will use "{previewArtist} - {previewTitle}"</span>
         <button class="link-btn" on:click={openEditPopup}>✏️ Add now</button>
+      </div>
+    {/if}
+
+    {#if chartWarning}
+      <div class="info-banner">
+        <span>⚠️ {chartWarning}</span>
+        <button class="link-btn" on:click={() => currentStep.set(4)}>Show in editor</button>
       </div>
     {/if}
 

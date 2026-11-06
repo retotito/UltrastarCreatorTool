@@ -27,6 +27,10 @@
             Normal note
           </div>
           <div class="legend-item">
+            <span class="swatch" style="background:#4fc3f744;border:2px solid #ff1744"></span>
+            ⚠ Probably a mistake: overlaps a note of the same singer, has a line break inside or no text. The ⚠ button goes through them
+          </div>
+          <div class="legend-item">
             <span class="swatch" style="background:#ffd70044;border:1px solid #ffd700"></span>
             Golden note (2× points)
           </div>
