@@ -35,7 +35,7 @@ p { margin: 0 0 1em; }
 .shot { border-radius: var(--radius); box-shadow: var(--shadow); }
 section { padding: 72px 0; }
 .tint { background: var(--tint); }
-.intro { max-width: 640px; margin: 0 auto 40px; text-align: center; }
+.intro { max-width: 860px; margin: 0 auto 40px; text-align: center; }
 
 .btn {
   display: inline-block; padding: 12px 22px; border-radius: 999px; background: var(--brand); color: #fff;
@@ -111,8 +111,21 @@ section { padding: 72px 0; }
 .downloads { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-bottom: 8px; }
 .dl { text-align: center; line-height: 1.3; padding: 12px 26px; }
 .dl small { display: block; font-weight: 400; opacity: .85; font-size: 13px; }
-.notes { max-width: 680px; margin: 32px auto 0; }
-.notes h3 { font-size: 18px; margin-top: 20px; }
+
+button.link { background: none; border: 0; padding: 0; color: var(--brand); font: inherit; font-size: 15px; text-decoration: underline; cursor: pointer; }
+
+/* First-start help */
+.help { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 28px; border: 0; border-radius: var(--radius); box-shadow: var(--shadow); color: var(--text); }
+.help::backdrop { background: rgba(15, 20, 35, .55); }
+.help-title { font-size: 24px; padding-right: 32px; }
+.help-close { position: absolute; top: 14px; right: 14px; margin: 0; }
+.help-close button { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--tint); cursor: pointer; font-size: 16px; color: var(--text); }
+.tabs { display: flex; gap: 6px; background: var(--tint); padding: 4px; border-radius: 999px; margin: 16px 0; }
+.tabs button { flex: 1; padding: 8px; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 600; cursor: pointer; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
+.tab ol { padding-left: 22px; margin: 0 0 12px; }
+.tab li { margin-bottom: 8px; }
+.help .small { margin-bottom: 8px; }
 
 footer { border-top: 1px solid var(--line); padding: 32px 0; text-align: center; color: var(--muted); font-size: 14px; }
 footer p { margin: 0 0 6px; }

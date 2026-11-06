@@ -12,7 +12,7 @@
   <meta property="og:description" content="Create UltraStar karaoke songs with the help of AI. Free for Mac and Windows.">
   <meta property="og:image" content="https://retotito.github.io/UltrastarCreatorTool/img/editor.webp">
   <link rel="icon" href="img/icon.webp">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header class="topbar">
@@ -38,8 +38,7 @@
   <section id="how" class="tint">
     <div class="wrap">
       <div class="intro">
-        <h2>Four steps to a finished song</h2>
-        <p class="muted">From a song on your computer or on YouTube to an UltraStar song you can sing.</p>
+        <h2>4 steps to create an UltraStar song</h2>
       </div>
       <ol class="timeline">
         <li class="step">
@@ -62,21 +61,7 @@
     </div>
   </section>
 
-  <section id="new">
-    <div class="wrap">
-      <div class="intro"><h2>New in 5.0</h2></div>
-      <div class="grid">
-        <div class="card"><h3>Duets</h3><p>Duet songs stay intact and both singers are shown. You edit one at a time, and any song can become a duet.</p></div>
-        <div class="card"><h3>YouTube links</h3><p>Paste a link instead of uploading a file, use its subtitles as lyrics, and export the video.</p></div>
-        <div class="card"><h3>Better results</h3><p>Lyrics are aligned directly to the vocals: on six test songs, misplaced syllables dropped from 57 % to 7 %.</p></div>
-        <div class="card"><h3>Better vocal separation</h3><p>An optional slower model is much cleaner where voices overlap.</p></div>
-        <div class="card"><h3>Export for the game or USDB</h3><p>A song folder wherever you want it, or a <code>.txt</code> ready to upload.</p></div>
-        <div class="card"><h3>Automatic updates</h3><p>The app offers new versions and shows what's new. Your songs and models stay.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="tutorials" class="tint">
+  <section id="tutorials">
     <div class="wrap">
       <div class="intro">
         <h2>Tutorials</h2>
@@ -84,33 +69,26 @@
       </div>
       <!-- New tutorials go first. Each one is a link and a thumbnail from its YouTube id. -->
       <div class="grid">
-        <a class="video" href="https://www.youtube.com/watch?v=zKw03mhrYX8"><img src="https://img.youtube.com/vi/zKw03mhrYX8/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Overview: getting started</a>
-        <a class="video" href="https://www.youtube.com/watch?v=p4ihQaDhwfg"><img src="https://img.youtube.com/vi/p4ihQaDhwfg/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Pitch line, vocal tracing and sing along</a>
-        <a class="video" href="https://www.youtube.com/watch?v=WwAZQlhqSwE"><img src="https://img.youtube.com/vi/WwAZQlhqSwE/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Looping and scrubbing</a>
-        <a class="video" href="https://www.youtube.com/watch?v=L8jnov5M-XY"><img src="https://img.youtube.com/vi/L8jnov5M-XY/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">BPM and metronome</a>
-        <a class="video" href="https://www.youtube.com/watch?v=WOKcdjpthh0"><img src="https://img.youtube.com/vi/WOKcdjpthh0/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">AI limits and workarounds</a>
+        <a class="video" href="https://www.youtube.com/watch?v=zKw03mhrYX8" target="_blank" rel="noopener"><img src="https://img.youtube.com/vi/zKw03mhrYX8/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Overview: getting started</a>
+        <a class="video" href="https://www.youtube.com/watch?v=p4ihQaDhwfg" target="_blank" rel="noopener"><img src="https://img.youtube.com/vi/p4ihQaDhwfg/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Pitch line, vocal tracing and sing along</a>
+        <a class="video" href="https://www.youtube.com/watch?v=WwAZQlhqSwE" target="_blank" rel="noopener"><img src="https://img.youtube.com/vi/WwAZQlhqSwE/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">Looping and scrubbing</a>
+        <a class="video" href="https://www.youtube.com/watch?v=L8jnov5M-XY" target="_blank" rel="noopener"><img src="https://img.youtube.com/vi/L8jnov5M-XY/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">BPM and metronome</a>
+        <a class="video" href="https://www.youtube.com/watch?v=WOKcdjpthh0" target="_blank" rel="noopener"><img src="https://img.youtube.com/vi/WOKcdjpthh0/hqdefault.jpg" width="480" height="360" loading="lazy" alt="">AI limits and workarounds in earlier versions (4.0)</a>
       </div>
     </div>
   </section>
 
-  <section id="download">
+  <section id="download" class="tint">
     <div class="wrap center">
       <h2>Download</h2>
       <p class="muted" id="version">Free</p>
       <div class="downloads">
-        <a class="btn dl" data-file="mac-arm" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest">Mac, Apple Silicon<small>M1 or newer, macOS 14+</small></a>
-        <a class="btn dl" data-file="mac-intel" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest">Mac, Intel<small>macOS 12+</small></a>
-        <a class="btn dl" data-file="windows" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest">Windows<small>64-bit</small></a>
+        <a class="btn dl" data-file="mac-arm" data-help="mac" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest" target="_blank" rel="noopener">Mac, Apple Silicon<small>M1 or newer, macOS 14+</small></a>
+        <a class="btn dl" data-file="mac-intel" data-help="mac" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest" target="_blank" rel="noopener">Mac, Intel<small>macOS 12+</small></a>
+        <a class="btn dl" data-file="windows" data-help="windows" href="https://github.com/retotito/UltrastarCreatorTool/releases/latest" target="_blank" rel="noopener">Windows<small>64-bit</small></a>
       </div>
-      <p class="small"><a href="https://github.com/retotito/UltrastarCreatorTool/releases">All versions</a></p>
-      <div class="notes" style="text-align:left">
-        <h3>The first start</h3>
-        <p class="muted">The app downloads its AI models, about 3.5 GB. It isn't code-signed yet, so your system warns you the first time:</p>
-        <p class="muted"><strong>macOS:</strong> drag the app to Applications and open it. When macOS blocks it, go to System Settings → Privacy &amp; Security and click Open Anyway.</p>
-        <p class="muted"><strong>Windows:</strong> when SmartScreen warns you, click More info, then Run anyway.</p>
-        <h3>Coming from a version before 5.0?</h3>
-        <p class="muted">Export the songs you want to keep as a ZIP, close and uninstall the old app, then install this one.</p>
-      </div>
+      <p class="small"><a href="https://github.com/retotito/UltrastarCreatorTool/releases" target="_blank" rel="noopener">All versions</a></p>
+      <button type="button" class="link" data-open-help>The app is not signed — how to open it the first time</button>
     </div>
   </section>
 </main>
@@ -122,6 +100,33 @@
     <p>Sing your songs at a party with <a href="https://retotito.github.io/Ultrastar-DJ/">Ultrastar DJ</a>.</p>
   </div>
 </footer>
+<dialog class="help" id="help">
+  <form method="dialog" class="help-close"><button aria-label="Close">✕</button></form>
+  <h2 class="help-title">Your download has started</h2>
+  <p class="muted">The app is not signed by Apple or Microsoft (that costs a yearly fee), so your computer asks once whether you trust it. Here is how to say yes:</p>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="mac">Mac</button>
+    <button type="button" role="tab" data-tab="windows">Windows</button>
+  </div>
+  <div class="tab" data-panel="mac">
+    <ol>
+      <li>Open the downloaded <b>.dmg</b> and drag <b>UltrastarCreatorTool</b> into <b>Applications</b>.</li>
+      <li>Open it. macOS blocks it the first time, so close the message.</li>
+      <li>Open <b>System Settings → Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>.</li>
+      <li>Confirm. From now on it opens normally.</li>
+    </ol>
+  </div>
+  <div class="tab" data-panel="windows">
+    <ol>
+      <li>Start the downloaded <b>.msi</b>.</li>
+      <li>If a blue window says <b>"Windows protected your PC"</b>, click <b>More info</b>.</li>
+      <li>Click <b>Run anyway</b> and follow the installer.</li>
+    </ol>
+  </div>
+  <p class="small muted">The first start downloads the AI models, about 3.5 GB. After that, the app offers new versions by itself. Your songs and models stay.</p>
+  <p class="small muted">Coming from a version before 5.0? Export the songs you want to keep as a ZIP, close and uninstall the old app, then install this one.</p>
+</dialog>
+
 <dialog class="lightbox" id="lightbox" aria-label="Enlarged image">
   <button class="lightbox-close" type="button" aria-label="Close">✕</button>
   <button class="lightbox-nav lightbox-prev" type="button" aria-label="Previous step">‹</button>
@@ -135,6 +140,6 @@
   </figure>
   <button class="lightbox-nav lightbox-next" type="button" aria-label="Next step">›</button>
 </dialog>
-<script src="main.js?v=3"></script>
+<script src="main.js?v=4"></script>
 </body>
 </html>
