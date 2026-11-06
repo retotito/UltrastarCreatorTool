@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/",
+    "test": "node --test src/lib/*.test.js",
     "tauri": "tauri"
   },
   "devDependencies": {

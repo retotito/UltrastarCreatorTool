@@ -1,14 +1,25 @@
-# Ultrastar Creator Tool
-
 <p align="center">
-  <img src="frontend/src-tauri/icons/icon.png" alt="Ultrastar Creator icon" width="128" />
+  <img src="website/img/editor.webp" alt="Ultrastar Creator Tool: the piano roll editor with notes and lyrics over the song's waveform" width="900">
 </p>
 
-A desktop app that turns songs into **UltraStar karaoke charts** with the help of AI. Upload a song or paste a YouTube
-link, check the lyrics, generate the notes, fine-tune them in the piano roll editor, and export a song folder for the
-game or a `.txt` for [USDB](https://usdb.animux.de).
+<h1 align="center">Ultrastar Creator Tool</h1>
 
-**[Website](https://retotito.github.io/UltrastarCreatorTool/)** with screenshots and tutorials.
+<p align="center"><b>Create UltraStar songs with the help of AI.</b><br>
+Upload a song or add a link to a song on YouTube — free for Mac and Windows.</p>
+
+<p align="center">
+  <a href="https://retotito.github.io/UltrastarCreatorTool/"><b>Website</b></a> ·
+  <a href="https://retotito.github.io/UltrastarCreatorTool/#download"><b>Download</b></a> ·
+  <a href="https://github.com/retotito/UltrastarCreatorTool/issues/new/choose">Report a problem or idea</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/retotito/UltrastarCreatorTool/releases"><img alt="Latest version" src="https://img.shields.io/github/v/release/retotito/UltrastarCreatorTool?label=version"></a>
+  <a href="https://github.com/retotito/UltrastarCreatorTool/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/retotito/UltrastarCreatorTool/actions/workflows/tests.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
+</p>
+
+---
 
 ## Download
 

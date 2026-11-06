@@ -1,8 +1,13 @@
 """The libraries the packaged app needs: a missing one is reported, not quietly skipped."""
 
+import os
+
+import pytest
+
 from services import app_check
 
 
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="CI installs no AI libraries on purpose")
 def test_all_libraries_are_there_in_development():
     assert app_check.missing_packages() == []
 
