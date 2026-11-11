@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chartProblems, describeProblems } from './chartChecks.js';
+import { chartProblems, describeProblems, problemTextOf } from './chartChecks.js';
 
 const note = (id, startBeat, duration, singer, syllable = 'la ') => ({ id, startBeat, duration, pitch: 60, syllable, ...(singer ? { singer } : {}) });
 const line = (id, startBeat, singer) => ({ id, type: 'break', startBeat, ...(singer ? { singer } : {}) });
@@ -51,4 +51,11 @@ test('described in words', () => {
   assert.equal(describeProblems(chartProblems([note(1, 0, 4), note(2, 3, 4), note(3, 9, 1, null, '')]).list),
     '1 note overlaps another note · 1 note has no text');
   assert.equal(describeProblems([{ kind: 'overlap' }, { kind: 'overlap' }]), '2 notes overlap another note');
+});
+
+test('the tooltip names why a note is marked, each reason once', () => {
+  const { list } = chartProblems([note(1, 0, 4), note(2, 3, 4, null, ''), note(3, 5, 4)]);
+  assert.equal(problemTextOf(list, 2), 'This note overlaps another note. This note has no text');
+  assert.equal(problemTextOf(list, 1), 'This note overlaps another note');
+  assert.equal(problemTextOf([], 1), '');
 });

@@ -55,6 +55,12 @@ export function chartProblems(notes) {
   return { list, ids: new Set(list.flatMap(problem => problem.ids)) };
 }
 
+/** Why a note is marked: the texts of its problems, one per kind, in the order found ('' if none). */
+export function problemTextOf(list, id) {
+  const kinds = [...new Set(list.filter(problem => problem.ids.includes(id)).map(problem => problem.kind))];
+  return kinds.map(kind => PROBLEM_TEXT[kind]).join('. ');
+}
+
 /** "3 notes overlap another note · 1 note has no text", or '' without problems. */
 export function describeProblems(list) {
   return Object.entries(LABELS).map(([kind, [one, many]]) => {

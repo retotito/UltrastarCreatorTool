@@ -12,7 +12,7 @@
   import { parseUltrastar, notesToUltrastar, singerNames, duetHeaderLines, DUET_HEADERS, cleanSyllable } from '../lib/ultrastar.js';
   import DuetModal from './DuetModal.svelte';
   import SelectAllModal from './SelectAllModal.svelte';
-  import { chartProblems, describeProblems, PROBLEM_TEXT } from '../lib/chartChecks.js';
+  import { chartProblems, describeProblems, PROBLEM_TEXT, problemTextOf } from '../lib/chartChecks.js';
   import * as duet from '../lib/duet.js';
   import { medianPitch, groupPitchFrames, mergePlaceholderNotes, trimPlaceholdersAgainstNotes, buildPitchSplitGroups, splitPlaceholderNotesByPitchRuns } from '../lib/pitchUtils.js';
   import { createAutoBackup, getStoredIntervalMin, getStoredAutoEnabled } from '../lib/autoBackup.js';
@@ -2518,6 +2518,27 @@
     draw();
   }
 
+  /** The hover tooltip on the canvas: why a note has a red border, or what its red dot means. */
+  let noteTip = null;   // { text, x, y } in window coordinates
+  const RED_DOT_TEXT = 'Red dot: no space after this syllable, the word continues in the next note';
+
+  function updateNoteTip(event, mx, my) {
+    let text = '';
+    for (let i = notes.length - 1; i >= 0 && !text; i--) {   // the note drawn last is on top
+      const note = notes[i];
+      if (note.type === 'break') continue;
+      const nx = beatToX(note.startBeat);
+      const ny = pitchToY(note.pitch);
+      const nw = note.duration * zoom;
+      if (mx < nx || mx > nx + nw || my < ny - noteHeight / 2 - 2 || my > ny + noteHeight / 2 + 2) continue;
+      const reasons = problemTextOf(problems.list, note.id);
+      const onDot = !note.syllable.endsWith(' ') && Math.hypot(mx - (nx + nw - 4), my - (ny - noteHeight / 2 + 4)) <= 6;
+      text = [reasons && `⚠ ${reasons}`, onDot && RED_DOT_TEXT].filter(Boolean).join('\n');
+      if (!text) break;
+    }
+    noteTip = text ? { text, x: event.clientX + 14, y: event.clientY + 16 } : null;
+  }
+
   // ──── Drawing ────────────────────────────────
   function draw() {
     if (!ctx || !canvasEl) return;
@@ -4288,6 +4309,9 @@
       }
 
       canvasEl.style.cursor = pasteMode ? 'crosshair' : cursor;
+      updateNoteTip(event, mx, my);
+    } else {
+      noteTip = null;
     }
 
     // ── Box selection tracking ──
@@ -10579,7 +10603,10 @@
   </div>
 
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="canvas-container" on:mouseenter={() => canvasFocused = true} on:mouseleave={() => canvasFocused = false}>
+  {#if noteTip}
+    <div class="note-tip" style="left: {noteTip.x}px; top: {noteTip.y}px">{noteTip.text}</div>
+  {/if}
+  <div class="canvas-container" on:mouseenter={() => canvasFocused = true} on:mouseleave={() => { canvasFocused = false; noteTip = null; }}>
     <canvas
       bind:this={canvasEl}
       on:mousedown={handleMouseDown}
@@ -12033,6 +12060,11 @@
   }
 
   .problem-btn { color: #ff8a80; border-color: #ff1744; }
+  .note-tip {
+    position: fixed; z-index: 1500; max-width: 320px; padding: 6px 9px; border-radius: 6px; pointer-events: none;
+    background: #1b2130; border: 1px solid #ff5252; color: #eceff4; font-size: 12px; line-height: 1.4; white-space: pre-line;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+  }
 
   /* Hidden with the top bar's layout menu; beats the display rules of the toolbar's parts */
   .tool-hidden {
