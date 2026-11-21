@@ -1,6 +1,6 @@
 <script>
   import { sessionId, generationResult, errorMessage, isProcessing, lyricsData, uploadData, currentStep } from '../stores/appStore.js';
-  import { getDownloadUrl, getAudioUrl, updateMetadata, getDownloadZipUrl,
+  import { getDownloadUrl, getAudioUrl, getExportAudioUrl, updateMetadata, getDownloadZipUrl,
            uploadCover, getCoverUrl, deleteCover, uploadBgImage, getBgImageUrl, deleteBgImage, saveAssetsMeta, getAssetsMeta,
            getEditorData, streamYouTubeVideo, deleteYouTubeVideo, getDownloadVideoUrl, exportToFolder, exportToFile, inTauriApp } from '../services/api.js';
   import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
@@ -452,7 +452,10 @@
 
   // ── Export location ──────────────────────────
   const EXPORT_FOLDER_KEY = 'export_folder';   // where the last export went, for all songs
-  let folderBusy = null;   // the busy window while writing a song folder
+  let exportBusy = null;   // the busy window while an export is written: { title, status }
+  // Exports that take a while: the ZIP and the audio files are encoded first
+  const SLOW_KINDS = new Set(['zip', 'original', 'vocals', 'edited', 'instrumental']);
+  const busyTitle = kind => kind === 'zip' ? 'Creating the ZIP' : 'Saving the audio file';
   let lastExportFolder = '';
   try { lastExportFolder = localStorage.getItem(EXPORT_FOLDER_KEY) || ''; } catch { /* no storage: start at the default */ }
 
@@ -460,6 +463,13 @@
     lastExportFolder = folder;
     try { localStorage.setItem(EXPORT_FOLDER_KEY, folder); } catch { /* the choice lasts until the app closes */ }
   }
+
+  // MP3 plays in every game; UltraStar Play and Melody Mania recommend Ogg Vorbis. Remembered for all songs.
+  const AUDIO_FORMAT_KEY = 'export_audio_format';
+  let audioFormat = 'mp3';
+  try { if (localStorage.getItem(AUDIO_FORMAT_KEY) === 'ogg') audioFormat = 'ogg'; } catch { /* no storage: MP3 */ }
+  $: try { localStorage.setItem(AUDIO_FORMAT_KEY, audioFormat); } catch { /* the choice lasts until the app closes */ }
+  $: audioExt = `.${audioFormat}`;
 
   $: includes = {
     vocals: zipIncludeVocals, edited: zipIncludeEditedVocals, instrumental: zipIncludeInstrumental,
@@ -474,11 +484,14 @@
     const sep = lastExportFolder.includes('\\') ? '\\' : '/';
     const path = await saveDialog({ defaultPath: lastExportFolder ? `${lastExportFolder}${sep}${name}` : name });
     if (!path) return false;
+    if (SLOW_KINDS.has(kind)) exportBusy = { title: busyTitle(kind), status: name };
     try {
-      await exportToFile($sessionId, kind, path, { ...includes, [kind]: true });
+      await exportToFile($sessionId, kind, path, { ...includes, [kind]: true }, audioFormat);
     } catch (e) {
       errorMessage.set(e.message);
       return false;
+    } finally {
+      exportBusy = null;
     }
     rememberExportFolder(path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))));
     notifyDownload(`✓ Saved ${path}`);
@@ -494,18 +507,18 @@
       ? await openDialog({ directory: true, defaultPath: lastExportFolder || undefined, title: 'Export the song folder into…' })
       : '';
     if (inTauriApp && !folder) return;
-    folderBusy = { status: `${getBaseFilename()}…` };
+    exportBusy = { title: 'Exporting the song folder', status: `${getBaseFilename()}…` };
     try {
       let result;
       try {
-        result = await exportToFolder($sessionId, folder, includes);
+        result = await exportToFolder($sessionId, folder, includes, false, audioFormat);
       } catch (e) {
         if (!e.message.includes('API error 409')) throw e;
-        folderBusy = null;
+        exportBusy = null;
         const replace = await showConfirm(`"${getBaseFilename()}" already exists in this folder. Replace it?`, { title: 'Replace the song folder?', confirmLabel: 'Replace' });
         if (!replace) return;
-        folderBusy = { status: `${getBaseFilename()}…` };
-        result = await exportToFolder($sessionId, folder, includes, true);
+        exportBusy = { title: 'Exporting the song folder', status: `${getBaseFilename()}…` };
+        result = await exportToFolder($sessionId, folder, includes, true, audioFormat);
       }
       if (folder) rememberExportFolder(folder);
       exported = true;
@@ -513,7 +526,7 @@
     } catch (e) {
       errorMessage.set(e.message);
     } finally {
-      folderBusy = null;
+      exportBusy = null;
     }
   }
 
@@ -605,9 +618,21 @@
       include_summary: zipIncludeSummary ? '1' : '0',
       include_midi: zipIncludeMidi ? '1' : '0',
       include_video: zipIncludeVideo ? '1' : '0',
+      audio_format: audioFormat,
     });
     const url = getDownloadZipUrl($sessionId) + '?' + params.toString();
-    const blob = await fetch(url).then(r => r.blob());
+    exportBusy = { title: busyTitle('zip'), status: `${getBaseFilename()}.zip` };
+    let blob;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || "Couldn't create the ZIP");
+      blob = await response.blob();
+    } catch (e) {
+      errorMessage.set(e.message);
+      return;
+    } finally {
+      exportBusy = null;
+    }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = getBaseFilename() + '.zip';
@@ -647,6 +672,7 @@
         include_vocals: zipIncludeVocals ? '1' : '0',
         include_instrumental: zipIncludeInstrumental ? '1' : '0',
         include_video: zipIncludeVideo ? '1' : '0',
+        audio_format: audioFormat,
       });
       url += '?' + params.toString();
     }
@@ -664,43 +690,25 @@
   }
 
   async function downloadAudio(type) {
-    const url = getAudioUrl($sessionId, type);
-    const base = getBaseFilename();
-    const suffix = type === 'vocals'
-      ? ' [VOC]'
-      : type === 'instrumental'
-        ? ' [INSTR]'
-        : type === 'cleaned'
-          ? ' [Edited Vocals]'
-          : '';
-    const saved = await saveWithDialog(type === 'cleaned' ? 'edited' : type, `${base}${suffix}.mp3`);
-    if (saved !== null) return;
-    const blob = await fetch(url).then(r => r.blob());
-    // Vocals are always .mp3 (Demucs --mp3 output).
-    // For original, derive extension from the uploaded filename.
-    let ext;
-    if (type === 'vocals') {
-      // Vocals are always served as MP3 (backend converts WAV→MP3 on the fly)
-      ext = '.mp3';
-    } else if (type === 'instrumental') {
-      ext = '.mp3';
-    } else if (type === 'cleaned') {
-      const mimeToExt = {
-        'audio/mpeg': '.mp3',
-        'audio/wav': '.wav',
-        'audio/x-wav': '.wav',
-        'audio/flac': '.flac',
-        'audio/ogg': '.ogg',
-        'audio/mp4': '.m4a',
-      };
-      ext = mimeToExt[blob.type] || '.mp3';
-    } else {
-      // Original audio — always downloaded as MP3 (backend converts WAV→MP3 on the fly)
-      ext = '.mp3';
+    const kind = type === 'cleaned' ? 'edited' : type;
+    const suffix = { vocals: ' [VOC]', instrumental: ' [INSTR]', edited: ' [Edited Vocals]' }[kind] || '';
+    const name = `${getBaseFilename()}${suffix}${audioExt}`;
+    if (await saveWithDialog(kind, name) !== null) return;
+    exportBusy = { title: busyTitle(kind), status: name };
+    let blob;
+    try {
+      const response = await fetch(getExportAudioUrl($sessionId, kind, audioFormat));
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || `Couldn't download the ${kind} file`);
+      blob = await response.blob();
+    } catch (e) {
+      errorMessage.set(e.message);
+      return;
+    } finally {
+      exportBusy = null;
     }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = base + suffix + ext;
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -892,12 +900,21 @@
           </label>
         </div>
 
+        <div class="asset-row">
+          <span class="asset-label">Audio format</span>
+          <div class="video-inputs audio-format" style="padding-top: 10px;">
+            <label title="Plays in every game"><input type="radio" bind:group={audioFormat} value="mp3" /> MP3</label>
+            <label title="Ogg Vorbis: recommended by UltraStar Play and Melody Mania"><input type="radio" bind:group={audioFormat} value="ogg" /> OGG</label>
+            <small style="color:#888;font-size:0.72rem">For all audio files of the song</small>
+          </div>
+        </div>
+
         <!-- Full Mix audio (read-only display) -->
         <div class="asset-row">
           <span class="asset-label">Full Mix</span>
           <div class="video-inputs" style="padding-top: 10px;">
             {#if $uploadData?.hasOriginal}
-              <span class="asset-value">{baseFilename}.mp3</span>
+              <span class="asset-value">{baseFilename}{audioExt}</span>
             {:else}
               <small style="color:#f0a500;font-size:0.72rem">
                 💡 No audio uploaded yet. Go to
@@ -913,7 +930,7 @@
           <span class="asset-label">Vocals</span>
           <div class="video-inputs" style="padding-top: 10px;">
             {#if $uploadData?.hasVocals}
-              <span class="asset-value">{baseFilename} [VOC].mp3</span>
+              <span class="asset-value">{baseFilename} [VOC]{audioExt}</span>
             {:else}
               <small style="color:#f0a500;font-size:0.72rem">
                 💡 No vocals yet. Go to
@@ -932,7 +949,7 @@
           <span class="asset-label">Edited Vocals</span>
           <div class="video-inputs" style="padding-top: 10px;">
             {#if hasEditedVocals}
-              <span class="asset-value">{baseFilename} [Edited Vocals].mp3</span>
+              <span class="asset-value">{baseFilename} [Edited Vocals]{audioExt}</span>
             {:else}
               <small style="color:#888;font-size:0.72rem">Not available — create edited vocals in Step 4.</small>
             {/if}
@@ -948,7 +965,7 @@
           <span class="asset-label">Instrumental</span>
           <div class="video-inputs" style="padding-top: 10px;">
             {#if editInstrumental}
-              <span class="asset-value">{baseFilename} [INSTR].mp3</span>
+              <span class="asset-value">{baseFilename} [INSTR]{audioExt}</span>
             {:else}
               <small style="color:#888;font-size:0.72rem">Not available — run Demucs in Step 2 to generate.</small>
             {/if}
@@ -1074,9 +1091,9 @@
   {/if}
 
 
-  {#if folderBusy}
-    <!-- Writing can't be stopped halfway: the folder appears when it is complete -->
-    <div class="modal-overlay"><div class="modal" role="alertdialog" aria-busy="true"><h3>Exporting the song folder</h3><p>{folderBusy.status}</p></div></div>
+  {#if exportBusy}
+    <!-- Writing can't be stopped halfway: the folder or file appears when it is complete -->
+    <div class="modal-overlay"><div class="modal" role="alertdialog" aria-busy="true"><h3>{exportBusy.title}</h3><p>{exportBusy.status}</p></div></div>
   {/if}
 
   {#if videoTransfer}
@@ -1639,6 +1656,9 @@
     text-decoration: underline;
   }
   .link-btn:hover { color: #79c0ff; }
+  .audio-format { flex-direction: row; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .audio-format label { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.85rem; }
+
   .asset-include {
     display: flex;
     align-items: center;

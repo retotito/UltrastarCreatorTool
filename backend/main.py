@@ -1402,25 +1402,6 @@ async def resume_specific_session(session_id: str):
     }))
 
 
-def _ensure_mp3_for_download(path: str) -> tuple[str, bool]:
-    """Return (path_to_serve, is_tmp) — converts non-MP3 to a temp MP3 on the fly.
-    Caller is responsible for deleting the tmp file when is_tmp=True."""
-    if path.lower().endswith(".mp3"):
-        return path, False
-    import tempfile as _tf
-    tmp = _tf.NamedTemporaryFile(suffix=".mp3", delete=False)
-    tmp.close()
-    result = subprocess.run(
-        ["ffmpeg", "-y", "-i", path, "-ar", "44100", "-ac", "2",
-         "-codec:a", "libmp3lame", "-q:a", "2", tmp.name],
-        capture_output=True, text=True, timeout=120
-    )
-    if result.returncode == 0 and os.path.getsize(tmp.name) > 0:
-        return tmp.name, True
-    os.unlink(tmp.name)
-    return path, False  # fallback: serve original if conversion failed
-
-
 def _normalize_audio_to_wav(file_path: str, orig_filename: str) -> tuple[str, str]:
     """Ensure audio file is a 44100 Hz stereo WAV. Converts in-place if needed.
     Storing as WAV avoids MP3 encoder-delay (~25ms) which causes timing drift between
@@ -1872,15 +1853,19 @@ def _stored_txt(session: dict) -> Optional[str]:
         return f.read()
 
 
-def _download_txt(session: dict, include_vocals: bool, include_instrumental: bool, include_video: bool) -> Optional[str]:
-    """The .txt as the user gets it, in the ZIP and as a single file: the asset headers up to date, in USDB's format."""
+def _download_txt(session: dict, include_vocals: bool, include_instrumental: bool, include_video: bool,
+                  audio_format: str = "mp3") -> Optional[str]:
+    """The .txt as the user gets it, in the ZIP and as a single file: the asset headers up to date, in USDB's format,
+    naming the audio files in the export's format (services/audio_export.py)."""
+    from services.audio_export import audio_ext
     from services.ultrastar import format_for_download
     content = _stored_txt(session)
     if content is None:
         return None
     # A downloaded video that stays behind isn't named; a file name the user typed is theirs
     return format_for_download(content, include_vocals, include_instrumental,
-                               include_video=include_video or not _video_file(session))
+                               include_video=include_video or not _video_file(session),
+                               audio_ext=audio_ext(audio_format))
 
 
 def _attachment_header(name: str) -> str:
@@ -1897,16 +1882,23 @@ def _song_base(session: dict) -> str:
     return _safe_filename(f"{artist} - {title}" if artist and title else title or artist or "Untitled Song")
 
 
-def _export_files(session: dict, include: dict) -> tuple:
+def _export_files(session: dict, include: dict, audio_format: str = "mp3") -> tuple:
     """What a song's export holds: (kind, name, content or path) for the ZIP, the song folder and single saves, and the
     temporary files to remove afterwards. `include` has what the user ticked; the chart, full mix, cover and background
-    always go."""
+    always go. The audio files are in `audio_format` ("mp3" or "ogg"). Raises AudioEncodeError (an ExportTargetError) if
+    an Ogg file can't be made; the temporary files made until then are removed."""
+    from services.audio_export import audio_for_export
     result = session.get("result") or {}
     base = _song_base(session)
     files, temps = [], []
 
     def mp3(path):
-        serve, is_temp = _ensure_mp3_for_download(path)
+        try:
+            serve, is_temp = audio_for_export(path, audio_format, _ffmpeg_path())
+        except Exception:
+            for temp in temps:
+                _safe_unlink(temp)
+            raise
         if is_temp:
             temps.append(serve)
         return serve, os.path.splitext(serve)[1]
@@ -1919,7 +1911,7 @@ def _export_files(session: dict, include: dict) -> tuple:
         return path if path and os.path.exists(path) else None
 
     content = _download_txt(session, include.get("vocals", True), include.get("instrumental", True),
-                            include.get("video", True))
+                            include.get("video", True), audio_format)
     if content is not None:
         files.append(("txt", f"{base}.txt", content.encode("utf-8")))
     midi = downloaded(result.get("midi_file"))
@@ -1995,7 +1987,8 @@ async def export_to_folder(session_id: str, request: Request):
     body = await request.json()
 
     def work():
-        files, temps = _export_files(session, {k: bool(v) for k, v in (body.get("include") or {}).items()})
+        files, temps = _export_files(session, {k: bool(v) for k, v in (body.get("include") or {}).items()},
+                                     str(body.get("audio_format") or "mp3"))
         try:
             return export_folder(str(body.get("folder") or "") or os.path.expanduser(os.path.join("~", "Downloads")),
                                  _song_base(session),
@@ -2034,7 +2027,8 @@ async def export_to_file(session_id: str, request: Request):
                 raise HTTPException(status_code=404, detail="File not found on disk")
             return export_file(str(body.get("path") or ""),
                                format_for_usdb(stored, _video_id(session.get("youtube_url") or "")).encode("utf-8"))
-        files, temps = _export_files(session, {k: bool(v) for k, v in (body.get("include") or {}).items()})
+        files, temps = _export_files(session, {k: bool(v) for k, v in (body.get("include") or {}).items()},
+                                     str(body.get("audio_format") or "mp3"))
         try:
             if kind == "zip":
                 zip_path = _write_zip(files)
@@ -2053,6 +2047,34 @@ async def export_to_file(session_id: str, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
     log_step("EXPORT", f"Session {session_id}: {kind} saved as {path}")
     return {"status": "ok", "path": path}
+
+
+@app.get("/api/export-audio/{session_id}/{kind}")
+async def export_audio_download(session_id: str, kind: str, audio_format: str = "mp3"):
+    """One audio file of the song as a download, in the export's format: the browser's single saves (the app saves
+    through /api/export-file). `kind`: original, vocals, edited, instrumental."""
+    import asyncio
+    from starlette.background import BackgroundTask
+    from services.song_export import ExportTargetError
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if kind not in ("original", "vocals", "edited", "instrumental"):
+        raise HTTPException(status_code=404, detail=f"No {kind} file")
+    try:
+        include = {k: k == kind for k in ("vocals", "edited", "instrumental", "summary", "midi", "video")}
+        files, temps = await asyncio.to_thread(_export_files, session, include, audio_format)
+    except ExportTargetError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    found = next(((name, source) for k, name, source in files if k == kind), None)
+    for temp in temps:
+        if not found or temp != found[1]:
+            _safe_unlink(temp)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"No {kind} file")
+    name, source = found
+    return FileResponse(source, headers={"Content-Disposition": _attachment_header(name)},
+                        background=BackgroundTask(_safe_unlink, source) if source in temps else None)
 
 
 def _video_file(session: dict) -> Optional[str]:
@@ -5713,6 +5735,7 @@ async def download_file(
     include_vocals: str = "1",
     include_instrumental: str = "1",
     include_video: str = "1",
+    audio_format: str = "mp3",
 ):
     """Download a generated file."""
     session = sessions.get(session_id)
@@ -5748,7 +5771,8 @@ async def download_file(
         raise HTTPException(status_code=404, detail="File not found on disk")
 
     if file_type == "txt":
-        content = _download_txt(session, include_vocals == "1", include_instrumental == "1", include_video == "1")
+        content = _download_txt(session, include_vocals == "1", include_instrumental == "1", include_video == "1",
+                                audio_format)
         if content is None:
             raise HTTPException(status_code=404, detail="File not found on disk")
         base = _song_base(session)
@@ -6139,6 +6163,7 @@ async def download_zip(
     include_summary: str = "1",
     include_midi: str = "1",
     include_video: str = "0",
+    audio_format: str = "mp3",
 ):
     """Bundle all generated files into a single ZIP download."""
     from starlette.background import BackgroundTask
@@ -6156,7 +6181,7 @@ async def download_zip(
         "vocals": include_vocals == "1", "edited": include_edited_vocals == "1",
         "instrumental": include_instrumental == "1", "summary": include_summary == "1", "midi": include_midi == "1",
         "video": include_video == "1",
-    })
+    }, audio_format)
     zip_path = _write_zip(files)
     for temp in temps:
         _safe_unlink(temp)

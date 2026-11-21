@@ -45,6 +45,18 @@ def test_line_breaks_are_yass_style(downloaded):
 def test_audio_headers_point_to_mp3(downloaded):
     assert "#MP3:A - T.mp3" in lines(downloaded)
     assert "#VOCALS:A - T [Vocals].mp3" in lines(downloaded)
+    assert "#INSTRUMENTAL:A - T [Instrumental].mp3" in lines(downloaded)
+
+
+def test_audio_headers_point_to_ogg_for_an_ogg_export():
+    content = lines(format_for_download(STORED, audio_ext=".ogg"))
+    assert "#MP3:A - T.ogg" in content
+    assert "#VOCALS:A - T [Vocals].ogg" in content
+    assert "#INSTRUMENTAL:A - T [Instrumental].ogg" in content
+
+
+def test_usdb_file_keeps_mp3():
+    assert "#MP3:A - T.mp3" in lines(format_for_usdb(STORED, ""))
 
 
 def test_unknown_and_duplicate_headers_are_dropped(downloaded):

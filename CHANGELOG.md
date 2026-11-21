@@ -2,6 +2,17 @@
 
 All notable changes to Ultrastar Creator Tool. Newest first.
 
+## Unreleased
+
+### 🎵 OGG export
+- The export page has an **Audio format** choice: MP3 or OGG (Ogg Vorbis, which UltraStar Play and Melody Mania
+  recommend). The song folder, the ZIP and single saves use it, and the `.txt` names the `.ogg` files. Remembered for all
+  songs; MP3 stays the default
+
+### ⚠ Warnings for probable mistakes
+- Hovering a marked note says why it is marked; hovering the red dot explains it: no space after the syllable, the word
+  continues in the next note
+
 ## 5.0.0 (2026-11-06)
 
 ### ❓ Help

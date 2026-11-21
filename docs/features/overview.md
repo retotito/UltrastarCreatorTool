@@ -69,6 +69,7 @@ What the app can do, in full. The short version is in the [README](../../README.
 - **Song Assets** — attach a cover image (480×480), background image (1920×1080), and video filename to the song; both images go through an interactive **crop tool** (pan + zoom) before upload
 - **Asset headers** — `#COVER`, `#BACKGROUND`, `#VIDEO`, `#VIDEOGAP` are written into the Ultrastar `.txt` automatically whenever an asset is saved
 - **Export to folder** — choose a location; the app writes `Artist - Title/` with the `.txt`, audio, images and the extras you ticked, ready for a game
+- **Audio format** — MP3 (plays in every game) or OGG (Ogg Vorbis, recommended by UltraStar Play and Melody Mania) for the full mix, vocals and instrumental; the `.txt`'s `#MP3`, `#VOCALS` and `#INSTRUMENTAL` name the chosen files. The choice is remembered; the USDB `.txt` always says `.mp3`
 - **USDB `.txt`** — for uploading to [USDB](https://usdb.animux.de): Windows line endings, `#VIDEO:v=<YouTube id>`, pitches relative to C4
 - **Video** — download the song's YouTube video (up to 1080p), on its own or in the song folder
 - **ZIP** — the same files as the folder, in one file to pass on

@@ -124,11 +124,11 @@ def _clean_note_lines(content: str) -> str:
 
 
 def format_for_download(content: str, include_vocals: bool = True, include_instrumental: bool = True,
-                        include_video: bool = True) -> str:
+                        include_video: bool = True, audio_ext: str = ".mp3") -> str:
     """Turn a stored .txt into the file the user downloads, as the UltraStar format and USDB's charts have it.
 
     - YASS-style line breaks (``- 12 14`` → ``- 12``)
-    - ``#MP3`` / ``#VOCALS`` always point to ``.mp3``
+    - ``#MP3`` / ``#VOCALS`` / ``#INSTRUMENTAL`` point to the exported audio's extension (``audio_ext``, ``.mp3`` or ``.ogg``)
     - apostrophes in note lines normalised to ``’`` (U+2019)
     - note texts cleaned (`clean_syllable`), no `-` from older versions (`strip_added_hyphens`)
     - pitches relative to C4 = 0 (the app works in MIDI numbers)
@@ -137,10 +137,9 @@ def format_for_download(content: str, include_vocals: bool = True, include_instr
     content = re.sub(r'\r\n?', '\n', content)
     content = re.sub(r'^(- \d+) \d+$', r'\1', content, flags=re.MULTILINE)
 
-    def _force_mp3_ext(m):
-        return m.group(1) + re.sub(r'\.[^.]+$', '.mp3', m.group(2))
-    content = re.sub(r'^(#MP3:)(.+)$', _force_mp3_ext, content, flags=re.MULTILINE)
-    content = re.sub(r'^(#VOCALS:)(.+)$', _force_mp3_ext, content, flags=re.MULTILINE)
+    def _force_audio_ext(m):
+        return m.group(1) + re.sub(r'\.[^.]+$', audio_ext, m.group(2))
+    content = re.sub(r'^(#(?:MP3|VOCALS|INSTRUMENTAL):)(.+)$', _force_audio_ext, content, flags=re.MULTILINE)
 
     def _fix_apostrophes(m):
         return re.sub(r"['`´ʼ‘‚]", "’", m.group(0))

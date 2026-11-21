@@ -175,14 +175,14 @@ export function getDownloadVideoUrl(sessionId) {
 }
 
 /** Write the song as a folder "Artist - Title" inside `folder`. Fails with "API error 409" if it exists and !replace. */
-export async function exportToFolder(sessionId, folder, include, replace = false) {
-  return request('POST', `/export-folder/${sessionId}`, { folder, include, replace });
+export async function exportToFolder(sessionId, folder, include, replace = false, audioFormat = 'mp3') {
+  return request('POST', `/export-folder/${sessionId}`, { folder, include, replace, audio_format: audioFormat });
 }
 
 /** Save one file of the song at `path`. `kind`: txt, usdb, midi, summary, vocals, edited, instrumental, original, cover,
- * background, video, zip. */
-export async function exportToFile(sessionId, kind, path, include = {}) {
-  return request('POST', `/export-file/${sessionId}`, { kind, path, include });
+ * background, video, zip. Audio files and the .txt's audio names are in `audioFormat`: 'mp3' or 'ogg'. */
+export async function exportToFile(sessionId, kind, path, include = {}, audioFormat = 'mp3') {
+  return request('POST', `/export-file/${sessionId}`, { kind, path, include, audio_format: audioFormat });
 }
 
 export async function uploadCorrectedVocals(sessionId, file, signal = null) {
@@ -199,6 +199,12 @@ export async function uploadMixAudio(sessionId, file, signal = null) {
 
 export async function deleteAudio(sessionId, type) {
   return request('DELETE', `/delete-audio/${sessionId}/${type}`);
+}
+
+/** One audio file of the song as a download in the export's format (`audioFormat`: 'mp3' or 'ogg'). `kind`: original,
+ * vocals, edited, instrumental. */
+export function getExportAudioUrl(sessionId, kind, audioFormat = 'mp3') {
+  return `${BASE}/export-audio/${sessionId}/${kind}?audio_format=${encodeURIComponent(audioFormat)}`;
 }
 
 export function getAudioUrl(sessionId, type) {
