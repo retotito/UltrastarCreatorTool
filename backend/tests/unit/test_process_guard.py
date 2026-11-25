@@ -3,7 +3,7 @@
 import io
 import threading
 
-from utils.process_guard import PipeSafeStream, watch_parent
+from utils.process_guard import PipeSafeStream, use_utf8, watch_parent
 
 
 class DeadPipe(io.StringIO):
@@ -24,6 +24,26 @@ def test_writes_pass_through_while_the_pipe_is_alive():
     target = io.StringIO()
     PipeSafeStream(target).write("hello")
     assert target.getvalue() == "hello"
+
+
+def test_a_windows_pipe_writes_utf8_after_use_utf8():
+    raw = io.BytesIO()
+    pipe = io.TextIOWrapper(raw, encoding="cp1252", newline="\n")   # what Windows gives a piped backend
+    use_utf8(pipe)
+    PipeSafeStream(pipe).write("[UPLOAD] Tarde (Sin Daños) → Tarde.wav 😀\n")
+    pipe.flush()
+    assert raw.getvalue().decode("utf-8") == "[UPLOAD] Tarde (Sin Daños) → Tarde.wav 😀\n"
+
+
+def test_without_it_the_line_was_lost():
+    raw = io.BytesIO()
+    pipe = io.TextIOWrapper(raw, encoding="cp1252")
+    assert PipeSafeStream(pipe).write("[UPLOAD] a → b\n") == 0   # the encode error was swallowed
+
+
+def test_use_utf8_leaves_streams_it_cannot_change():
+    use_utf8(None)
+    use_utf8(io.StringIO())
 
 
 def test_watchdog_fires_when_the_parent_changes():

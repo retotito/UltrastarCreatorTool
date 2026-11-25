@@ -16,6 +16,29 @@ impl Drop for BackendProcess {
     }
 }
 
+/// Copy the backend's output into the log, line by line. A line that isn't UTF-8 is written with "�" for the bytes
+/// it can't read: `lines()` stopped at the first such line, and the log stayed empty from there on (Windows, ñ).
+fn copy_log_lines(source: impl std::io::Read, mut log: Option<std::fs::File>) {
+    use std::io::{BufRead, BufReader, Write};
+    let mut reader = BufReader::new(source);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {
+                let line = String::from_utf8_lossy(&buf);
+                let line = line.trim_end_matches(['\r', '\n']);
+                eprintln!("[backend] {}", line);
+                if let Some(ref mut f) = log {
+                    let _ = writeln!(f, "{}", line);
+                    let _ = f.flush();
+                }
+            }
+        }
+    }
+}
+
 fn stop_backend_now(app: &tauri::AppHandle) {
     // Kill the managed backend child process
     if let Ok(mut guard) = app.state::<BackendProcess>().0.lock() {
@@ -97,6 +120,8 @@ fn main() {
                 // The backend reports this in /api/health; the start screen compares it with the app's own
                 // version, so a backend left over from an older version is noticed.
                 cmd.env("ULTRASTAR_APP_VERSION", app.package_info().version.to_string());
+                // Output as UTF-8 on Windows too (the backend also sets it itself, utils/process_guard.py)
+                cmd.env("PYTHONIOENCODING", "utf-8:replace");
                 cmd.stdout(std::process::Stdio::piped())
                    .stderr(std::process::Stdio::piped());
                 #[cfg(target_os = "windows")]
@@ -110,7 +135,7 @@ fn main() {
                 let log_path_clone = log_path.clone();
 
                 std::thread::spawn(move || {
-                    use std::io::{BufRead, BufReader, Write};
+                    use std::io::Write;
                     let mut log_file = std::fs::OpenOptions::new()
                         .create(true).append(true).open(&log_path_clone)
                         .ok();
@@ -122,31 +147,16 @@ fn main() {
                         let _ = writeln!(f, "\n--- sidecar start (t={ts}) ---");
                     }
 
-                    // Merge stdout and stderr via a simple approach: read stderr on another thread
+                    // stderr on its own thread, stdout on this one
                     if let Some(err) = stderr {
-                        let log_path_err = log_path_clone.clone();
-                        std::thread::spawn(move || {
-                            let mut log_err = std::fs::OpenOptions::new()
-                                .create(true).append(true).open(&log_path_err)
-                                .ok();
-                            for line in BufReader::new(err).lines().map_while(Result::ok) {
-                                eprint!("[backend] {}\n", line);
-                                if let Some(ref mut f) = log_err {
-                                    let _ = writeln!(f, "{}", line);
-                                    let _ = f.flush();
-                                }
-                            }
-                        });
+                        let log_err = std::fs::OpenOptions::new()
+                            .create(true).append(true).open(&log_path_clone)
+                            .ok();
+                        std::thread::spawn(move || copy_log_lines(err, log_err));
                     }
 
                     if let Some(out) = stdout {
-                        for line in BufReader::new(out).lines().map_while(Result::ok) {
-                            eprint!("[backend] {}\n", line);
-                            if let Some(ref mut f) = log_file {
-                                let _ = writeln!(f, "{}", line);
-                                let _ = f.flush();
-                            }
-                        }
+                        copy_log_lines(out, log_file);
                     }
                 });
 
@@ -164,3 +174,20 @@ fn main() {
         .expect("error while running tauri application");
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::copy_log_lines;
+
+    #[test]
+    fn a_line_that_is_not_utf8_does_not_stop_the_log() {
+        let path = std::env::temp_dir().join(format!("copy_log_lines_{}.log", std::process::id()));
+        let file = std::fs::File::create(&path).unwrap();
+        // "Daños" in cp1252 (ñ = 0xF1, not UTF-8), then a normal line with "→"
+        let output: &[u8] = b"[UPLOAD] Tarde (Sin Da\xf1os)\r\n[ALIGN] a \xe2\x86\x92 b\n";
+        copy_log_lines(output, Some(file));
+        let log = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(log, "[UPLOAD] Tarde (Sin Da\u{FFFD}os)\n[ALIGN] a \u{2192} b\n");
+    }
+}

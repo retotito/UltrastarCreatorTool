@@ -49,7 +49,19 @@ class PipeSafeStream:
         return getattr(self._s, name)
 
 
+def use_utf8(stream) -> None:
+    """Write `stream` as UTF-8, characters it can't take as "?". On Windows a pipe gets the old code page (cp1252):
+    a line with "→" failed to encode (and PipeSafeStream dropped it), one with "ñ" reached the app as a byte that isn't
+    UTF-8, and the app's log reader stopped there. So the log had almost nothing on Windows."""
+    try:
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass   # not a text stream that can change (None in a windowed build, or already wrapped)
+
+
 def make_streams_pipe_safe() -> None:
+    use_utf8(sys.stdout)
+    use_utf8(sys.stderr)
     sys.stdout = PipeSafeStream(sys.stdout)
     sys.stderr = PipeSafeStream(sys.stderr)
 

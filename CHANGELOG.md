@@ -9,6 +9,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
   recommend). The song folder, the ZIP and single saves use it, and the `.txt` names the `.ogg` files. Remembered for all
   songs; MP3 stays the default
 
+### 🪟 Windows
+- The log (`backend.log`) records everything again: on Windows it lost every line with a "→" and stopped completely at
+  the first song name with ñ, á or other special characters
+
 ### ⚠ Warnings for probable mistakes
 - Hovering a marked note says why it is marked; hovering the red dot explains it: no space after the syllable, the word
   continues in the next note
