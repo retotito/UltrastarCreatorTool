@@ -14,6 +14,7 @@
   import SelectAllModal from './SelectAllModal.svelte';
   import { chartProblems, describeProblems, PROBLEM_TEXT, problemTextOf } from '../lib/chartChecks.js';
   import * as duet from '../lib/duet.js';
+  import { regridNotes, requantize, syncTimings } from '../lib/regrid.js';
   import { medianPitch, groupPitchFrames, mergePlaceholderNotes, trimPlaceholdersAgainstNotes, buildPitchSplitGroups, splitPlaceholderNotesByPitchRuns } from '../lib/pitchUtils.js';
   import { createAutoBackup, getStoredIntervalMin, getStoredAutoEnabled } from '../lib/autoBackup.js';
   import BackupModal from './BackupModal.svelte';
@@ -334,29 +335,11 @@
 
     // 1. GAP stays fixed — it is beat 0, the grid origin. No snapping needed.
 
-    // 2 & 3. Notes and Breaks — proportional beat scaling: newBeat = round(oldBeat * newBpm / oldBpm)
+    // 2 & 3. Notes and Breaks — kept at their moments in the song (lib/regrid.js regridNotes).
     // Only when rawTimings absent; otherwise requantizeFromMs handles notes/breaks.
     if (!rawTimings || rawTimings.length === 0) {
       const oldGapMs = Number.isFinite(previousTimingRef?.gapMs) ? Number(previousTimingRef.gapMs) : gapMs;
-      notes = notes.map(n => {
-        if (n.type === 'break') {
-          // Preserve audio position: convert to ms using old grid, then back to beats with new grid
-          const startMs = oldGapMs + n.startBeat * 15000 / oldBpm;
-          const newBeat    = snapBeatValue(Math.round((startMs - gapMs) * bpm / 15000));
-          const newEndBeat = n.endBeat != null
-            ? (() => {
-                const endMs = oldGapMs + n.endBeat * 15000 / oldBpm;
-                return Math.max(newBeat + 1, snapBeatValue(Math.round((endMs - gapMs) * bpm / 15000)));
-              })()
-            : null;
-          return { ...n, startBeat: newBeat, endBeat: newEndBeat };
-        }
-        const startMs    = oldGapMs + n.startBeat * 15000 / oldBpm;
-        const newStart    = snapBeatValue(Math.round((startMs - gapMs) * bpm / 15000));
-        // Duration: scale by BPM ratio (GAP doesn't affect duration in beats)
-        const newDuration = Math.max(1, Math.round(n.duration * bpm / oldBpm));
-        return { ...n, startBeat: newStart, duration: newDuration };
-      }).sort((a, b) => a.startBeat - b.startBeat);
+      notes = regridNotes(notes, { bpm: oldBpm, gapMs: oldGapMs }, { bpm, gapMs }, snapBeatValue);
     }
 
     // 4. Flags — source of truth is flag.timeMs (audio position); recalc beat from ms
@@ -1821,177 +1804,17 @@
   // ──── BPM Re-quantization ────────────────────
   // Rebuild notes from raw ms timings using the current bpm/gapMs,
   // preserving pitches from the original Ultrastar parse.
+  /** Notes and breaks onto the new BPM/GAP grid from the rawTimings, kept at their moments in the song
+   * (lib/regrid.js). Without rawTimings, resyncAllToGrid moves them. */
   function requantizeFromMs(bpmActuallyChanged = false, previousTimingRef = null) {
-    if (!rawTimings || rawTimings.length === 0) {
-      console.log('[Requantize] No rawTimings, skipping — breaks keep existing timeMs');
-      return;
-    }
-
-    const currentNotes = notes.filter(n => n.type !== 'break');
-
-    // If notes have been added/split beyond rawTimings count, we cannot safely rebuild
-    // from rawTimings (it would discard user-added notes and misalign syllables).
-    // Instead, directly scale all beat positions proportionally.
-    // This applies to both BPM changes AND GAP-only changes when note counts differ.
-    // A duet always scales: rebuilding would lose the singers and push overlapping singers' notes apart.
-    if (currentNotes.length !== rawTimings.length || duet.isDuetChart(notes)) {
-      const prevBpm = Math.max(1, Number(previousTimingRef?.bpm) || bpm);
-      if (bpmActuallyChanged) {
-        // BPM change: scale beats proportionally
-        notes = notes.map(n => {
-          const newStartBeat = Math.round(n.startBeat * bpm / prevBpm);
-          const newDuration = n.type === 'break' ? n.duration : Math.max(1, Math.round((n.duration ?? 1) * bpm / prevBpm));
-          const newEndBeat = n.endBeat == null ? null : Math.round(n.endBeat * bpm / prevBpm);
-          return { ...n, startBeat: newStartBeat, duration: newDuration, endBeat: newEndBeat };
-        });
-      } else {
-        // GAP-only change: preserve absolute audio positions by converting via old GAP
-        const prevGapMs = Number.isFinite(previousTimingRef?.gapMs) ? Number(previousTimingRef.gapMs) : gapMs;
-        notes = notes.map(n => {
-          if (n.type === 'break') {
-            const startMs = prevGapMs + n.startBeat * 15000 / prevBpm;
-            const newStart = Math.round((startMs - gapMs) * bpm / 15000);
-            const newEnd = n.endBeat == null ? null : Math.max(newStart + 1, Math.round(((prevGapMs + n.endBeat * 15000 / prevBpm) - gapMs) * bpm / 15000));
-            return { ...n, startBeat: newStart, endBeat: newEnd };
-          }
-          const startMs = prevGapMs + n.startBeat * 15000 / prevBpm;
-          const newStart = Math.round((startMs - gapMs) * bpm / 15000);
-          return { ...n, startBeat: newStart };
-        });
-      }
-      // Sync rawTimings to the new beat positions so subsequent changes stay accurate
-      syncRawTimingsFromNotes();
-      updatePitchRange();
-      computeTotalBeats();
-      draw();
-      return;
-    }
-
-    console.log(`[Requantize] bpm=${bpm} gap=${gapMs}ms, ${rawTimings.length} timings`);
-
-    // Preserve user edits (syllable, pitch) by capturing current note values indexed by rawTimings position.
-    // Notes and rawTimings are in the same order (one note per timing entry), so we match by index.
-    const userEdits = {}; // index in rawTimings → { syllable, pitch, isRap, isGolden, isFreestyle }
-    let noteIdx = 0;
-    for (let i = 0; i < rawTimings.length; i++) {
-      if (noteIdx < currentNotes.length) {
-        const cn = currentNotes[noteIdx];
-        userEdits[i] = { syllable: cn.syllable, pitch: cn.pitch, isRap: cn.isRap, isGolden: cn.isGolden, isFreestyle: cn.isFreestyle };
-        noteIdx++;
-      }
-    }
-
-    const gapSec = gapMs / 1000;
-    // Preserve existing break placements by anchoring them to the previous timing
-    // reference (old GAP/BPM), then mapping them into the current grid.
-    const prevBpm = Math.max(1, Number(previousTimingRef?.bpm) || bpm);
-    const prevGapSec = (Number.isFinite(previousTimingRef?.gapMs)
-      ? Number(previousTimingRef.gapMs)
-      : gapMs) / 1000;
-    const preservedBreaks = notes
-      .filter(n => n.type === 'break')
-      .map(n => {
-        const startBeat = Number(n.startBeat) || 0;
-        const endBeat = n.endBeat == null ? null : Number(n.endBeat);
-        return {
-          startSec: prevGapSec + (startBeat * 15) / prevBpm,
-          endSec: endBeat == null ? null : prevGapSec + (endBeat * 15) / prevBpm,
-        };
-      });
-    const preserveExistingBreaks = preservedBreaks.length > 0;
-
-    let id = 0;
-    let prevLineIndex = null;
-    let lastEndBeat = 0;
-    const newNotes = [];
-
-    for (let i = 0; i < rawTimings.length; i++) {
-      const timing = rawTimings[i];
-      const startSec = timing.start;
-      const endSec = timing.end;
-      const lineIndex = timing.line_index ?? 0;
-
-      // Insert break between phrases only when there are no existing break edits to preserve.
-      if (!preserveExistingBreaks && prevLineIndex !== null && lineIndex !== prevLineIndex) {
-        const breakStart = lastEndBeat + 2;
-        const nextStartBeat = Math.round(((startSec - gapSec) * bpm) / 15);
-        const breakEnd = Math.max(breakStart + 1, nextStartBeat - 2);
-        if (breakEnd > breakStart) {
-          newNotes.push({ id: id++, type: 'break', startBeat: breakStart, endBeat: breakEnd,
-            timeMs: beatToTime(breakStart) * 1000, endTimeMs: beatToTime(breakEnd) * 1000 });
-        } else {
-          newNotes.push({ id: id++, type: 'break', startBeat: breakStart, endBeat: null,
-            timeMs: beatToTime(breakStart) * 1000, endTimeMs: null });
-        }
-      }
-
-      // Use stored beat positions for direct proportional scaling (single Math.round, no drift).
-      // Only use this path on actual BPM changes; for GAP-only changes use seconds so notes
-      // stay at their absolute audio positions.
-      let startBeat, duration;
-      if (bpmActuallyChanged && timing.syncedBpm != null && timing.beatAtBpm != null) {
-        startBeat = Math.round(timing.beatAtBpm * bpm / timing.syncedBpm);
-        duration  = Math.max(1, Math.round(timing.durationAtBpm * bpm / timing.syncedBpm));
-      } else {
-        startBeat = Math.round(((timing.start - gapSec) * bpm) / 15);
-        const endBeat = Math.max(startBeat + 1, Math.round(((timing.end - gapSec) * bpm) / 15));
-        duration  = Math.max(1, endBeat - startBeat);
-      }
-      let endBeat = startBeat + duration;
-
-      // Prevent overlap with previous note
-      if (startBeat < lastEndBeat && newNotes.some(n => n.type !== 'break')) {
-        startBeat = lastEndBeat + 1;
-        endBeat = Math.max(startBeat + 1, endBeat);
-        duration = endBeat - startBeat;
-      }
-
-      // Use user-edited syllable/pitch if available, otherwise fall back to rawTimings/pitchMap
-      const editedSyllable = userEdits[i]?.syllable ?? timing.syllable;
-      const editedPitch    = userEdits[i]?.pitch    ?? pitchMap[i] ?? 60;
-      const editedIsRap    = userEdits[i]?.isRap    ?? timing.is_rap ?? false;
-
-      newNotes.push({
-        id: id++,
-        startBeat,
-        duration,
-        pitch: editedPitch,
-        syllable: editedSyllable,
-        isRap: editedIsRap,
-        isGolden: userEdits[i]?.isGolden || false,
-        isFreestyle: userEdits[i]?.isFreestyle || false,
-        confidence: timing.confidence ?? 1.0,
-        original: { startBeat, duration, pitch: editedPitch },
-      });
-
-      lastEndBeat = startBeat + duration;
-      prevLineIndex = lineIndex;
-    }
-
-    if (preserveExistingBreaks) {
-      for (const b of preservedBreaks) {
-        const startBeat = snapBeatValue(Math.round(((b.startSec - gapSec) * bpm) / 15));
-        let endBeat = null;
-        if (b.endSec !== null) {
-          endBeat = Math.max(startBeat + 1, snapBeatValue(Math.round(((b.endSec - gapSec) * bpm) / 15)));
-        }
-        newNotes.push({ id: id++, type: 'break', startBeat, endBeat,
-          timeMs: b.startSec * 1000,
-          endTimeMs: b.endSec != null ? b.endSec * 1000 : null });
-      }
-    }
-
-    notes = newNotes.sort((a, b) => {
-      const byBeat = (a.startBeat ?? 0) - (b.startBeat ?? 0);
-      if (byBeat !== 0) return byBeat;
-      const aBreak = a.type === 'break' ? 0 : 1;
-      const bBreak = b.type === 'break' ? 0 : 1;
-      if (aBreak !== bBreak) return aBreak - bBreak;
-      return (a.id ?? 0) - (b.id ?? 0);
+    if (!rawTimings || rawTimings.length === 0) return;
+    const from = { bpm: Math.max(1, Number(previousTimingRef?.bpm) || bpm),
+                   gapMs: Number.isFinite(previousTimingRef?.gapMs) ? Number(previousTimingRef.gapMs) : gapMs };
+    const result = requantize(notes, rawTimings, from, { bpm, gapMs }, {
+      bpmChanged: bpmActuallyChanged, isDuet: duet.isDuetChart(notes), pitchMap, snap: snapBeatValue,
     });
-    console.log(`[Requantize] Built ${newNotes.filter(n => n.type !== 'break').length} notes, ${newNotes.filter(n => n.type === 'break').length} breaks`);
-    // Keep rawTimings in sync so the next BPM change requantizes from these beat positions
-    syncRawTimingsFromNotes();
+    notes = result.notes;
+    rawTimings = result.rawTimings;
     updatePitchRange();
     computeTotalBeats();
     draw();
@@ -4452,17 +4275,7 @@
    *  so that a subsequent BPM change will requantize from the user's adjusted positions. */
   function syncRawTimingsFromNotes() {
     if (!rawTimings || rawTimings.length === 0) return;
-    const gapSec = gapMs / 1000;
-    const nonBreakNotes = notes.filter(n => n.type !== 'break');
-    for (let i = 0; i < rawTimings.length && i < nonBreakNotes.length; i++) {
-      const note = nonBreakNotes[i];
-      rawTimings[i].start = gapSec + (note.startBeat * 15) / bpm;
-      rawTimings[i].end   = gapSec + ((note.startBeat + note.duration) * 15) / bpm;
-      // Also store beat positions + BPM so requantize can scale directly (avoids double-rounding)
-      rawTimings[i].beatAtBpm       = note.startBeat;
-      rawTimings[i].durationAtBpm   = note.duration;
-      rawTimings[i].syncedBpm       = bpm;
-    }
+    rawTimings = syncTimings(rawTimings, notes, { bpm, gapMs });
   }
 
   function handleMouseUp() {

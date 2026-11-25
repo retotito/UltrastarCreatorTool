@@ -13,6 +13,10 @@ All notable changes to Ultrastar Creator Tool. Newest first.
 - The log (`backend.log`) records everything again: on Windows it lost every line with a "→" and stopped completely at
   the first song name with ñ, á or other special characters
 
+### 🎼 BPM and GAP changes
+- Notes moved with the arrow keys (also all notes with Ctrl+A), pasted or changed by a tool no longer jump back when
+  BPM or GAP is changed afterwards. Before, only notes moved with the mouse stayed where they were put
+
 ### ⚠ Warnings for probable mistakes
 - Hovering a marked note says why it is marked; hovering the red dot explains it: no space after the syllable, the word
   continues in the next note

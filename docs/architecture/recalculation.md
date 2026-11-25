@@ -1,10 +1,14 @@
 # BPM / GAP Change — Recalculation Rules
 
-> **Status:** Current · **Last updated:** 2026-10-27
+> **Status:** Current · **Last updated:** 2026-11-25
 
 ---
 
 ## Test Checklist
+
+Notes and breaks are recalculated in `frontend/src/lib/regrid.js` (`requantize`, `regridNotes`, `syncTimings`),
+tested by `regrid.test.js` (`npm test`): GAP and BPM changes keep every note at its moment, many changes back and forth
+don't drift, edits, added notes and duets survive. The items below were checked by hand before that.
 
 - [x] **BPM change** — notes/breaks proportional scale (verified with 218-note song)
 - [x] **BPM change** — flags recalc from `timeMs`
@@ -19,6 +23,9 @@
 - [x] **GAP/BPM change without rawTimings** — now handled correctly: note audio positions are preserved via ms conversion (`startMs = oldGap + oldBeat×15000/oldBpm`, `newBeat = (startMs - newGap)×newBpm/15000`). Previously the old proportional-only formula was a no-op for GAP-only changes (bpm unchanged → newBeat = oldBeat). Fixed in `resyncAllToGrid`.
 - [x] **Diamond drag** — GAP snaps to nearest grid beat (≤ ½ beat), flags recalc from timeMs, downbeat anchor recalcs with new gapMs, metronome grid uses corrected anchor (`gap-snap` db1 ≠ drag db1)
 - [x] **Diamond drag GAP snap** — implemented and verified: GAP snaps ≤ ½ beat, flags/anchor recalc with new gapMs
+- [x] **Notes moved without the mouse, then BPM/GAP change** — the moves stay (automated test). Before 2026-11-25 the
+  `rawTimings` were only updated after a mouse drag: notes moved with the arrow keys, pasted or changed by a tool jumped
+  back on the next BPM or GAP change. `requantize` now first syncs the `rawTimings` with the notes on the old grid.
 
 ---
 
@@ -109,8 +116,8 @@ Called after every BPM or GAP change.
 
 ```
 1. GAP                 → unchanged (it is beat 0, the grid origin)
-2. Scale notes         → snapToGrid(round(oldBeat × newBpm / oldBpm))
-3. Scale breaks        → same formula as notes
+2. Move notes          → snapToGrid(round((oldGap + oldBeat × 15000/oldBpm − newGap) × newBpm/15000)), regridNotes
+3. Move breaks         → same formula as notes
 4. Recalc flags        → msToBeat(flag.timeMs) via normalizeFlag()
 5. Recalc downbeat     → (downbeatOffsetMs - gapMs) × newBpm / 15000
 6. Scale metro anchor  → oldBeat × newBpm / oldBpm
@@ -119,7 +126,8 @@ Called after every BPM or GAP change.
 Steps 2 and 3 only run when `rawTimings` is absent (txt-loaded songs).
 When `rawTimings` is present, `requantizeFromMs` handles notes/breaks instead.
 
-`requantizeFromMs` rebuilds the notes from `rawTimings` only when there is one note per timing; otherwise it scales
+`requantizeFromMs` (via `requantize` in `lib/regrid.js`) first brings `rawTimings` up to date with the notes as they
+are on the old grid, so every edit counts, not only mouse drags. It rebuilds the notes from `rawTimings` only when there is one note per timing; otherwise it scales
 the notes and breaks it has (all their fields kept). A **duet always scales**: a rebuild would lose each note's
 `singer` and its overlap guard would push apart notes the two singers sing at the same time. A rebuild keeps each
 note's syllable, pitch and type (rap, golden, freestyle).
